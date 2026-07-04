@@ -323,10 +323,26 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   now only does the safe arg recon and returns the DEAD-END string (never calls the builder/ctor; no longer a
   footgun). **Real ADD = pick a pivot (from the findings):** (1) spawn on the streaming thread — hook the
   tile-stream driver `FUN_1406a7930` and inject one extra part into its per-part loop (heaviest, correct);
-  (2) the asset-request path `FUN_1406a5080`→`FUN_1406c7000` (re-elevated from the earlier downgrade — hands
-  the work to the streamer) — **recommended to evaluate FIRST** (needs `FUN_1406a5080` full-flow decomp +
-  what consumes the request → a Windows/Ghidra task). MOVE stays fully solved; ADD is bigger than the
-  spawn_clone route hoped.
+  (2) the asset-request path `FUN_1406a5080`→`FUN_1406c7000` — **ASSESSED 2026-07-04
+  (`docs/re/windows_geom_spawn_pivot2_re_findings.md`): this is THE viable ADD route.** `FUN_1406a5080` is a
+  non-blocking asset-request REGISTRAR (name/id → RB-tree at `reqMgr+0x318`, state 4, streamer services it on
+  ITS thread), and consumer `FUN_140699670` proves the path yields a tracked, player-positioned placement
+  from a NAME. Beats pivot 1: no standalone hang, the engine builds the owned descriptor itself, name-driven.
+  **Q1/Q3/Q4 DONE (2026-07-04):** reqMgr singleton = **`[DAT_143d69ba8+0x30]`** (er+0x3d69ba8, FD4Singleton);
+  name format = **`"AEG%03u_%03u"`** (request an asset by its AEG###_### name); owning feature = a periodic
+  player-proximity raycast AEG-asset STREAMER (`FUN_140699670`/`d80`, steps `FUN_140699170`/`FUN_14069a550`) —
+  a ready template proving "name + world pos → streamer spawns+tracks the asset." **Nuance:** the path streams
+  from a KNOWN-asset registry → ideal for placing copies of EXISTING AEG assets (the world-editor case);
+  arbitrary-new needs tree registration. **Q2 DONE (2026-07-04): pivot 2 STATIC RE is COMPLETE.** The `req`
+  object has the EXACT `CSWorldGeom` instance layout, and `FUN_1406c6050(req,4)` is its per-frame
+  load/visibility state machine: `FUN_1406c8750`→`FUN_1406a6630` (same block instance-registry the ctor uses)
+  + `FUN_1406e38c0` (scene/render node + world matrix `FUN_1409f1320`). So `FUN_1406c7000` allocates a REAL
+  geom instance (reconciles the earlier "just a name builder") and a serviced request → a real,
+  block-registered, rendered instance — NOT visual-only. Collision follows the standard world-geom path (one
+  live checkmark left). **NEXT (small): resolve the `DAT_143d69ba8` FD4Singleton accessor AOB** (only
+  code-anchor still needed) → **live `spawn_asset <AEGname>` probe (Linux/Proton):**
+  `FUN_1406a5080([DAT_143d69ba8+0x30], L"AEG###_###")` near player → renders → walk into it for collision.
+  No static unknowns left. MOVE stays fully solved; ADD is a multi-step subsystem build.
   **Live recon (2026-07-03, `spawn_probe` + `test_spawn_probe.py`, fresh DLL) confirmed srcType + corrected
   the layout:** on a real dynamic instance (`AEG004_903`) — srcType@+0x08 `0x3c1412016ff00000` (geom tag ✓,
   hi==BlockData tag ✓; masks g0=0xff/g1=0x14/g2=0xfffff); **param_3 = the BlockData** (inst+0x10, NOT a
@@ -342,10 +358,10 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   sub-object). **FIX = don't alias, REBUILD:** call the driver's own builder
   `thunk_FUN_144cbdae7(&out, BlockData, partsList=*(BlockData+8+0x48), *(BlockData+8+0x58))` (er+0x6c3910,
   4-arg sig identical at both driver sites) → a fresh OWNED descriptor; the ctor move-inits from OUR copy,
-  source untouched. **So the full spawn_clone recipe is now unblocked:** build srcType (copy source +0x08 or
-  repack), pass source BlockData as param_3, build param_4 via `thunk_FUN_144cbdae7`, `FUN_1406b9880` into a
-  self-alloc 0x5b0, SKIP the +0x288 push (ctor self-registers), then `SetWorldMatrix`-offset. Open live
-  detail: which part index the standalone builder resolves — target the source's own part.
+  source untouched. **⚠ SUPERSEDED (726f6189):** this "rebuild `param_4` via `thunk_FUN_144cbdae7`" fix is
+  DEAD — that builder is MSVC-EH-wrapped + streaming-welded and **HANGS** called standalone (it's not a
+  transform math fn; it does resource/streaming work on the wrong thread). So the whole route-b/standalone-ctor
+  recipe below is abandoned; kept only as resolved static facts. Real ADD = pivot 2 (above).
   Blocker 1 (srcTypeDesc) = 8-byte packed FieldIns id, buildable (live cross-check ✓: geom_dump inst+0x08
   has the `0x6…` tag + block-tag high32). Blocker 2 (transform=24B FD4 pose wrapper) SIDESTEPPED via **route
   (b): spawn at the source transform, then `SetWorldMatrix`-move to the offset (reuse the proven move
@@ -357,11 +373,8 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   registers the clone into the source record's instance list (`rec+0xe8` slots/`+0xf8` cursor/`+0xfc` cap,
   guarded). Route (b) reusing the source record is field-safe (only `+0x18b` matters); the clone just becomes
   tracked by the source record's lifecycle (fine for a dev probe; production would synth a minimal record).
-  **NEXT = the Proton `spawn_clone` probe (route b):** build srcTypeDesc + reuse source record + copy source
-  transform → `FUN_1406b9880` into self-alloc 0x5b0 → push `+0x288` → `SetWorldMatrix` to offset → see a
-  duplicated asset render+collide. Windows box's loaded DLL is stale, so the 4-item LIVE-VERIFY checklist in
-  `windows_geom_spawn_re_findings.md` (sanity-dump `rec+0x18b` + `rec+0xf8<rec+0xfc` before spawning) is
-  handed to the Linux/Proton agent — that agent codes + drives it (move step already exists).
+  **(The above blocker-1/2/3 facts are TRUE but pertain to the abandoned route-b; the Proton `spawn_clone`
+  probe was tried and is a dead end — see the ⚠ SUPERSEDED note. NEXT is pivot 2, at the top of this bullet.)**
   **Freecam** (dev tool, after ADD): recon done (`windows_freecam_re_findings.md`), **Route 2** = freeze
   ChrCam + override the render view matrix in `GameRendCameraSet` (er+0x680460). BLOCKED on Ghidra: that
   matrix offset + a `CSCameraImp` singleton AOB. Then I code freeze+override from Linux.
