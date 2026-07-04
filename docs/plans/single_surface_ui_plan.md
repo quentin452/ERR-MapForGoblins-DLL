@@ -37,7 +37,14 @@ input once an overlay is already open; nothing intercepts `WM_KEYDOWN` for the m
 menu-open path). Per-frame dispatch `goblin_overlay.cpp:1905-1914`: F1 panel (`g_show`), vmap
 (self-gates on `virtual_map_open()`), native-map markers (`proto=true` always), minimap (`showMinimap`).
 
-## The warp-freeze connection (hypothesis this design may resolve)
+## The warp-freeze connection — DISPROVEN (2026-07-04; the freeze was unrelated data bugs)
+
+**RESOLVED and decoupled from this plan.** The vmap warp freeze turned out to be TWO data bugs in the
+grace layer, NOT menu context: (1) it warped by the BonfireWarpParam ROW KEY (ERR-remapped) instead of
+`bonfireEntityId` (`89d0cd8`), and (2) the warp offset was the CT's `-1000` instead of `0` (`088aabc`).
+Both fixed; the vmap warp now lands exactly on the grace with the native map open. So disabling the
+native map is **no longer justified by "fixing the freeze"** — it stands purely on the UI-simplification
+goal. The (now historical) hypothesis is kept below for context.
 
 vmap double-click warp FREEZES the loading screen; the SAME `warp::to_grace` via debug-RPC works.
 Only difference at the (now identical, post-frame) call site: **RPC fires from gameplay (no menu
