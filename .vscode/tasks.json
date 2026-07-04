@@ -83,6 +83,9 @@
   ],
   "inputs": [
     {
+      // KEEP IN SYNC: when you add a tools/rpc_tests/test_*.py, add its filename to this list so it
+      // shows in the "Run ONE RPC test (pick)" task. (run_all.py auto-discovers via glob; this picker
+      // does NOT — VSCode pickString options must be literal.)
       "id": "rpcTest",
       "type": "pickString",
       "description": "Which RPC test to run?",

@@ -13,3 +13,12 @@ Claude Code auto-loads this file. The full agent handoff lives in `AGENTS.md`, i
 - Read `docs/memory/common.md` first, then the relevant `docs/memory/{features,bugs,tooling,process}/README.md`.
 - On any completed task that changes durable state, update the right `docs/memory/` file (+ `changelog.md`
   if it adds a feature or fixes a bug) and commit — never stash it in a side memory.
+
+## VSCode dev tasks (`.vscode/tasks.json`)
+
+- Build/deploy + RPC test runners live here (Terminal ▸ Run Task…). "Run ONE RPC test (pick)" shows a
+  dropdown of `tools/rpc_tests/test_*.py`; "Boot ER + RPC repl" and "RPC one-shot (type command)" drive
+  a running game (e.g. `hf_probe`, `warp <id>`, `ping`).
+- **When you add a new `tools/rpc_tests/test_*.py`, also add its filename to the `rpcTest` pickString
+  `options` in `.vscode/tasks.json`** — `run_all.py` auto-discovers tests by glob, but the VSCode picker
+  cannot (pickString options must be literal). A comment at that list says the same.
