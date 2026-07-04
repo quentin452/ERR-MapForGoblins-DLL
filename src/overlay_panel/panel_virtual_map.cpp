@@ -53,6 +53,7 @@ namespace
     bool s_show_icons = true;      // draw real category icons (native/atlas) vs plain colour dots
     uint64_t s_warp_pending = 0;   // grace rowId to warp to; serviced at the next frame's top (not mid-draw)
     bool s_fit_requested = false;  // one-shot: on next draw, frame the selected group's markers
+    bool s_focus_player = false;   // one-shot: on next draw, centre the camera on the player + their group
     int s_drawn = 0;               // marker count drawn last frame (toolbar readout)
     const char *const kGroupNames[4] = {"Base overworld", "Base underground", "DLC overworld",
                                         "DLC underground"};
@@ -356,6 +357,13 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         s_prev_map = map_now;
     }
     if (!s_open) return;
+    // Focus the player on OPEN (rising edge of s_open, any open path): jump the camera to where the
+    // player is and select their group, so opening the map shows "you are here" instead of the last view.
+    {
+        static bool s_was_open = false;
+        if (s_open && !s_was_open) s_focus_player = true;
+        s_was_open = s_open;
+    }
 
     ImGui::SetNextWindowSize(ImVec2(720.0f, 560.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImVec2(470.0f, 40.0f), ImGuiCond_FirstUseEver);
@@ -459,6 +467,21 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                            ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonMiddle);
     const bool hovered = ImGui::IsItemHovered();
     ImGuiIO &io = ImGui::GetIO();
+
+    // Focus-on-player one-shot: centre the camera on the live player position + switch to their group,
+    // at a readable close zoom. Base ER only (custom worlds have no player pos). Do it BEFORE w2s so the
+    // new cam applies this frame.
+    if (s_focus_player && active_world == 0)
+    {
+        int parea = 0, pgroup = 0;
+        float pwx = 0.f, pwz = 0.f;
+        if (goblin::overlay_api::get_player_map_pos(parea, pwx, pwz, nullptr, nullptr, &pgroup))
+        {
+            s_cam_x = pwx; s_cam_z = pwz; s_group = pgroup;
+            if (s_zoom < 0.12f) s_zoom = 0.12f;   // ensure a useful close-in view, don't zoom back out
+            s_focus_player = false;               // consumed (only clears once we actually had a position)
+        }
+    }
 
     // world → screen and screen → world. Z is FLIPPED (screen-Y decreases as worldZ increases) to match the
     // native ER map orientation — the engine converter flips Z (mapZ = -worldZ + bias); without this the
