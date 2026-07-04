@@ -49,6 +49,54 @@ namespace
         return ReadProcessMemory(GetCurrentProcess(), addr, out, n, &got) && got == n;
     }
 
+    // Resolve the world-transform setter from an instance's vtable, HARDENED against a vtable reorder.
+    // A hardcoded slot index (26) can't be AOB'd, and a game patch that reorders the vtable would make
+    // vtbl[26] an arbitrary function called with the setter ABI -> crash (tier S-1,
+    // docs/re/fragile_primitives_audit.md). So AOB-resolve the SetWorldMatrix FUNCTION and find the slot
+    // that actually holds it: slot 26 fast-path (confirmed), else search the vtable (self-heal + warn),
+    // else fall back to slot 26 only if it's a plausible in-module code ptr, else bail (null). The last
+    // (slot, target) pair is cached and re-validated per call (cheap; handles per-subclass vtables).
+    SetterFn resolve_setter(void *inst)
+    {
+        static SetterFn s_last = nullptr;
+        static int s_last_slot = -1;
+        void **vtbl = *(void ***)inst;
+        if (s_last && s_last_slot >= 0 && vtbl[s_last_slot] == (void *)s_last)
+            return s_last;  // hot path: same vtable/target as last time
+
+        auto use = [&](int slot) -> SetterFn {
+            s_last = (SetterFn)vtbl[slot];
+            s_last_slot = slot;
+            return s_last;
+        };
+        uintptr_t base = (uintptr_t)GetModuleHandleA("eldenring.exe");
+        if (!base)
+            return use(SETTER_VSLOT);  // no base — preserve the original behaviour
+        void *swm = goblin::sig::resolve_func_aob(goblin::sig::SET_WORLD_MATRIX_FN, base, 0x6dbd40,
+                                                  "SET_WORLD_MATRIX");
+        if (vtbl[SETTER_VSLOT] == swm)
+            return use(SETTER_VSLOT);  // slot 26 holds SetWorldMatrix — confirmed
+        for (int i = 0; i < 128; ++i)
+            if (vtbl[i] == swm)
+            {
+                spdlog::warn("[GEOMMOVE] SetWorldMatrix slot moved {}->{} (game patch?) — self-healed",
+                             SETTER_VSLOT, i);
+                return use(i);
+            }
+        // AOB'd SetWorldMatrix not in this vtable (a different geom subclass, or big layout change). Fall
+        // back to slot 26 only if it at least points into the module .text; else refuse to vcall garbage.
+        uintptr_t s26 = (uintptr_t)vtbl[SETTER_VSLOT];
+        if (s26 >= base && s26 < base + 0x8000000)
+        {
+            spdlog::warn("[GEOMMOVE] SetWorldMatrix AOB not in vtable — falling back to slot 26 (code ptr)");
+            return use(SETTER_VSLOT);
+        }
+        spdlog::error("[GEOMMOVE] no plausible SetWorldMatrix slot (vtable layout changed) — move aborted");
+        s_last = nullptr;
+        s_last_slot = -1;
+        return nullptr;
+    }
+
     bool finite3(const float *m) { return std::isfinite(m[12]) && std::isfinite(m[13]) && std::isfinite(m[14]); }
 }
 
@@ -98,8 +146,8 @@ namespace goblin::geom_move
         }
 
         // Resolve the virtual setter (vtable[0xd0] = slot 26).
-        void **vtbl = *(void ***)inst;
-        SetterFn setter = (SetterFn)vtbl[SETTER_VSLOT];
+        SetterFn setter = resolve_setter(inst);
+        if (!setter) { std::snprintf(r.err, sizeof(r.err), "setter slot unresolved (vtable layout changed)"); return r; }
 
         // Move by the delta (full matrix from the getter preserves rotation/scale; translation += delta).
         float moved_mat[16];
@@ -160,8 +208,8 @@ namespace goblin::geom_move
         }
         r.before[0] = cache[12]; r.before[1] = cache[13]; r.before[2] = cache[14];
 
-        void **vtbl = *(void ***)inst;
-        SetterFn setter = (SetterFn)vtbl[SETTER_VSLOT];
+        SetterFn setter = resolve_setter(inst);
+        if (!setter) { std::snprintf(r.err, sizeof(r.err), "setter slot unresolved (vtable layout changed)"); return r; }
         float moved_mat[16];
         memcpy(moved_mat, m, sizeof(moved_mat));
         moved_mat[12] = r.before[0] + dx; moved_mat[13] = r.before[1] + dy; moved_mat[14] = r.before[2] + dz;
@@ -218,8 +266,8 @@ namespace goblin::geom_move
         float moved_mat[16];
         memcpy(moved_mat, m, sizeof(moved_mat));
         moved_mat[12] = r.before[0] + dx; moved_mat[13] = r.before[1] + dy; moved_mat[14] = r.before[2] + dz;
-        void **vtbl = *(void ***)best;
-        SetterFn setter = (SetterFn)vtbl[SETTER_VSLOT];
+        SetterFn setter = resolve_setter(best);
+        if (!setter) { std::snprintf(r.err, sizeof(r.err), "setter slot unresolved (vtable layout changed)"); return r; }
         if (!call_setter(setter, best, moved_mat)) { std::snprintf(r.err, sizeof(r.err), "setter faulted"); return r; }
         float cache[16] = {};
         rpm((char *)best + 0x220, cache, sizeof(cache));
@@ -256,8 +304,8 @@ namespace goblin::geom_move
         if (!rpm((char *)inst + CACHE_MAT, cache, sizeof(cache)) || !finite3(cache)) { std::snprintf(r.err, sizeof(r.err), "cache unreadable"); return r; }
         r.before[0] = cache[12]; r.before[1] = cache[13]; r.before[2] = cache[14];
 
-        void **vtbl = *(void ***)inst;
-        SetterFn setter = (SetterFn)vtbl[SETTER_VSLOT];
+        SetterFn setter = resolve_setter(inst);
+        if (!setter) { std::snprintf(r.err, sizeof(r.err), "setter slot unresolved (vtable layout changed)"); return r; }
         float moved_mat[16];
         memcpy(moved_mat, m, sizeof(moved_mat));
         moved_mat[12] = r.before[0] + dx; moved_mat[13] = r.before[1] + dy; moved_mat[14] = r.before[2] + dz;
@@ -608,8 +656,8 @@ namespace goblin::geom_move
             float m[16] = {};
             if (!call_getter(getter, inst, m) || !finite3(m)) continue;
             m[12] += dx; m[13] += dy; m[14] += dz;  // uniform per-instance delta (own block-local frame)
-            void **vtbl = *(void ***)inst;
-            SetterFn setter = (SetterFn)vtbl[SETTER_VSLOT];
+            SetterFn setter = resolve_setter(inst);
+            if (!setter) continue;
             if (call_setter(setter, inst, m)) ++moved;
         }
         r.inst = (uint64_t)moved;  // reuse .inst as the moved count
@@ -634,8 +682,8 @@ namespace goblin::geom_move
             { std::snprintf(r.err, sizeof(r.err), "held instance unreadable"); return r; }
         }
         m[12] = g_held_before[0]; m[13] = g_held_before[1]; m[14] = g_held_before[2];
-        void **vtbl = *(void ***)g_held;
-        SetterFn setter = (SetterFn)vtbl[SETTER_VSLOT];
+        SetterFn setter = resolve_setter(g_held);
+        if (!setter) { std::snprintf(r.err, sizeof(r.err), "setter slot unresolved (vtable layout changed)"); return r; }
         if (!call_setter(setter, g_held, m)) { std::snprintf(r.err, sizeof(r.err), "setter faulted"); return r; }
         float cache[16] = {};
         rpm((char *)g_held + 0x220, cache, sizeof(cache));
