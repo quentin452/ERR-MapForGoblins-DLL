@@ -121,6 +121,11 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
   offset + a `CSCameraImp` singleton AOB).
 - **In-game pause** (`windows_ingame_pause_re_prompt.md`), **gamepad input device**
   (`windows_gamepad_input_device_re_prompt.md`), **silent deadlock freeze** (unsolved; watchdog shipped).
+- **Keybinding config (read the user's LIVE kb+pad binds) — OPEN, `windows_keybinding_config_re_prompt.md`.**
+  Raw device layer + the `CSPcKeyConfig` singleton (`DAT_143d5deb8`) are already RE'd (`windows_input_path_re.md`);
+  the gap = DECODE its command→binding table + the command ids, so mod hotkeys respect remapping and work on a
+  pad (today = hardcoded `GetAsyncKeyState` VK, kb-only). Cheap intermediate needing NO decode: feed the
+  engine's polled `XINPUT_STATE` (`DAT_1430b92e0`) into ImGui gamepad nav.
 
 ---
 
