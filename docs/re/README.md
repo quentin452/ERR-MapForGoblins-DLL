@@ -70,8 +70,12 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
   `suffix = 8·morton(subX,subY)` in a `64×64`-cell block → `gridX=col·64+subX`, `gridZ=row·64+subY`,
   `rect = ((gridX−gridXbase)·256, (gridZ−gridZbase)·256) + (0,0,256,256)` (`gridXbase/gridZbase` from the
   live converter). No `WorldMapTileParam` (pure name-decode). LOD = per-LOD layer stack, zoom-gated.
-  Findings: `windows_worldmap_tile_placement_re_findings.md`. Runtime gap (Linux): axis-order + `W=64`
-  confirm, per-`L` zoom thresholds, SRV recycling + byte-range reads.
+  Findings: `windows_worldmap_tile_placement_re_findings.md`. **⚠ LIVE MISMATCH (2026-07-04):** the tile
+  NAME-grid ≠ the converter grid — land tiles at name-gridX~64 vs converter~43 (offset ~21/~14, non-uniform)
+  → tiles load but are OFFSET from markers. The real origin is the un-decoded REGION-WALK
+  (`FUN_1409d8c30`/`FUN_1409da9f0`). **Open prompt (narrow — rects/calibration only, textures deferred):**
+  `windows_worldmap_tile_rect_reach_re_prompt.md` (reach a live layer's resolved base `+0x21c/+0x220` / tile
+  rect `self+0x98`, OR decode the region-walk origin formula). SRV recycling + byte-range reads = later.
 - **LotReader index rebuild** — snapshotted at init; newly cloned lots don't resolve (`refresh_markers` v2).
 - **F2 fog-locate clamp** — the reticle-clamp bounds source in the `c32f0` subtree is unfound
   (`linux_f2_fog_locate_clamp_re_findings.md`).
