@@ -1,6 +1,6 @@
 # RE coverage map — what of ELDEN RING is reverse-engineered, and what isn't
 
-Index + honest coverage map for `docs/re/`. **166 RE docs** live here. Two kinds:
+Index + honest coverage map for `docs/re/`. **167 RE docs** live here. Two kinds:
 - `*_re_findings.md` / `*_RESOLVED.md` — a SOLVED structure/function (the answer).
 - `*_re_prompt.md` / `*_analysis.md` — an OPEN or historical RE task handed to Ghidra/CE.
 
@@ -61,7 +61,15 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
    `docs/plans/merchant_item_search_plan.md` Slice 3).
 3. **regulation.bin / mod-VFS virtualization** — for the strong form of world-swap (vision #1). Only
    `windows_regulation_modroot_anchor_re_prompt.md` scratches it; the VFS-level swap isn't RE'd.
-4. **3D models / FLVER** — completely untouched (vision #3). No asset/model RE at all.
+4. **3D models / FLVER** — the CREATION options are now MAPPED (`custom_asset_creation_options_re_findings.md`,
+   2026-07-05): a **walkable greybox needs NO authoring** (Route D — a Havok `hknpBoxShape` collision box, §4b);
+   a **visible first-class AEG asset** does need `.flver`+`.hkx` (option A), and a NEW `AEG###_###` id **DOES
+   stream** at runtime (name-resolved against the mounted VFS, not a fixed per-map set — safe route = a loose
+   mod overlay / already-mounted bank). Settled dead ends: **B** (register geometry from an in-memory buffer)
+   is impossible (engine resolves by resource NAME only); **C** (a high-level engine primitive with collision,
+   no mesh) doesn't exist — the MSB/World "Hit" collision layer (`HitIns`/`CSMsbPartsHit`/`CSWorldGeomHitIns`)
+   is itself model-name driven, and debug-draw primitives are render-only. Actual FLVER/mesh authoring RE
+   (the offline pipeline) is still untouched.
 4b. **Terrain / Havok collision WRITE — new frontier, partly RE'd (static, 2026-07-04).** We READ the terrain
    (down-ray heightfield) and can MOVE an object, but there is NO way to change collision GEOMETRY (deform the
    ground, add a platform/wall). **Static class inventory + `CSPhysWorld`/`hknpWorld` wiring DONE**
