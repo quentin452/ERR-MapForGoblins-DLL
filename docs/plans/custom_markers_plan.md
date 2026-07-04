@@ -47,10 +47,19 @@ the warp findings + `warp` (LuaWarp) already work for graces; a coord-warp with 
      native map-point sprite by name (used for graces). Need the exact lost-runes/bloodstain symbol name.
      *USER to confirm which `.dcx` icon is the rune-loss one.*
    - Draw ONE at a time (a new death replaces it; clear on pickup — later). Same store + minimap path.
-2. **Other-player icons (multiplayer)** — show other players' positions/icons (co-op/invasion). Check if
-   there's existing RE on the multiplayer player list; likely none → a new RE item. SAME for the local
-   **player icon**: today the minimap/vmap draw our own RED arrow — the NATIVE "you are here" player glyph
-   exists in the assets; use it instead of the hand-made red once resolved.
+2. **Other-player icons (multiplayer)** — show other players (co-op/invasion). SOURCE CONFIRMED 2026-07-04:
+   NOT GameDataMan (that's single-player save data — inventory/stats/bloodstain/flags). Other players are
+   **ChrIns entries in WorldChrMan** (already resolved). Path: walk WorldChrMan's chr list, filter by
+   chrType (host/coop/invader), read pos @ ChrIns+0x6C0 (same offset as LocalPlayer). Native icons found:
+   `MENU_MAP_Host/Guests/Coop_01-02/Friend_00-03/Enemy_00-03/Raid_01-02`. SAME for the local **player icon**:
+   today minimap/vmap draw our RED arrow → use the native "you are here" glyph (`MENU_MAP_Player_02`+`Bearing`,
+   rotated by yaw via AddImageQuad) once wired.
+
+### Minimap icons too small (2026-07-04)
+`draw_minimap`: `half = 6px * uiScale * masterScale * iconScale`, clamped `[3px, 10px]`. At 1080p (uiScale=1)
+that's 12px icons capped hard at 10px — small (the death marker uses the same `half`, so it reads tiny too).
+This is a GENERAL minimap sizing issue, not death-specific. Fix candidate: bump base 6→8 + cap 10→14, but it
+enlarges every minimap icon on a small HUD (risk of crowding) → tune/verify before committing.
 
 ### Known bug — custom markers are Base-ER only
 Placement + draw are gated `active_world == 0`. In a CUSTOM vworld the right-click/list/pins do nothing.
