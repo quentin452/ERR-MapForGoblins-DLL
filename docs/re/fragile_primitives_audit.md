@@ -16,16 +16,21 @@ Rank danger by: *does it fail SILENTLY?* + *does it WRITE?* + *how hard does it 
 
 ## Tier S — more dangerous than RVA (write / arbitrary-call / undetected)
 
-1. **Engine vtable SLOT INDICES.** Calling `(*vt)[N]` with a hardcoded N. Worse than an RVA: no health
-   check, and a patch that reorders the vtable calls the WRONG virtual function with a MISMATCHED
-   signature → crash or silent corruption. An RVA at least names one function; a stale slot calls
-   whatever now sits there.
-   - `goblin_geom_move.cpp:23` `SETTER_VSLOT = 26` (`vtable[0xd0]` SetWorldMatrix) — ENGINE vtable, moves on patch.
-   - `goblin_grace_suppression.cpp:148` `vt[1]` SetTo — ENGINE vtable, and it's HOOKED (see tier S-2).
-   - (SAFE, do not touch: DXGI `vtable[8/13]`, D3D12 `vtable[10]`, DInput `vtable[9/10]` in
-     `goblin_overlay.cpp`/`input_directinput.cpp` — those are Microsoft COM ABIs, contractually stable.)
-   - **Mitigation:** resolve the slot from the class's ctor AOB (the `mov [rax+N*8], lea vtable` write) or
-     assert the vtable base matches a known AOB before the vcall, so a reorder fails LOUD not wrong.
+1. ✅ **Engine vtable SLOT INDICES — HARDENED 2026-07-04.** Calling `(*vt)[N]` with a hardcoded N. Worse
+   than an RVA: no health check, and a patch that reorders the vtable calls the WRONG virtual function
+   with a MISMATCHED signature → crash. An RVA at least names one function; a stale slot calls whatever
+   now sits there.
+   - ✅ `goblin_geom_move.cpp` `SETTER_VSLOT = 26` (`vtable[0xd0]` SetWorldMatrix) — now `resolve_setter()`
+     AOB-resolves the SetWorldMatrix FUNCTION (`SET_WORLD_MATRIX_FN`, RVA 0x6dbd40) and verifies/​self-heals
+     the slot: slot-26 fast-path, else searches the vtable + warns "slot moved N→M", else bails loud (null
+     → move aborted, no garbage vcall). Live-verified PASS + move round-trips.
+   - ✅ `goblin_grace_suppression.cpp` SetTo — NOT a runtime index deref: it's HOOKED by direct address,
+     already hardened as a FUNC AOB (`WARPPIN_SETTO_FN`, tier S-2). The "vt[1]" is just documentation of
+     which slot the engine's own code binds; we never index it ourselves.
+   - (SAFE, untouched: DXGI `vtable[8/13]`, D3D12 `vtable[10]`, DInput `vtable[9/10]` in
+     `goblin_overlay.cpp` `vtable_entry`/`input_directinput.cpp` — Microsoft COM ABIs, contractually stable.)
+   - **Pattern (reference):** AOB the TARGET function, then find/verify the slot that holds it at runtime;
+     a reorder self-heals + warns, a removal fails loud. Reusable for any future engine vtable slot.
 
 2. **MinHook detour installs (code patching).** ~24 sites in 12 files (`modutils::hook`). A hook WRITES a
    JMP over the target prologue — a wrong address (RVA/AOB drift) or a shorter-than-expected prologue
@@ -87,7 +92,7 @@ fragile primitive. Recommend: leave unless a broader cross-platform pass wants `
 
 ## Suggested order (highest danger-per-effort first)
 1. ~~The 2 grace-suppression **hooked RVAs** (tier S-2)~~ ✅ DONE 2026-07-04 (flag-gated dump, not trampoline).
-2. The 2 engine **vtable slots** (tier S-1: geom setter 26, grace SetTo vt[1]) — resolve/assert from a ctor AOB. ← NEXT
+2. ~~The engine **vtable slots** (tier S-1: geom setter 26; grace SetTo was already a FUNC AOB)~~ ✅ DONE 2026-07-04.
 3. A few **layout canaries** on the hottest write structs — ✅ inventory strip DONE (the reference
    pattern); remaining: WorldGeomIns transform (+0x220 move write) + the hottest read chains (tier A).
 4. Continue the RVA backlog's PHYSWORLD slot + vtable/slot set.

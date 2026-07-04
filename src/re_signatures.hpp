@@ -358,6 +358,12 @@ namespace goblin::sig
         "48 8B C4 48 89 50 10 56 57 41 56 48 81 EC A0 00 00 00 48 C7 44 24 28 FE FF FF FF "
         "48 89 58 08 48 89 68 18 48 8B F2 4C 8B F1 33 FF 89 7C 24 20 0F B6 51 0C 48 8B CE "
         "E8 ?? ?? ?? ?? 4C 8D 05 ?? ?? ?? ??";
+    // FUN_1406dbd40: CSWorldGeomIns::SetWorldMatrix — the geom transform setter, called via vtable slot 26
+    // (vtable[0xd0]). A slot INDEX can't be AOB'd, so we AOB the TARGET function and verify/self-heal the
+    // slot at runtime (goblin_geom_move.cpp resolve_setter). RVA 0x6dbd40. Tier S-1, fragile_primitives_audit.md.
+    inline constexpr const char *SET_WORLD_MATRIX_FN =
+        "48 89 5C 24 08 57 48 83 EC 20 48 8B FA 48 8B D9 E8 ?? ?? ?? ?? 48 8B 8B 30 04 00 00 "
+        "48 85 C9 74 ?? 48 8B D7 E8 ?? ?? ?? ?? 48 8B 5C 24 30 48 83 C4 20 5F C3";
 
     // ── Health check ───────────────────────────────────────────────────────────
     // Scans every AOB above (no relative_offsets — a base match is enough to prove the
@@ -411,6 +417,7 @@ namespace goblin::sig
             {"ENSURE_ASSET_REQUEST_FN", ENSURE_ASSET_REQUEST_FN},
             {"WARPPIN_BUILDER_FN", WARPPIN_BUILDER_FN},
             {"WARPPIN_SETTO_FN", WARPPIN_SETTO_FN},
+            {"SET_WORLD_MATRIX_FN", SET_WORLD_MATRIX_FN},
         };
         count = sizeof(table) / sizeof(table[0]);
         return table;
