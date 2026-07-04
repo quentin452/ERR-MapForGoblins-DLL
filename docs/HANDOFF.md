@@ -9,6 +9,37 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
+## ⇒ SESSION WRAP 2026-07-04 (evening) — custom markers + death marker + minimap edge fix
+
+All committed, local master ahead of origin. Full status: `docs/plans/custom_markers_plan.md`.
+
+**DONE + verified (screenshot):**
+- **Custom player markers** (`src/goblin_custom_markers.{hpp,cpp}` shared store, UI in `panel_virtual_map.cpp`):
+  right-click vmap = place blue pin (on top); `Custom` sidebar = list per-marker map+coords, rename, **Go**
+  (pan), **Delete** (+ right-click-pin delete); cap 24/world; drawn on minimap too. **TP button HIDDEN**
+  (coord-teleport not an ER mechanic; `warp_to_world_xz` bridge kept for future streaming warp = Track B).
+- **Minimap edge-clamp fix** (`map_renderer.cpp draw_minimap`, `08e0548`): one `edgeR = R-half-2` → icons +
+  custom + search-clamp all sit inside the border ring, no overshoot.
+
+**IN PROGRESS — death/bloodstain marker (`37654c4`):**
+- Icon name CONFIRMED = **`MENU_MAP_DropSoul`**. Render DONE: `goblin::death_marker` store + draws the native
+  DropSoul via `map_point_glyph_uv` (disk-resolved, CACHED, mod-agnostic, red-disc fallback) on vmap+minimap.
+- Trigger = RPC `death_mark` / `death_clear` (MANUAL only). **⚠ auto death-detect NOT wired** → in-game death
+  renders nothing (user tested, "zero render" = expected). **NEXT: player-HP reader** — `LocalPlayer=[WCM+
+  0x1E508]`, pos +0x6C0, yaw +0x6CC; **HP offset UNKNOWN → runtime probe** (take damage, find the int byte;
+  candidate ER chain `LocalPlayer→0x190→…→HP`). Fire death_marker::set(get_player_map_pos) on HP→0 edge.
+- **RE-VERIFY the render** first: `death_mark` then vmap/minimap should show the DropSoul sprite (or red disc
+  if `map_point_rect_by_name("MENU_MAP_DropSoul")`/SB_MapCursor_02 disk-load fails). Last screenshot was too
+  cluttered to confirm; isolate with `vis master 0` + tight zoom on the marked spot.
+
+**Queued (this feature's follow-ups, `custom_markers_plan.md`):**
+- Native PLAYER cursor (replace red arrow): `MENU_MAP_Player_02` (effigy) + `MENU_MAP_Bearing` (arrow),
+  ROTATED by yaw via `dl->AddImageQuad` (4 rotated corners; yaw already read; calibrate a +π/2 offset).
+- Followup 2 multiplayer icons — native names found: `MENU_MAP_Host/Guests/Coop_01-02/Friend_00-03/Enemy_00-03/Raid_01-02`.
+- Custom markers Base-ER only (bug) → per-vworld. Persistence `custom_markers.toml`. SHIP RULE: custom
+  content must stay marker-mapper compatible. **#3 delete ER compass** (Scaleform HUD, separate RE) still pending.
+- Extracted native textures for icon-hunting: `tools/extracted/` (SB_* sheets).
+
 ## ⇒ SESSION WRAP 2026-07-04 (later) — RE-tooling hardening + player teleport harness + dev-dimension direction
 
 **⭐ PRIORITY DECISION (confirmed 2026-07-04): Track 1 = the ImGui-only map** (`docs/plans/imgui_only_map_plan.md`,
