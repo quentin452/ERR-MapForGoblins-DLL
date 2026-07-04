@@ -325,6 +325,26 @@ namespace goblin::sig
     inline constexpr const char *PAUSE_BRANCH =
         "0F 84 ?? ?? ?? ?? C6 83 ?? ?? 00 00 00 48 8D ?? ?? ?? ?? ?? 48 89 ?? ?? 89";
 
+    // ── FUNC call-targets hardened from fixed RVAs (AOB backlog, 2026-07-04) ──
+    // Prologue AOBs crafted from a LIVE mem_dump (packed .text unpacked at runtime) via
+    // tools/hf_hook_scout.py disasm --aob; rip-rel disps + rel32 targets wildcarded. A base match
+    // IS the function address (no relative_offsets). Each keeps its RVA at the call site as a
+    // cross-checked fallback. See docs/re/rva_aob_hardening_backlog.md.
+    // FUN_140c70360: PhysWorld cast-ray (heightfield ground probe). RVA 0xc70360.
+    inline constexpr const char *CASTRAY_FN =
+        "48 8B C4 55 56 57 41 54 41 55 41 56 41 57 48 8D A8 38 FF FF FF 48 81 EC 90 01 00 00 "
+        "48 C7 44 24 30 FE FF FF FF 48 89 58 10";
+    // FUN_1406c46e0: geom world-matrix getter (getter(module=inst+0x18, out mat4x4[16])). RVA 0x6c46e0.
+    // Extended past the shared prologue (a sibling getter made the short form MULTI) with the distinctive
+    // lea rcx,[rbx+0x18] + movss-from-[rax] float loads → unique.
+    inline constexpr const char *GEOM_MATRIX_GETTER_FN =
+        "48 89 5C 24 08 57 48 81 EC B0 00 00 00 48 8B 01 48 8B D9 0F 29 B4 24 A0 00 00 00 "
+        "48 8B FA 48 8B 48 08 E8 ?? ?? ?? ?? F3 0F 10 0D ?? ?? ?? ?? 48 8D 4B 18 0F 28 1D ?? ?? ?? ?? "
+        "48 8D 54 24 60 0F 28 2D ?? ?? ?? ?? F3 0F 10 40 08 F3 0F 10 50 04";
+    // FUN_1406a5080: EnsureAssetRequest(reqMgr, wchar_t* name) — geom ADD pivot-2. RVA 0x6a5080.
+    inline constexpr const char *ENSURE_ASSET_REQUEST_FN =
+        "40 56 57 48 83 EC 58 80 B9 85 01 00 00 00 48 8B F2 48 8B F9 75 ?? 33 C0 48 83 C4 58 5F 5E C3";
+
     // ── Health check ───────────────────────────────────────────────────────────
     // Scans every AOB above (no relative_offsets — a base match is enough to prove the
     // signature still exists) and logs PASS@addr / FAIL. Call once at init. After an ER
@@ -372,6 +392,9 @@ namespace goblin::sig
             {"WORLD_SFX_MAN_SLOT", WORLD_SFX_MAN_SLOT},
             {"RENDER_REAPPLY_RES", RENDER_REAPPLY_RES},
             {"PAUSE_BRANCH", PAUSE_BRANCH},
+            {"CASTRAY_FN", CASTRAY_FN},
+            {"GEOM_MATRIX_GETTER_FN", GEOM_MATRIX_GETTER_FN},
+            {"ENSURE_ASSET_REQUEST_FN", ENSURE_ASSET_REQUEST_FN},
         };
         count = sizeof(table) / sizeof(table[0]);
         return table;
@@ -385,6 +408,24 @@ namespace goblin::sig
     {
         static SigHealth h;
         return h;
+    }
+
+    // Resolve a FUNC by its prologue AOB, cross-checked against its known (build-specific) RVA.
+    // Prefers the AOB (patch-portable); falls back to base+rva if the AOB doesn't match (e.g. the
+    // code region isn't unpacked yet). Warns once if BOTH resolve but disagree — an AOB drifted to a
+    // sibling, or a stale RVA. This is the migration vehicle for docs/re/rva_aob_hardening_backlog.md:
+    // a call site passes its old RVA here and gets AOB-first resolution for free.
+    inline void *resolve_func_aob(const char *aob, uintptr_t base, uintptr_t rva, const char *name)
+    {
+        void *by_aob = nullptr;
+        try { by_aob = modutils::scan<void>({.aob = aob}); }
+        catch (...) { by_aob = nullptr; }
+        void *by_rva = base ? reinterpret_cast<void *>(base + rva) : nullptr;
+        if (by_aob && by_rva && by_aob != by_rva)
+            spdlog::warn("[SIG] {} AOB {} != RVA er+{:#x}={} — using AOB", name, by_aob, rva, by_rva);
+        if (!by_aob)
+            spdlog::warn("[SIG] {} AOB no match — falling back to RVA er+{:#x}", name, rva);
+        return by_aob ? by_aob : by_rva;
     }
 
     // Logs one line per AOB + a summary. Checks both PRESENCE and UNIQUENESS — a

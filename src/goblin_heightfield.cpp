@@ -1,6 +1,7 @@
 #include "goblin_heightfield.hpp"
 
 #include "goblin_inject.hpp"   // get_player_world_pos (local ray origin) + get_player_map_pos (world)
+#include "re_signatures.hpp"   // AOB-first FUNC resolution (CASTRAY_FN) w/ RVA cross-check
 
 #include <spdlog/spdlog.h>
 
@@ -54,8 +55,9 @@ void resolve()
     uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
     if (er)
     {
-        g_cast = reinterpret_cast<CastRayFn>(er + CASTRAY_RVA);
-        g_physworld_slot = reinterpret_cast<void **>(er + PHYSWORLD_RVA);
+        g_cast = reinterpret_cast<CastRayFn>(
+            goblin::sig::resolve_func_aob(goblin::sig::CASTRAY_FN, er, CASTRAY_RVA, "CASTRAY"));
+        g_physworld_slot = reinterpret_cast<void **>(er + PHYSWORLD_RVA); // slot: FWA-harden later (backlog)
     }
     g_ready.store(true);
     spdlog::info("[HEIGHTFIELD] resolve: er={:#x} cast={} physworld_slot={} ({})", er, (void *)g_cast,

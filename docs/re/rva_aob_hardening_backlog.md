@@ -12,15 +12,28 @@ mod-agnostic. Doctrine (`re_signatures.hpp`) is to pin AOBs, keep an RVA only as
 fallback. This lists every fixed-RVA / hardcoded module-relative resolution still lacking an AOB, so it
 can be hardened. STRUCT FIELD offsets (`+0x98`, `+0x6C0`, `+0x1E508`, …) are stable and excluded.
 
+## ✅ FUNC — hardened 2026-07-04 (AOB-first, RVA cross-check fallback)
+Prologue AOBs crafted from a LIVE dump via `tools/hf_hook_scout.py disasm --aob`, added to
+`re_signatures.hpp`, and resolved through the new `sig::resolve_func_aob(aob, base, rva, name)` helper
+(AOB first; falls back to `base+rva` if the AOB misses; warns on AOB≠RVA disagreement). All three
+verified **PASS + UNIQUE** in the live `[SIG]` health check + exercised in-world (2 boots).
+| symbol (AOB const) | RVA | resolves | file |
+|---|---|---|---|
+| ENSURE_ASSET_REQUEST_FN | 0x6a5080 | EnsureAssetRequest(reqMgr,name) | goblin_geom_spawn.cpp |
+| GEOM_MATRIX_GETTER_FN | 0x6c46e0 | geom matrix getter (6 sites) | goblin_geom_move.cpp |
+| CASTRAY_FN | 0xc70360 | PhysWorld cast-ray (heightfield) | goblin_heightfield.cpp |
+
 ## FUNC — call targets with NO AOB (move every patch)
 | symbol | RVA | resolves | file |
 |---|---|---|---|
-| ENSURE_ASSET_REQUEST_RVA | 0x6a5080 | EnsureAssetRequest(reqMgr,name) | goblin_geom_spawn.cpp:19/100 |
-| GETTER_RVA | 0x6c46e0 | geom matrix getter (6 sites) | goblin_geom_move.cpp:21 |
-| CASTRAY_RVA | 0xc70360 | PhysWorld cast-ray (heightfield) | goblin_heightfield.cpp:22 |
 | — | er+0x88b7b0 | WarpPinData builder (**hooked**) | goblin_grace_suppression.cpp:126 |
 | — | er+0x87ae20 | vt[1] SetTo (**hooked**) | goblin_grace_suppression.cpp:148 |
 | icon-harvest | er+0xd63c30,0x1f5560,0xd77550,0xd771d0,0xd69640,0xd724c0 | image-repo find/load/group/tick | goblin_icon_harvest.cpp |
+
+**⚠ The 2 grace fns are already HOOKED** by our DLL — a live dump at their address reads the detour
+JMP, not the original prologue, so `hf_hook_scout disasm --aob` can't craft their AOB from a running
+game. Harden them by reading the ORIGINAL bytes from the MinHook trampoline (or dump before the hook
+installs), then wildcard as usual.
 
 ## STATIC-SLOT — singleton/vtable slots with NO AOB
 | symbol | RVA | resolves | file |
@@ -46,9 +59,12 @@ can be hardened. STRUCT FIELD offsets (`+0x98`, `+0x6C0`, `+0x1E508`, …) are s
 An AOB matches RUNTIME bytes, so packed/VMProtect'd code is fine (mem_dump gives the real bytes; scan
 matches them). Windows Ghidra is only needed to DISCOVER a new function (not the case — all known) or if
 a region is VMProtect-*mutated* per-run (no stable AOB exists — rare; detect by an incoherent prologue).
-- **FUNC** (call target): `mem_dump` ~48-64 bytes at `er+RVA` → craft an AOB from the prologue
-  (wildcard rip-rel disps/immediates; include enough bytes to be unique). FWA not needed. Dumping also
-  verifies the RVA is right (sane prologue) vs a packer mismatch.
+- **FUNC** (call target): **now one command** — `tools/hf_hook_scout.py disasm er+0x<rva> --len 96 --aob`
+  dumps the live prologue (via `er_base`+`mem_dump`), disassembles it, and prints a ready AOB with
+  rip-rel disps + rel32 branch targets wildcarded. Paste into `re_signatures.hpp`, add to the
+  `all_signatures` table, and resolve at the call site via `sig::resolve_func_aob(aob, base, rva, name)`
+  (AOB-first, RVA fallback). Then boot → confirm the `[SIG]` line is **PASS** (not MULTI — extend the
+  window with a bigger `--len`/`max_bytes` if MULTI, as GEOM_MATRIX_GETTER needed). FWA not needed.
 - **STATIC-SLOT** (singleton/data ptr): arm **find-what-accesses** on `er+RVA` (the slot) → capture the
   RIP of a `mov reg,[rip+disp]` that reads it → `mem_dump` at that RIP → AOB + `relative_offsets`.
 - **vtable**: FWA on the vtable address, TRIGGER the object's construction/use (open map / spawn) →
@@ -56,9 +72,10 @@ a region is VMProtect-*mutated* per-run (no stable AOB exists — rare; detect b
 - **Cheap wins** need no RE — the AOB already exists, just switch the call site.
 
 ## Priority
-Hot-path first: CASTRAY + PHYSWORLD (heightfield, brand-new), ENSURE_ASSET_REQUEST + GETTER (geom),
-the two **hooked** grace-suppression FUNCs (a wrong hook address = crash). Then the worldmap vtables/
-slots. The three cheap-win switch-to-existing-AOB items are near-free and should go first of all.
+~~Hot-path first: CASTRAY, ENSURE_ASSET_REQUEST, GETTER~~ ✅ DONE 2026-07-04. Remaining, in order:
+the three cheap-win switch-to-existing-AOB items (near-free); **PHYSWORLD** slot (heightfield — FWA a
+load site); the two **hooked** grace-suppression FUNCs (wrong hook addr = crash; read the trampoline,
+not the live bytes); then the worldmap vtables/slots and the icon-harvest set.
 
 Note: `goblin_markers.cpp` old RVAs 0x3D5DF38/0x2AC21D8 are already migrated to AOB (comments only).
 See [re-signatures-registry](../memory/tooling/re-signatures-registry.md) for how to add a signature.

@@ -13,6 +13,7 @@
 #include <spdlog/spdlog.h>
 
 #include "goblin_collected.hpp"  // first_live_geom_instance / list_live_geom_instances
+#include "re_signatures.hpp"     // AOB-first FUNC resolution (GEOM_MATRIX_GETTER_FN) w/ RVA cross-check
 #include "goblin_inject.hpp"      // get_player_world_pos (nearest-to-player selection)
 
 namespace
@@ -66,7 +67,8 @@ namespace goblin::geom_move
         rpm(inst, &vt, 8);  // record the instance's vtable
         r.vtable = vt;
 
-        auto getter = (GetterFn)(base + GETTER_RVA);
+        auto getter = (GetterFn)goblin::sig::resolve_func_aob(
+            goblin::sig::GEOM_MATRIX_GETTER_FN, base, GETTER_RVA, "GEOM_MATRIX_GETTER");
 
         // Read the current world matrix (engine getter — no offset guessing).
         float m[16] = {};
@@ -143,7 +145,8 @@ namespace goblin::geom_move
 
         constexpr ptrdiff_t CACHE_MAT = 0x220;
         float m[16] = {};
-        auto getter = (GetterFn)(base + GETTER_RVA);
+        auto getter = (GetterFn)goblin::sig::resolve_func_aob(
+            goblin::sig::GEOM_MATRIX_GETTER_FN, base, GETTER_RVA, "GEOM_MATRIX_GETTER");
         if (!call_getter(getter, inst, m) || !finite3(m))
         {
             std::snprintf(r.err, sizeof(r.err), "getter faulted / non-finite");
@@ -208,7 +211,8 @@ namespace goblin::geom_move
         r.before[0] = best_m[12]; r.before[1] = best_m[13]; r.before[2] = best_m[14];
 
         // Build the moved matrix from the getter (preserves rotation/scale), translation += delta.
-        auto getter = (GetterFn)(base + GETTER_RVA);
+        auto getter = (GetterFn)goblin::sig::resolve_func_aob(
+            goblin::sig::GEOM_MATRIX_GETTER_FN, base, GETTER_RVA, "GEOM_MATRIX_GETTER");
         float m[16] = {};
         if (!call_getter(getter, best, m) || !finite3(m)) memcpy(m, best_m, sizeof(m));
         float moved_mat[16];
@@ -246,7 +250,8 @@ namespace goblin::geom_move
 
         constexpr ptrdiff_t CACHE_MAT = 0x220;
         float m[16] = {}, cache[16] = {};
-        auto getter = (GetterFn)(base + GETTER_RVA);
+        auto getter = (GetterFn)goblin::sig::resolve_func_aob(
+            goblin::sig::GEOM_MATRIX_GETTER_FN, base, GETTER_RVA, "GEOM_MATRIX_GETTER");
         if (!call_getter(getter, inst, m) || !finite3(m)) { std::snprintf(r.err, sizeof(r.err), "getter faulted"); return r; }
         if (!rpm((char *)inst + CACHE_MAT, cache, sizeof(cache)) || !finite3(cache)) { std::snprintf(r.err, sizeof(r.err), "cache unreadable"); return r; }
         r.before[0] = cache[12]; r.before[1] = cache[13]; r.before[2] = cache[14];
@@ -594,7 +599,8 @@ namespace goblin::geom_move
         static void *insts[20000];
         size_t cnt = goblin::collected::list_live_geom_instances(insts, 20000);
         if (!cnt) { std::snprintf(r.err, sizeof(r.err), "no live geom instances"); return r; }
-        auto getter = (GetterFn)(base + GETTER_RVA);
+        auto getter = (GetterFn)goblin::sig::resolve_func_aob(
+            goblin::sig::GEOM_MATRIX_GETTER_FN, base, GETTER_RVA, "GEOM_MATRIX_GETTER");
         int moved = 0;
         for (size_t i = 0; i < cnt; i++)
         {
@@ -619,7 +625,8 @@ namespace goblin::geom_move
         uintptr_t base = (uintptr_t)GetModuleHandleA("eldenring.exe");
         r.inst = (uint64_t)g_held;
         r.before[0] = g_held_before[0]; r.before[1] = g_held_before[1]; r.before[2] = g_held_before[2];
-        auto getter = (GetterFn)(base + GETTER_RVA);
+        auto getter = (GetterFn)goblin::sig::resolve_func_aob(
+            goblin::sig::GEOM_MATRIX_GETTER_FN, base, GETTER_RVA, "GEOM_MATRIX_GETTER");
         float m[16] = {};
         if (!call_getter(getter, g_held, m) || !finite3(m))
         {

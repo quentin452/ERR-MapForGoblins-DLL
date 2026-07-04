@@ -97,7 +97,8 @@ namespace goblin::geom_spawn
         // widen "AEG099_090" -> L"AEG099_090"
         std::wstring wname(r.name, r.name + std::strlen(r.name));
 
-        EnsureAssetReqFn fn = (EnsureAssetReqFn)(base + ENSURE_ASSET_REQUEST_RVA);
+        EnsureAssetReqFn fn = (EnsureAssetReqFn)goblin::sig::resolve_func_aob(
+            goblin::sig::ENSURE_ASSET_REQUEST_FN, base, ENSURE_ASSET_REQUEST_RVA, "ENSURE_ASSET_REQUEST");
         void *req = nullptr;
         if (!call_ensure(fn, (void *)r.reqMgr, wname.c_str(), req))
         {
