@@ -455,7 +455,9 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     ImGui::SameLine();
     if (ImGui::SmallButton(tr("Fit"))) s_fit_requested = true;
     ImGui::SameLine();
-    if (ImGui::SmallButton(tr("Player"))) s_focus_player = true;   // jump to the live player position
+    // Jump to the live player — switch to the vworld the player physically occupies (PlayerDim, base ER
+    // today) so it recentres even from another active world, then focus. Not hardcoded 0 → future-proof.
+    if (ImGui::SmallButton(tr("Player"))) { goblin::vworld::set_active(goblin::vworld::player_world()); s_focus_player = true; }
     ImGui::SameLine();
     ImGui::Checkbox(tr("Icons"), &s_show_icons);   // real category icons vs plain dots
     ImGui::SameLine();

@@ -1,6 +1,7 @@
 // Virtual-world registry — see goblin_virtual_world.hpp. Mutex-guarded; render reads via snapshots.
 
 #include "goblin_virtual_world.hpp"
+#include "goblin_inject.hpp"   // get_player_dimension_area — PlayerDim resolver
 
 #include <fstream>
 #include <mutex>
@@ -65,6 +66,16 @@ int active()
 {
     std::lock_guard<std::mutex> lk(g_mtx);
     return g_active;
+}
+
+int player_world()
+{
+    int area = -1;
+    if (!goblin::get_player_dimension_area(area)) return 0;   // not in-world / unresolved → base ER
+    std::lock_guard<std::mutex> lk(g_mtx);
+    for (const auto &w : g_worlds)
+        if (w.physical_area >= 0 && w.physical_area == area) return w.id;   // player stands in this 3D world
+    return 0;                                                  // no world binds this dimension → base ER
 }
 
 bool get_world(int id, World &out)

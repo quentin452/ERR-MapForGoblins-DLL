@@ -32,6 +32,11 @@ struct World
     std::string name;
     float originX = 0.0f, originZ = 0.0f, scale = 1.0f;  // reserved per-world projection (C1: identity)
     std::vector<Marker> markers;
+    // PHYSICAL dimension binding (pivot: a vworld IS a 3D world). -1 = marker-only (no 3D space, the
+    // default). Otherwise the mapId AA-byte area that IS this world's 3D space — when the player's live
+    // mapId area equals it, player_world() reports THIS world (Decision 2, engine-backed). A walkable
+    // custom world gets a reserved area here; today no world sets it → player_world() is always 0 (base ER).
+    int physical_area = -1;
 };
 
 // Create a new custom world; returns its id (≥1). The framework owns the id/namespace, not the caller.
@@ -41,6 +46,11 @@ bool add_marker(int worldId, float x, float z, const std::string &name, uint32_t
 // Set the ACTIVE world (0 = base ER). false if id unknown (and ≠ 0).
 bool set_active(int id);
 int active();
+// The vworld the PLAYER physically occupies (PlayerDim): reads the live player dimension area
+// (get_player_dimension_area) and returns the world whose physical_area matches, else 0 (base ER). The
+// natural target for the "Player" button / map-open — recenter in whatever 3D world the player is in.
+// Today returns 0 (no world binds a physical area yet); ready for reserved walkable worlds.
+int player_world();
 // Snapshot-copy world `id` (thread-safe read for the render thread). false if unknown.
 bool get_world(int id, World &out);
 // (id, name) pairs for the selector — index 0 is always the synthetic {0,"Base ER"}.

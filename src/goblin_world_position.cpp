@@ -744,6 +744,20 @@ static void probe_map_pos_seh(uintptr_t mapid_slot, uintptr_t mgr_slot, MapPosPr
     __except (EXCEPTION_EXECUTE_HANDLER) { pr->ok = false; }
 }
 
+// RAW physical-dimension area of the player = the mapId AA byte (60 overworld, 12 underground, 61 DLC, or a
+// legacy-dungeon id), UN-projected. This identifies the 3D world the player occupies (PlayerDim), unlike
+// get_player_map_pos's out_area which folds dungeons onto the overworld map-space. False = not resolvable.
+bool goblin::get_player_dimension_area(int &area)
+{
+    if (!g_mappos_tried) resolve_player_map_pos_statics();
+    if (!g_mapid_slot || !g_mappos_mgr_slot) return false;
+    MapPosProbe pr{};
+    probe_map_pos_seh(g_mapid_slot, g_mappos_mgr_slot, &pr);
+    if (!pr.ok) return false;
+    area = pr.area;
+    return true;
+}
+
 bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z,
                                 int *out_gx, int *out_gz, int *out_group)
 {

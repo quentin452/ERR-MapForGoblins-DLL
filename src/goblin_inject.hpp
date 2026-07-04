@@ -86,6 +86,8 @@ namespace goblin
     bool get_player_world_pos(float &x, float &y, float &z);
     // Player HP (cur, max) via the ChrDataModule chain. False = not resolvable / no plausible pair.
     bool get_player_hp(int &cur, int &max);
+    // RAW physical-dimension area (mapId AA byte) the player is in — identifies their 3D world (PlayerDim).
+    bool get_player_dimension_area(int &area);
     bool debug_player_hp_candidates(int &a_cur, int &a_max, int &b_cur, int &b_max);
 
     // Teleport by WRITING the tile-local Havok pos (LocalPlayer+0x6C0/+0x6C4/+0x6C8) — the SAME
