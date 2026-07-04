@@ -75,6 +75,12 @@ from parity — Track A is real BUILD work, not just a checklist. This IS the go
 5. **A3 tiles underground/DLC + placement fix** (map_tile slice 3; the offset gap).
 6. A12 dial (ERR-only, low), A15 legacy-dungeon sub-maps (decide if needed).
 
+**vmap UX backlog (from live testing 2026-07-04):**
+- ✅ grace z-order (draw on top) `dd64d8d`; ✅ hover z-order (grace wins the tooltip/warp) `89d0cd8`;
+  ✅ focus-player-on-open `cd7948b`; ✅ grace warp id fix (bonfireEntityId) `89d0cd8`.
+- **Spiderify on non-clustered overlapping markers** — spiderify already ships on CLUSTERS; extend it
+  to plain overlapping markers on the vmap (spread them on click/hover so each is selectable). Later.
+
 **A-SETTINGS audit (user, 2026-07-04): reframe/remove native-map-only F1 knobs.** Many F1 settings
 exist ONLY to control the native ER map overlay; once the vmap is the sole surface they're dead or
 must be re-pointed at the vmap. Audit every F1/ini knob through the ImGui-only lens (this EXTENDS the

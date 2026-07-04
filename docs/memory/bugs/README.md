@@ -4,6 +4,11 @@ Complex bugs — resolved and open — with the durable root-cause/fix takeaway.
 **current code**, verified during the 2026-06-29 reorg. Open items are the real backlog.
 
 ## Resolved
+- **vmap grace warp used the param row key, not bonfireEntityId** [resolved 2026-07-04] — double-click
+  warp → infinite load (area 61/DLC stall); RPC warp worked. `warp::to_grace` needs the bonfire ENTITY
+  id (`BonfireWarpParam.bonfireEntityId` @0x08, e.g. 1042362951=The First Step), but the grace layer
+  used the param ROW KEY, which ERR REMAPS (61423601). Guardrail: row key ≠ warp/entity id under a mod.
+  → [vmap-grace-warp-entity-id](vmap-grace-warp-entity-id.md)
 - **Overlay input-hook freeze** [resolved 2026-06-30] — a `ShowCursor` detour that swallowed the game's
   hide with a constant `>=0` return made ER's `while(ShowCursor(FALSE)>=0)` loop spin forever on the game
   thread; the overlay (present thread) kept rendering → "game frozen, DLL alive". Reverted. Guardrail:
