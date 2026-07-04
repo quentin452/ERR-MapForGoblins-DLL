@@ -408,7 +408,7 @@ namespace goblin::debug_rpc
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp coords warp_local warp_xyz we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
-                       " | er_base er_version mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone"
+                       " | mfg_build er_base er_version mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
             if (cmd == "status")
@@ -1063,6 +1063,13 @@ namespace goblin::debug_rpc
                 catch (...) { return "err bad args"; }
                 return "err usage: vis sec|cat <idx> <0|1> | vis master <0|1>";
             }
+            // mfg_build — FRESHNESS GUARD. Returns the compile time of THIS RPC translation unit
+            // (goblin_debug_rpc.cpp). Adding/changing ANY verb edits this file → its __TIME__ advances,
+            // so a stale DLL is detectable: `ping` answers even from an OLD DLL (the listener lives), but
+            // mfg_build reveals the actual build. Check this BEFORE RPC-verifying new code — a rebuild
+            // needs a game RESTART/hot-reload to load (a redeploy alone keeps the old DLL resident).
+            if (cmd == "mfg_build")
+                return std::string("ok mfg_build built=") + __DATE__ + " " + __TIME__;
             // er_base — absolute base of eldenring.exe, so a Python RPM client can turn er+RVA
             // anchors into absolute addresses for mem_dump/mem_fwa (tools/hf_hook_scout.py).
             if (cmd == "er_base")

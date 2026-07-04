@@ -493,7 +493,10 @@ bool WINAPI DllMain(HINSTANCE dll_instance, unsigned int fdw_reason, void *lpv_r
         goblin::freeze_watchdog::install(folder / "logs");
         goblin::load_watchdog::install(folder / "logs");
 
-        spdlog::info("Map For Goblins DLL v{}", PROJECT_VERSION);
+        // Build stamp (compile time of THIS TU) — the freshness signal: after a rebuild+redeploy the
+        // game must be RESTARTED (or hot-reloaded) for a new DLL to load; `ping` answering does NOT mean
+        // the running DLL matches source. Also exposed live via the `mfg_build` RPC verb.
+        spdlog::info("Map For Goblins DLL v{} built {} {}", PROJECT_VERSION, __DATE__, __TIME__);
         goblin::load_config(folder / "MapForGoblins.ini");
         // Overlay UI language table (lang/<code>.txt) — must be loaded before the first
         // frame draws (the render module reads it via i18n::tr).

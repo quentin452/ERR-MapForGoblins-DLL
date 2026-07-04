@@ -27,6 +27,20 @@ Mandatory pattern for every RPC driver / background validation script:
 4. **Present-thread liveness check** where it matters: a `screenshot` that doesn't return
    within its timeout = the game is frozen even though `ping` works → abort the recipe, report
    "game frozen (present thread dead)", don't keep sending inputs.
+5. **DLL-FRESHNESS gate BEFORE verifying new code (user-reported 2026-07-04).** `ping`/`status`
+   answer from a **STALE DLL** too — the listener lives, but the running DLL predates your source
+   changes, so your new verbs return `err unknown command` and old behaviour silently persists
+   (wasted a round-trip talking to an old build sitting in the main menu). **Before RPC-testing
+   anything you just added:**
+   - `timeout 15 python tools/mfg.py rpc mfg_build` → the running DLL's compile time. If it isn't
+     from your latest build, the DLL is stale. (Any new verb edits `goblin_debug_rpc.cpp`, so its
+     `__TIME__` advances every time the RPC surface changes.) Fallback check: probe your **newest
+     verb** — `err unknown command` ⇒ stale.
+   - A stale DLL means: **rebuild → redeploy → RESTART the game** (or hot-reload). A DLL loads at
+     game boot; a redeploy WITHOUT a restart keeps the old DLL resident. Reconnecting the RPC does
+     NOT reload it.
+   - Also confirm you're actually **in-world** (`status map_open=`, real player state), not the main
+     menu — `fg=1` only means the window is focused, not that a save is loaded.
 
 Related: the `+0x1EB9999` render race itself is pre-existing and documented in
 [[er-shutdown-crash-noise]] / [[mapforgoblins-map-open-freeze]]; heavy scripted map open/close
