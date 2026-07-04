@@ -58,7 +58,7 @@ from parity — Track A is real BUILD work, not just a checklist. This IS the go
 | A5 | State-aware icons (discovered/collected/cleared/rune glow) | ✅ `563a00e` | no |
 | A6 | Marker tooltips (name + count) | ✅ | no |
 | A7 | Region name labels | ✅ **DONE** — `panel_virtual_map.cpp` region-label block (`marker_world_pos`→`w2s`, group-gated, `Labels` toggle) | no |
-| A8 | Clustering / pile "×N" | ❌ **MISSING** — vmap plots every marker raw (`:589-594`), no piles/counts | **yes** (dense areas unreadable) |
+| A8 | Clustering / pile "×N" | ✅ **DONE (`177c73c`)** — quadtree LOD clustering + viewport cull (`marker_quadtree.hpp`); zoomed-out draws "×N" piles, not 6837 raw. Also fixed the perf bottleneck (vmap.markers 4.08→0.51 ms, ~8×) | no |
 | A9 | Item search + "locate" pan | ❌ **MISSING** — F1 search targets the native map only; vmap ignores it | **yes** |
 | A10 | Fast-travel to grace (double-click) | ✅ but FREEZES — Track C0 | **yes** |
 | A11 | Player position marker + heading | ✅ **DONE `69188c3`** — dot/heading-arrow on the vmap (base ER + matching group), minimap yaw convention through the vmap axis signs | no |
@@ -74,7 +74,7 @@ from parity — Track A is real BUILD work, not just a checklist. This IS the go
    text + shadow + pill (same aesthetic as native `draw_region_labels`), `Labels` checkbox toggle.
    Non-interactive (the native click-to-hide chip is native-only). Rides the SAME proven marker
    transform, so it co-locates with its region's markers by construction. Builds clean.
-3. **A8 clustering/piles** (reuse the spatial-grid clustering from map_renderer, or a vmap-local pass).
+3. ~~**A8 clustering/piles**~~ ✅ DONE (`177c73c`) — a vmap-local quadtree (viewport cull + LOD piles).
 4. **A9 item search/locate** (make the F1 search ring + pan target the vmap too).
 5. **A3 tiles underground/DLC + placement fix** (map_tile slice 3; the offset gap).
 6. A12 dial (ERR-only, low), A15 legacy-dungeon sub-maps (decide if needed).
