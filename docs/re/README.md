@@ -65,6 +65,10 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
 5. **Custom mob PLACEMENT** — NpcParam is param-driveable, but placing a custom enemy is MSB write (#1).
 
 ### Smaller tactical gaps (see HANDOFF)
+- **WorldMapTile placement decode** — the vmap loads ER map ART tiles + the map-space→world transform is
+  SOLVED (live), but the tile-name `{col,row,suffix}` → map-space rect + LOD-per-zoom is a variable-depth
+  Morton quadtree not yet cracked (tiles land in-region but not seamless). Prompt:
+  `windows_worldmap_tile_placement_re_prompt.md`. (SRV recycling + byte-range reads = separate Linux DLL work.)
 - **LotReader index rebuild** — snapshotted at init; newly cloned lots don't resolve (`refresh_markers` v2).
 - **F2 fog-locate clamp** — the reticle-clamp bounds source in the `c32f0` subtree is unfound
   (`linux_f2_fog_locate_clamp_re_findings.md`).
