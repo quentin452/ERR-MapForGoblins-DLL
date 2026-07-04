@@ -20,7 +20,7 @@ void draw_dev_tools_danger(Filter &f)
     // Virtual World Map (WIP) — the mod-owned map page. Opens the pannable/zoomable canvas window.
     if (f.match("virtual world map vmap tiles"))
     {
-        if (ImGui::Button(tr("Open Virtual World Map (WIP)"))) virtual_map_open() = true;
+        if (ImGui::Button(tr("Open Virtual World Map (WIP)"))) { virtual_map_open() = true; virtual_map_request_focus(); }
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Opens the mod map window. Then: 'Load ER map tiles' in its toolbar loads\n"
                               "ER's real map art (open the game map + move on it first so it resolves).\n"

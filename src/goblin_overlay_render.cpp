@@ -476,7 +476,11 @@ void goblin::overlay::request_f1_tab(int idx) { g_requested_tab = idx; }
                     // Mod-owned virtual world map (WIP) — opens a pannable/zoomable custom-world canvas.
                     if (ImGui::Button(panel::virtual_map_open() ? tr("Virtual World Map: OPEN")
                                                                 : tr("Open Virtual World Map (WIP)")))
-                        panel::virtual_map_open() = !panel::virtual_map_open();
+                    {
+                        const bool opening = !panel::virtual_map_open();
+                        panel::virtual_map_open() = opening;
+                        if (opening) panel::virtual_map_request_focus();   // recenter+switch page on open
+                    }
                     ImGui::Separator();
                     panel::draw_dev_icon_sections(ctx, f);
                     panel::draw_dev_tools_danger(f);

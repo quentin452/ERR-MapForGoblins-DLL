@@ -141,6 +141,9 @@ void virtual_map_service_pending_warp()
                        : ("warp failed " + std::to_string(gid));
 }
 void virtual_map_request_fit() { s_fit_requested = true; }
+// Recenter on the player + switch to the player's map page, next draw. Call from EVERY open path (the
+// on-open edge only fires if draw runs while closed; the F1 toggle/dev button must request it explicitly).
+void virtual_map_request_focus() { s_focus_player = true; }
 void virtual_map_set_group(int g) { if (g >= 0 && g < 4) s_group = g; }
 int virtual_map_group() { return s_group; }
 
@@ -1207,15 +1210,28 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     const float len = std::sqrt(fx * fx + fz * fz);
                     if (len > 1e-4f) { fx /= len; fz /= len; }
                     const ImVec2 fwd(fx, fz), rgt(-fwd.y, fwd.x);
-                    const float L = 11.f * uiScale, B = 6.f * uiScale;
-                    const ImVec2 tip(pp.x + fwd.x * L, pp.y + fwd.y * L);
-                    const ImVec2 bl(pp.x - fwd.x * B + rgt.x * B, pp.y - fwd.y * B + rgt.y * B);
-                    const ImVec2 br(pp.x - fwd.x * B - rgt.x * B, pp.y - fwd.y * B - rgt.y * B);
-                    // Player = RED + white outline: distinct from the grace gold AND the blue/yellow
-                    // altitude badge (the old blue arrow read as an altitude badge). White outline pops
-                    // it off any tile. (Minimap uses the same red now — was yellow, a needless divergence.)
-                    dl->AddTriangleFilled(tip, bl, br, IM_COL32(255, 48, 48, 255));
-                    dl->AddTriangle(tip, bl, br, IM_COL32(255, 255, 255, 235), 1.5f * uiScale);
+                    // NATIVE player cursor = MENU_MAP_Player_01 (arrow+circle) rotated to face yaw, same as
+                    // the minimap. Tall sprite (72x150) → keep aspect. Red-triangle fallback if unresolved.
+                    void *pt = nullptr; float pu0, pv0, pu1, pv1;
+                    if (goblin::overlay_api::map_point_glyph_uv("MENU_MAP_Player_01", -1, pt, pu0, pv0, pu1, pv1) && pt)
+                    {
+                        const float hh = 12.0f * uiScale, hw = hh * (72.0f / 150.0f);
+                        const ImVec2 tl(pp.x - rgt.x * hw + fwd.x * hh, pp.y - rgt.y * hw + fwd.y * hh);
+                        const ImVec2 tr(pp.x + rgt.x * hw + fwd.x * hh, pp.y + rgt.y * hw + fwd.y * hh);
+                        const ImVec2 br(pp.x + rgt.x * hw - fwd.x * hh, pp.y + rgt.y * hw - fwd.y * hh);
+                        const ImVec2 bl(pp.x - rgt.x * hw - fwd.x * hh, pp.y - rgt.y * hw - fwd.y * hh);
+                        dl->AddImageQuad((ImTextureID)pt, tl, tr, br, bl, ImVec2(pu0, pv0), ImVec2(pu1, pv0),
+                                         ImVec2(pu1, pv1), ImVec2(pu0, pv1));
+                    }
+                    else
+                    {
+                        const float L = 11.f * uiScale, B = 6.f * uiScale;
+                        const ImVec2 tip(pp.x + fwd.x * L, pp.y + fwd.y * L);
+                        const ImVec2 bl(pp.x - fwd.x * B + rgt.x * B, pp.y - fwd.y * B + rgt.y * B);
+                        const ImVec2 br(pp.x - fwd.x * B - rgt.x * B, pp.y - fwd.y * B - rgt.y * B);
+                        dl->AddTriangleFilled(tip, bl, br, IM_COL32(255, 48, 48, 255));
+                        dl->AddTriangle(tip, bl, br, IM_COL32(255, 255, 255, 235), 1.5f * uiScale);
+                    }
                 }
                 else
                 {
