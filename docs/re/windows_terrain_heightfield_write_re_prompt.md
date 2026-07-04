@@ -88,6 +88,10 @@ its shape → ask "can this be mutated, and how?"
    again and confirm the ground Y / hit body changed by the expected delta; (d) note whether render (visual
    mesh) follows or only collision does (terrain visual is separate from collision — a collision-only change
    is still useful for dev/logic but say so).
+   ⚠ **Coordinate frame:** the D2.1 live probe found the raycast operates in the **Havok BLOCK-LOCAL**
+   frame, NOT the marker world frame (`windows_terrain_raycast_heightfield_re_findings.md` + `bbc705f`). Any
+   collision write will almost certainly take block-local coords too — resolve the active chunk origin and
+   convert world XZ ↔ block-local before applying a mutation, or the change lands in the wrong place.
 7. **Loaded-region only + persistence.** Like the raycast, only streamed-in collision is touchable; confirm a
    mutation survives (does the streamer re-baking a tile revert it, à la the move's persistence check?) and
    what happens on tile re-stream / warp. Note if a change must be re-applied per tile-load.
