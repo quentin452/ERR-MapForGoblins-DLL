@@ -56,6 +56,9 @@ one-off scripts — most workflows are already reusable.
   thread spawned during boot crashes (`0xC0000005` in `Pattern16::scanRegion`) — module not mapped
   yet. Resolve AOB statics LAZILY on first use (like world_position / warp / load_watchdog). →
   [aob-scan-boot-race](aob-scan-boot-race.md)
+- **Offline minidump analysis on Linux** [active] — `tools/parse_minidump.py <dump>` walks the
+  freeze/load-stall/crash `.dmp` threads (RIP + probable ER/DLL return-address RVAs) with no Windows;
+  `ER+0xNNN` ⇔ Ghidra `FUN_140NNN`. Stall = all threads in ntdll. → [offline-minidump-analysis](offline-minidump-analysis.md)
 - **ER Console as coords tool** [active] — Nexus 9365 readout; `coords` = block-local Havok frame,
   `tp` = larger chunk frame. → [er-console-mod](er-console-mod.md)
 - **Linux runtime-RE options** [scoped, untested] — the live game runs HERE (Proton); candidate paths to

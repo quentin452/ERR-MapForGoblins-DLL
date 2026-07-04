@@ -106,8 +106,14 @@ A grace LIST menu (not just clicking dots on the canvas), so the player browses 
 
 ## Track C — Native-map takeover + map-key bind (→ single_surface_ui_plan.md)
 
-- **C0 (do first):** read the load-watchdog stall dump from the vmap warp freeze → confirm the
-  menu-context hypothesis. Decides the takeover mechanism (force-close vs block-open).
+- **C0 (do first):** ✅ load watchdog CAUGHT the stall (2026-07-04, `load_stall_332`): warp target
+  grace `61423601`, `last MapId 3d2a0000` = **area 61 = the SOTE DLC overworld**; LocalPlayer null 30s;
+  ALL 105 threads parked in ntdll (`tools/parse_minidump.py`) → genuine streaming stall, no crash, no
+  menu-teardown obviously in the main-thread stack. **New lead: the target is a DLC grace** — warping
+  into area 61 may hang on unmet DLC-session/entry state, which would make this NOT a menu-context bug
+  and NOT vmap-specific. **Discriminator (user):** `python tools/mfg.py rpc warp 61423601` from
+  gameplay — freezes too ⇒ destination bug (fix = guard/deny warps to un-entered DLC); works ⇒
+  menu-context after all (fix = close native map first). Decide C1's mechanism on the result.
 - **C1:** disable the native map (single_surface slice 1). Expected side effect: the warp freeze
   disappears (fires from gameplay state, like RPC).
 - **C2:** bind the open key. ER map key = **`,`** on AZERTY / **`m`** on QWERTY (same physical key).
