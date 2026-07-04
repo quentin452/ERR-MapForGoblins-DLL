@@ -994,18 +994,22 @@ namespace goblin::debug_rpc
                 goblin::overlay_api::rebuild_markers();
                 return "ok refresh_markers triggered (rebuild runs on the disk worker; poll the map)";
             }
-            // warp <graceId> — fast-travel to a site of grace (dev-world nav). graceId = the
-            // bonfire entity id (e.g. 1042362951 = The First Step, 10002951 = Margit). Must be
-            // in-world + the grace unlocked. grep [WARP] for the call result.
+            // warp <graceId> [offset] — fast-travel to a site of grace (dev-world nav). graceId = the
+            // bonfire entity id (e.g. 1042362951 = The First Step, 10002951 = Margit). Optional offset
+            // (default -1000) is added before LuaWarp_01 — use it to tune the bonfire→warp-point offset
+            // empirically (e.g. `warp 1043371950 0` vs `warp 1043371950 -1000` to find which lands on the
+            // grace). Must be in-world + the grace unlocked. grep [WARP] for the call result.
             if (cmd == "warp")
             {
                 std::string id_s = next_token(rest);
-                if (id_s.empty()) return "err usage: warp <graceId> (e.g. 1042362951 = The First Step)";
-                int32_t gid = 0;
+                if (id_s.empty()) return "err usage: warp <graceId> [offset] (e.g. 1042362951 = The First Step)";
+                int32_t gid = 0, off = -1000;
                 try { gid = static_cast<int32_t>(std::stol(id_s, nullptr, 0)); }
                 catch (...) { return "err bad graceId"; }
-                bool ok = goblin::warp::to_grace(gid);
-                return ok ? "ok warp " + std::to_string(gid)
+                std::string off_s = next_token(rest);
+                if (!off_s.empty()) { try { off = static_cast<int32_t>(std::stol(off_s, nullptr, 0)); } catch (...) { return "err bad offset"; } }
+                bool ok = goblin::warp::to_grace(gid, off);
+                return ok ? "ok warp " + std::to_string(gid) + " offset " + std::to_string(off)
                           : "err warp failed (unresolved / not in-world / grace locked)";
             }
             // mem_dump <hexaddr> <len> — raw RPM hex-dump of an absolute address (follow pointers /

@@ -19,5 +19,8 @@ namespace goblin::warp
     // Fast-travel to the grace `grace_id` (full bonfire entity id). Calls LuaWarp_01 on the
     // CURRENT thread (present thread for the RPC path) — must be a safe point, in-world.
     // SEH-guarded. Returns false if unresolved or the call faulted.
-    bool to_grace(int32_t grace_id);
+    // `offset` is added to grace_id before the call (LuaWarp_01 r8d = grace_id + offset). The
+    // Hexinton CT convention was -1000 (bonfire entity → warp/spawn-point id), but that offset is
+    // NOT uniform across graces (some land one bonfire off), so it's exposed for empirical tuning.
+    bool to_grace(int32_t grace_id, int32_t offset = -1000);
 }

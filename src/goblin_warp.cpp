@@ -63,7 +63,7 @@ static bool warp_seh(void *a, void *b, uint32_t code)
     }
 }
 
-bool to_grace(int32_t grace_id)
+bool to_grace(int32_t grace_id, int32_t offset)
 {
     if (!g_ready.load()) initialize();
     if (!g_warp || !g_lem_slot) { spdlog::warn("[WARP] unresolved — to_grace skipped"); return false; }
@@ -86,13 +86,13 @@ bool to_grace(int32_t grace_id)
         return false;
     }
 
-    uint32_t code = static_cast<uint32_t>(grace_id - 1000);  // r8d = graceId - 0x3E8
+    uint32_t code = static_cast<uint32_t>(grace_id + offset);  // r8d = grace_id + offset (CT: offset=-1000)
     // Arm the load watchdog BEFORE the call: a hung fast-travel keeps the loading screen
     // rendering (freeze watchdog blind), so this catches the "infinite loading" and dumps
     // all-thread stacks + the target grace for diagnosis.
     goblin::load_watchdog::arm_warp(grace_id);
     bool ok = warp_seh(a, b, code);
-    spdlog::info("[WARP] to_grace grace_id={} code={} lem={} -> {}", grace_id, code, lem,
+    spdlog::info("[WARP] to_grace grace_id={} offset={} code={} lem={} -> {}", grace_id, offset, code, lem,
                  ok ? "called" : "FAULTED");
     return ok;
 }
