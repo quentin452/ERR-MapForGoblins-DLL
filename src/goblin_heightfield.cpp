@@ -93,8 +93,9 @@ bool cast_down(float x, float y_high, float z, float depth, uint32_t filter, Ray
     if (!hit) return false;
     out.pt[0] = pt[0]; out.pt[1] = pt[1]; out.pt[2] = pt[2];
     out.nrm[0] = nrm[0]; out.nrm[1] = nrm[1]; out.nrm[2] = nrm[2];
-    // outDist is a packed u32 (fraction·rayLength per RE); expose raw for now.
-    out.dist = static_cast<float>(dist);
+    // outDist is written as FLOAT bits (hit fraction along the ray, 0..1 — validated: 0x3F06E000 ≈
+    // 0.527 matched 2077/4000). Reinterpret, don't cast the raw u32.
+    out.dist = *reinterpret_cast<float *>(&dist);
     out.hit = true;
     return true;
 }
@@ -117,7 +118,7 @@ void tick_game_thread()
     bool ok = cast_down(px, py + 2000.f, pz, 4000.f, FILTER_GROUND, h);
     if (ok)
         spdlog::info("[HEIGHTFIELD] probe @player({:.1f},{:.1f},{:.1f}): GROUND y={:.2f} (Δfoot={:.2f}) "
-                     "nrm=({:.3f},{:.3f},{:.3f}) dist={:.0f}",
+                     "nrm=({:.3f},{:.3f},{:.3f}) frac={:.3f}",
                      px, py, pz, h.pt[1], h.pt[1] - py, h.nrm[0], h.nrm[1], h.nrm[2], h.dist);
     else
         spdlog::warn("[HEIGHTFIELD] probe @player({:.1f},{:.1f},{:.1f}): MISS (no terrain hit / unresolved)",

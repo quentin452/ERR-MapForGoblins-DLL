@@ -32,7 +32,21 @@ The on-disk `eldenring.exe` is Steam/VMProtect-wrapped → **cannot derive AOBs 
   produce byte signatures for `re_signatures.hpp`, so it survives a patch / works mod-agnostic.
 
 ## Slices
-### D2.1 — validate the primitive (de-risk) — FIRST
+### D2.1 — validate the primitive — ✅ DONE + LIVE-VERIFIED 2026-07-04 (`abddc05`+float-fix)
+Cold-boot RPC test (`hf_probe` → open map → `[HEIGHTFIELD]` log) confirmed:
+- Resolution OK (cast fn + PhysWorld singleton; ctx = *(*(er+0x3d76060)+0x98) — both plausible ptrs).
+- **Cast HITS with a valid UP normal** `(0.075, 0.994, -0.085)` = walkable ground. Ran on the GAME
+  thread via `hk_c32f0` — no crash/deadlock. `outDist` is FLOAT bits (hit fraction 0..1; 0.527 matched
+  2077/4000 = the y=2088→10.67 drop).
+- **KEY FINDING — the cast frame is Havok BLOCK-LOCAL, NOT the world frame.** The probe used the
+  player's LocalPlayer+0x6C0 block-local coords (-80.4, 52.0) and hit ground directly under them. So the
+  RE-doc's "same world frame as markers" is wrong for this path: D2.2 MUST convert world XZ → the
+  current physics-chunk-local frame before casting (inverse of marker_world_pos: subtract the chunk/tile
+  world origin), then convert the hit XZ back to world for drawing. This ties the sampler to the
+  loaded chunks around the player (consistent with "loaded-region only").
+- Δfoot=-77 in the probe = the save spot sits ~77u above base terrain (not a bug).
+
+### D2.1 (original) — validate the primitive (de-risk) — FIRST
 - New `src/goblin_heightfield.{cpp,hpp}`. Resolve fn + singleton by RVA (lazy, NOT at boot — the
   boot-scan gotcha). SEH-guarded noinline call wrapper (clang-cl pattern).
 - One-shot test: cast a down-ray at the player XZ (`start={px, py+2000, pz}`, `segDir={0,-4000,0}`,
