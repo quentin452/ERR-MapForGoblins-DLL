@@ -1072,6 +1072,30 @@ bool project(int area, int gridX, int gridZ, float posX, float posZ, float &mapU
     return false; // no converter accepts it
 }
 
+void log_converter_slots()
+{
+    uintptr_t vm = find_view_model();
+    if (!vm) { if (g_log) g_log->info("[CONVDUMP] no VM (map closed)"); return; }
+    uint64_t count = 0;
+    seh_read8(reinterpret_cast<void *>(vm + 0x280), &count);
+    uint64_t n = count > 8 ? 8 : count;
+    for (uint64_t i = 0; i < n; ++i)
+    {
+        uintptr_t conv = vm + 0xF8 + i * 0x30;
+        int key = 0; float ox = 0, oz = 0, bxx = 0, bzz = 0, sc = 0;
+        seh_read_i32(reinterpret_cast<void *>(conv + 0x08), &key);
+        seh_read4(reinterpret_cast<void *>(conv + 0x0C), &ox);
+        seh_read4(reinterpret_cast<void *>(conv + 0x14), &oz);
+        seh_read4(reinterpret_cast<void *>(conv + 0x18), &bxx);
+        seh_read4(reinterpret_cast<void *>(conv + 0x1C), &bzz);
+        seh_read4(reinterpret_cast<void *>(conv + 0x20), &sc);
+        if (g_log)
+            g_log->info("[CONVDUMP] slot{} area={} gridXbase={} gridZbase={} origin=({:.1f},{:.1f}) "
+                        "bias=({:.1f},{:.1f}) scale={:.3f}", i, (key >> 24) & 0xff, (key >> 16) & 0xff,
+                        (key >> 8) & 0xff, ox, oz, bxx, bzz, sc);
+    }
+}
+
 bool get_converter_affine(int area, ConvAffine &out)
 {
     // Cache per area (up to 4: overworld 60, DLC-OW 61, base-UG 12, …). Once read it survives map close.

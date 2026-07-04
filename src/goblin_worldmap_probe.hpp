@@ -162,6 +162,7 @@ namespace goblin::worldmap_probe
         float originX = 0, originZ = 0, biasX = 0, biasZ = 0, scale = 1.0f;
     };
     GOBLIN_RENDER_API bool get_converter_affine(int area, ConvAffine &out);
+    void log_converter_slots();  // DIAG: dump all live converter slots (area/gridbase/origin) to the log
 
     // DIAG: the currently-published active cursor address (0 = none). Lets the
     // overlay tell apart "probe hasn't found a cursor yet" (0) from "found but the

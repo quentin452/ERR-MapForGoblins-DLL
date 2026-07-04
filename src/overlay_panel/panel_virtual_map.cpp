@@ -110,27 +110,24 @@ void virtual_map_request_tile(const char *needle, float wx0, float wz0, float wx
 // so this frees the CPU records but not the GPU descriptors — slice 3 adds SRV recycling.
 void virtual_map_clear_tiles() { s_tiles.clear(); s_tile_status = "cleared"; }
 
-// Load a whole ER map dimension+LOD onto the canvas, placed in WORLD space via the LIVE converter affine
-// (slice 3a). Tiles share the SAME map-space markers project into, so they align. Requires the native ER
-// map to have been OPEN (the converter VM + the art extent are read live — never hardcoded, per
-// procedural_map_derivation_design.md). Reads the archive ONCE (not per tile), extracts+uploads up to
-// `cap` tiles nearest the grid centre (SRV heap has a hard 256 cap, no recycle yet). area 60 = overworld.
+// Load a whole ER map dimension+LOD onto the canvas (slice 3). The tile grid is decoded per the SOLVED
+// WorldMapTile findings (docs/re/windows_worldmap_tile_placement_re_findings.md): a UNIFORM 256-cell grid,
+// name M{dim}_L{lod}_{col}_{row}_{suffix} with col/row DECIMAL, suffix = 8*morton(subX,subY) in a 64-cell
+// block → gridX = col*64+subX, gridZ = row*64+subY. Each tile is exactly one 256-unit world cell. Placement
+// into the vmap WORLD frame is derived LIVE + robustly from the markers (no hardcoded origin — see
+// procedural_map_derivation_design.md): worldX = 256*gridX + medianOf(worldX - px - 256*raw_gx) over
+// overworld markers (slope = the findings' CELLSIZE 256; median is immune to folded dungeon/DLC outliers).
+// Reads the archive ONCE; loads up to `cap` tiles nearest the grid centre (SRV heap has a 256 cap, no
+// recycle yet). dim 0=overworld/1=underground/10=DLC/11=DLC-ug; area 60 = overworld grid frame.
 std::string virtual_map_load_lod(int dim, int lod, int cap)
 {
-    // 1) the map-space ART extent (needs the map open) — the tile grid is laid over it.
-    goblin::worldmap_probe::LiveView lv;
-    if (!goblin::worldmap_probe::get_live_view(lv) || lv.mapMaxU <= lv.mapMinU || lv.mapMaxV <= lv.mapMinV)
-        return (s_tile_status = "map extent unavailable — open the ER map AND MOVE it (pan/zoom) so the probe "
-                               "publishes the cursor, then retry");
-
-    // 2) DERIVE the map-space → vmap-world inverse from the LIVE engine projection: project every overworld
-    // marker (project() = the engine's own converter, folds LegacyConv) and take the ROBUST MEDIAN offset
-    // per axis with a fixed ±1 slope (the converter scale is live-confirmed = 1). This uses the real live
-    // projection (never hardcoded 7040/16512 — see procedural_map_derivation_design.md) and is immune to the
-    // folded dungeon/DLC markers whose world frame differs (a least-squares slope was skewed by them). So
-    // worldX = mapU + medianOf(worldX - projU) ; worldZ = -mapV + medianOf(worldZ + projV). The vmap draws
-    // markers at (worldX,worldZ), so tiles placed via this inverse align with them.
-    std::vector<float> dX, dZ;
+    // 1) LIVE placement transform (no hardcoding — procedural_map_derivation_design.md):
+    //   (a) map-space→vmap-world from the engine projection: worldX = projU + bx, worldZ = -projV + bz,
+    //       bx/bz = robust MEDIAN over overworld markers (proven exact: bx=7040, bz=16512).
+    //   (b) converter grid bases gridXbase/gridZbase — the findings tile map-space is (gridX-gridXbase)*256.
+    //   Tile world = (gridX-gridXbase)*256 + bx (X) ; -(gridZ-gridZbase)*256 + bz (Z, converter Z-flip).
+    // Both LIVE; needs the ER overworld map OPEN (project + converter VM).
+    std::vector<float> dX, dZ, mwx, mwz;
     for (auto *L : overlay_layers())
     {
         if (!L) continue;
@@ -141,25 +138,24 @@ std::string virtual_map_load_lod(int dim, int lod, int cap)
             if (!goblin::worldmap_probe::project(m.raw_area, m.raw_gx, m.raw_gz, m.raw_px, m.raw_pz, u, v, pg) ||
                 pg != 0)
                 continue;
-            dX.push_back(m.worldX - u);   // worldX = u + dX
-            dZ.push_back(m.worldZ + v);   // worldZ = -v + dZ
+            dX.push_back(m.worldX - u); dZ.push_back(m.worldZ + v);
+            mwx.push_back(m.worldX); mwz.push_back(m.worldZ);
         }
     }
     if (dX.size() < 8)
-        return (s_tile_status = "not enough live-projected overworld markers to fit the map transform (" +
-                                std::to_string(dX.size()) + ") — open the overworld map + move it");
-    auto median = [](std::vector<float> &v) {
-        std::sort(v.begin(), v.end());
-        return v[v.size() / 2];
-    };
-    const int nfit = (int)dX.size();
-    const float ax = 1.0f, az = -1.0f;          // converter scale = 1 (live)
+        return (s_tile_status = "not enough live-projected overworld markers (" + std::to_string(dX.size()) +
+                                ") — open the ER map AND MOVE it (pan/zoom), then retry");
+    auto median = [](std::vector<float> &v) { std::sort(v.begin(), v.end()); return v[v.size() / 2]; };
     const float bx = median(dX), bz = median(dZ);
+    const float mcx = median(mwx), mcz = median(mwz);   // marker world median = the landmass (load-centre)
+    goblin::worldmap_probe::ConvAffine aff;
+    if (!goblin::worldmap_probe::get_converter_affine(60, aff))
+        return (s_tile_status = "converter grid-bases unavailable — open the ER overworld map + move it");
+    const int gridXbase = aff.gridXbase, gridZbase = aff.gridZbase;
+    // marker-median mapped to tile grid = the load centre (the LANDMASS, not the grid's ocean centre).
+    const float cgx = (mcx - bx) / 256.0f + gridXbase, cgz = (bz - mcz) / 256.0f + gridZbase;
 
-    // 3) archive + enumerate this dim/LOD's tiles. A tile name is M{dim}_L{lod}_{col}_{row}_{suffix}: the
-    // {suffix} is a MORTON (Z-order interleave) code of the sub-tile within each (col,row) block (8×8, 3
-    // bits/axis) — so the TRUE tile grid is globalX = col*8 + mortonX, globalZ = row*8 + mortonZ (decoded
-    // from the tile names, 2026-07-04). The grid is sparse (only where map art exists).
+    // 2) archive + enumerate this dim/LOD's tiles with the SOLVED decode.
     char prefix[16];
     std::snprintf(prefix, sizeof(prefix), "M%02d_L%d_", dim, lod);
     std::vector<goblin::worldmap::maptile::Entry> entries;
@@ -167,9 +163,10 @@ std::string virtual_map_load_lod(int dim, int lod, int cap)
     if (!goblin::worldmap::maptile::load_archive("menu/71_MapTile", entries, bdt))
         return (s_tile_status = "maptile archive unavailable");
 
-    auto morton = [](uint32_t s, int &x, int &z) {
-        x = z = 0;
-        for (int b = 0; b < 16; ++b) { x |= ((s >> (2 * b)) & 1u) << b; z |= ((s >> (2 * b + 1)) & 1u) << b; }
+    auto decode_suffix = [](uint32_t suffix, int &subX, int &subY) {
+        uint32_t m = suffix >> 3;   // low 3 bits reserved (suffix = 8*morton)
+        subX = subY = 0;
+        for (int i = 0; i < 8; ++i) { subX |= ((m >> (2 * i)) & 1u) << i; subY |= ((m >> (2 * i + 1)) & 1u) << i; }
     };
     struct Tile { const goblin::worldmap::maptile::Entry *e; int gx, gz; float d2; };
     std::vector<Tile> tiles;
@@ -182,16 +179,11 @@ std::string virtual_map_load_lod(int dim, int lod, int cap)
         size_t r1 = (c1 == std::string::npos) ? std::string::npos : e.name.find('_', c1 + 1);  // after row
         size_t s1 = (r1 == std::string::npos) ? std::string::npos : e.name.find('.', r1 + 1);  // ".tpf"
         if (c1 == std::string::npos || r1 == std::string::npos || s1 == std::string::npos) continue;
-        long col = std::strtol(e.name.substr(c0, c1 - c0).c_str(), nullptr, 16);
-        long row = std::strtol(e.name.substr(c1 + 1, r1 - c1 - 1).c_str(), nullptr, 16);
+        long col = std::strtol(e.name.substr(c0, c1 - c0).c_str(), nullptr, 10);   // col/row DECIMAL (%02d)
+        long row = std::strtol(e.name.substr(c1 + 1, r1 - c1 - 1).c_str(), nullptr, 10);
         uint32_t suf = (uint32_t)std::strtoul(e.name.substr(r1 + 1, s1 - r1 - 1).c_str(), nullptr, 16);
-        // NOTE (slice 3a WIP): the {suffix} is a Morton (Z-order) code but the per-(col,row)-block sub-grid
-        // is a VARIABLE-DEPTH quadtree (dense land cells subdivide deeply, empty ocean cells hold 1 tile) —
-        // not the uniform 8×8 assumed here. So this global grid is approximate: tiles land in the right
-        // WORLD REGION (the map→world transform below is exact) but the per-tile SIZE/packing is not yet
-        // right (gaps/overlap). Cracking the exact suffix→cell decode is the remaining slice-3a sub-task.
-        int sx, sz; morton(suf, sx, sz);
-        tiles.push_back({&e, (int)col * 256 + sx, (int)row * 256 + sz, 0.0f});
+        int sx, sz; decode_suffix(suf, sx, sz);
+        tiles.push_back({&e, (int)col * 64 + sx, (int)row * 64 + sz, 0.0f});   // 64-cell blocks
     }
     if (tiles.empty())
         return (s_tile_status = std::string("no tiles for ") + prefix);
@@ -202,16 +194,20 @@ std::string virtual_map_load_lod(int dim, int lod, int cap)
         minGX = (std::min)(minGX, t.gx); maxGX = (std::max)(maxGX, t.gx);
         minGZ = (std::min)(minGZ, t.gz); maxGZ = (std::max)(maxGZ, t.gz);
     }
-    const int gw_cells = maxGX - minGX + 1, gh_cells = maxGZ - minGZ + 1;
-    const float du = lv.mapMaxU - lv.mapMinU, dv = lv.mapMaxV - lv.mapMinV;
-    const float cgx = (minGX + maxGX) * 0.5f, cgz = (minGZ + maxGZ) * 0.5f;
+    // Center the capped load on the landmass (marker-median mapped to grid), not the grid's ocean centre.
     for (auto &t : tiles) { float dx = t.gx - cgx, dz = t.gz - cgz; t.d2 = dx * dx + dz * dz; }
     std::sort(tiles.begin(), tiles.end(), [](const Tile &a, const Tile &b) { return a.d2 < b.d2; });
 
-    // tile globalcell → map-space rect (uniform grid over the art extent) → vmap-WORLD via the fitted inverse.
-    auto map2world = [&](float mapX, float mapZ, float &wx, float &wz) {
-        wx = ax * mapX + bx;
-        wz = az * mapZ + bz;
+    // ⚠ KNOWN GAP (2026-07-04): the tile NAME-grid does NOT map to the converter grid by gridXbase — live
+    // data shows land tiles at name-gridX~64 while the converter grid puts that land at ~43 (offset ~21 in X,
+    // ~14 in Z — NON-uniform), so this places the map with a per-axis offset. The tile→world ORIGIN is
+    // computed by the WorldMapTile REGION-WALK (FUN_1409d8c30 / FUN_1409da9f0, "origin passed down"), which
+    // the placement findings identified but did NOT decode. That region-walk origin is the missing anchor —
+    // see docs/re/windows_worldmap_tile_placement_re_findings.md §4 follow-up. Until then the art loads but
+    // is offset from the markers.
+    auto tile_world = [&](int gx, int gz, float &wx0, float &wz0) {
+        wx0 = float((gx - gridXbase) * 256) + bx;
+        wz0 = -float((gz - gridZbase) * 256) + bz;   // Z flipped (converter)
     };
     virtual_map_clear_tiles();
     int loaded = 0, failed = 0;
@@ -224,14 +220,9 @@ std::string virtual_map_load_lod(int dim, int lod, int cap)
         int gw = 0, gh = 0; DXGI_FORMAT gf;
         unsigned long long srv = create_tex_from_dds_mem(dds.data(), dds.size(), gw, gh, gf);
         if (!srv) { s_tile_status = "SRV cap hit at " + std::to_string(loaded) + " tiles"; break; }
-
-        float mapX0 = lv.mapMinU + float(t.gx - minGX) / gw_cells * du;
-        float mapX1 = lv.mapMinU + float(t.gx - minGX + 1) / gw_cells * du;
-        float mapZ0 = lv.mapMinV + float(t.gz - minGZ) / gh_cells * dv;
-        float mapZ1 = lv.mapMinV + float(t.gz - minGZ + 1) / gh_cells * dv;
         float wxA, wzA, wxB, wzB;
-        map2world(mapX0, mapZ0, wxA, wzA);
-        map2world(mapX1, mapZ1, wxB, wzB);
+        tile_world(t.gx, t.gz, wxA, wzA);
+        tile_world(t.gx + 1, t.gz + 1, wxB, wzB);
         LoadedTile lt;
         lt.srv = srv; lt.w = gw; lt.h = gh; lt.name = tex;
         lt.wx0 = (std::min)(wxA, wxB); lt.wx1 = (std::max)(wxA, wxB);
@@ -240,14 +231,14 @@ std::string virtual_map_load_lod(int dim, int lod, int cap)
         ++loaded;
     }
     s_open = true;
-    spdlog::info("[MAPTILE3] fit n={} worldX={:.3f}*U+{:.1f} worldZ={:.3f}*V+{:.1f} | extent U[{:.0f},{:.0f}] "
-                 "V[{:.0f},{:.0f}] | global gx[{},{}] gz[{},{}] | first tile world x[{:.0f},{:.0f}] z[{:.0f},{:.0f}]",
-                 nfit, ax, bx, az, bz, lv.mapMinU, lv.mapMaxU, lv.mapMinV, lv.mapMaxV, minGX, maxGX, minGZ, maxGZ,
+    spdlog::info("[MAPTILE3] bx={:.0f} bz={:.0f} base=({},{}) markerMed=({:.0f},{:.0f}) loadCtrGrid=({:.0f},{:.0f}) "
+                 "| grid gx[{},{}] gz[{},{}] | first tile world x[{:.0f},{:.0f}] z[{:.0f},{:.0f}]",
+                 bx, bz, gridXbase, gridZbase, mcx, mcz, cgx, cgz, minGX, maxGX, minGZ, maxGZ,
                  s_tiles.empty() ? 0.f : s_tiles[0].wx0, s_tiles.empty() ? 0.f : s_tiles[0].wx1,
                  s_tiles.empty() ? 0.f : s_tiles[0].wz0, s_tiles.empty() ? 0.f : s_tiles[0].wz1);
     char st[176];
-    std::snprintf(st, sizeof(st), "%s %d/%d tiles (global grid %dx%d, cap %d, failed %d)", prefix, loaded,
-                  (int)tiles.size(), gw_cells, gh_cells, cap, failed);
+    std::snprintf(st, sizeof(st), "%s %d/%d tiles (grid %dx%d, cap %d, failed %d)", prefix, loaded,
+                  (int)tiles.size(), maxGX - minGX + 1, maxGZ - minGZ + 1, cap, failed);
     return (s_tile_status = st);
 }
 
