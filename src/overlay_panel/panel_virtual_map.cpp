@@ -58,6 +58,8 @@ namespace
     bool s_show_labels = true;     // draw coarse region name labels (A7 parity — Limgrave, Caelid, …)
     bool s_show_relief = true;      // draw the heightfield hillshade backdrop (D2.3)
     bool s_show_graces = false;     // Track B: the grace warp-menu sidebar
+    bool s_show_markers_panel = false;  // F1→vmap port: the Sections & categories controls in a sidebar
+    Filter s_markers_filter;            // default (not filtering) → draw_sections_categories shows all
     char s_grace_filter[64] = "";   // grace-list search box
     // Grace list cache (rebuilt on open / Refresh; discovered-state re-read live per visible row).
     struct GraceRow { std::string name; float wx, wz; uint64_t rowId; int discFlag; int group;
@@ -440,6 +442,8 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     ImGui::SameLine();
     if (ImGui::Checkbox(tr("Graces"), &s_show_graces) && s_show_graces) s_graces_built = false; // Track B sidebar
     ImGui::SameLine();
+    ImGui::Checkbox(tr("Markers"), &s_show_markers_panel);  // F1→vmap: category visibility controls
+    ImGui::SameLine();
     // 1024u extent = the ACCURATE zone: the world→cast-local transform is a translation captured at the
     // player, valid only near the player's physics chunk (ER recenters the frame across tiles) — 1024u
     // holds ~75% hits vs ~36% at 2048u where far cells cast in the wrong frame. Full coverage = accumulate
@@ -497,6 +501,18 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     if (!s_tiles.empty() || !s_tile_status.empty())
         ImGui::TextDisabled(tr("map tiles: %d loaded   |   last: %s"), (int)s_tiles.size(),
                             s_tile_status.c_str());
+
+    // F1→vmap port (first slice): host the F1 "Sections & categories" controls in a vmap sidebar. It's a
+    // standalone draw_X(ctx, Filter&) with zero coupling to the F1 window, so it drops straight in — the
+    // toggles it drives are shared config, so hiding a category here hides it on the vmap markers too. The
+    // eventual home is a unified tabbed sidebar (Markers|Search|Quests|…); this proves the reuse path.
+    if (s_show_markers_panel)
+    {
+        ImGui::BeginChild("##markers_panel", ImVec2(250.0f, 0.0f), true);
+        draw_sections_categories(ctx, s_markers_filter);
+        ImGui::EndChild();
+        ImGui::SameLine();
+    }
 
     // Track B — grace warp-menu sidebar (Base ER only; graces are ER's). A collapsible list next to the
     // canvas: search + every grace grouped-by-state, discovered = warpable (double-click), undiscovered =
