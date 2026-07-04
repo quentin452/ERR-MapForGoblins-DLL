@@ -1,8 +1,17 @@
 # Master plan — ImGui-only map (retire the native ER map)
 
-Status: **DESIGN 2026-07-04, awaiting user review of each point below.** This is the TOP-LEVEL
+Status: **DESIGN 2026-07-04, user-reviewed — decisions locked (see below).** This is the TOP-LEVEL
 sequencing plan. It doesn't restate the mechanism sub-plans — it orders them and adds the two things
 that were missing: a hard **parity gate** and the **grace warp menu** feature.
+
+## Locked decisions (user review 2026-07-04)
+- **Priority:** the proposed order below (C0 → A → B → C1 → D2 → C2/C3 → polish). Parity is the gate.
+- **Grace menu home (Track B):** a **collapsible SIDEBAR on the vmap** (list + canvas in one surface).
+- **Relief base (Track D):** **D2 raycast heightfield** (mod-agnostic) as base; D1 ART optional overlay.
+- **Map key (Track C2): OPEN — user to verify first** whether ER ships custom controller/keybind
+  settings, because hardcoding `,`/`m` could break under a rebind. → pushes toward the
+  **native-map-edge reuse** (rebind/gamepad-safe, no hardcode); explicit key only a fallback. Do NOT
+  wire C2 until the user confirms ER's keybind behaviour.
 
 Sub-plans it sequences (already scoped):
 - `single_surface_ui_plan.md` — the native-map takeover mechanism + map-key bind + slices 0–3.
