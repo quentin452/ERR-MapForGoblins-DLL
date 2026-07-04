@@ -25,6 +25,12 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **Virtual map terrain relief (heightfield hillshade).** The mod-owned Virtual World Map can now draw a
+  mod-agnostic terrain backdrop sampled LIVE from the 3D world: a `Sample terrain` button casts a grid of
+  down-rays around the player (Havok ground query on the present thread) and the map hillshades each hit
+  cell (`dot(surface-normal, light)`) under the markers, toggled by `Relief`. Correct for any mod that
+  reshapes the world (no baked art). Coverage is the loaded region around the player (extends via warp).
+  `docs/plans/heightfield_relief_plan.md` (D2.1→D2.3).
 - **Virtual map region labels (A7 parity).** The mod-owned Virtual World Map now draws the coarse
   major-region names (Limgrave, Caelid, …) on its canvas, projecting each `MAJOR_REGION_ANCHORS` anchor
   through the same live `marker_world_pos`→`w2s` transform its markers use (so a label sits over its

@@ -106,7 +106,13 @@ ctx, **NO game-thread hook needed**. The entire "find a safe game-thread gamepla
    block-local via the captured `(local0−world0)` translation. Live: `hf_sample 2048 32` → 1024 cells,
    **362 hits (35%)**, groundY [−134.6..265.7]; edge cells miss (outside the loaded physics block =
    nodata, expected). Tighter extents raise %hit; multi-block coverage = D2.4.
-2. **D2.3 hillshade render** on the vmap (dot(normal, light); sea = y<seaLevel) under markers/tiles.
+2. ✅ **D2.3 hillshade render DONE 2026-07-04 (`e3b6dc6`)** — the vmap fetches `snapshot()` via a new
+   `overlay_api` bridge (`heightfield_snapshot`/`_cell_step`/`_request_sample`) and draws each hit cell as
+   a world-space quad shaded by `dot(normal, light)` (muted grey-green, ambient floor), under grid+markers,
+   Base ER only. Toolbar `Relief` toggle + `Sample terrain` button; status shows `relief drawn/hits`.
+   Screenshot-verified: 791 shaded quads around the player, markers layered on top. **Gotcha:** relief
+   gates to `active_world==0`, so a persisted active custom world hides it — select Base ER. Sea/biome
+   tint deferred (currently shaded grey only).
 3. **D2.4 coverage extension + persistence** (accumulate as the player warps; log nodata).
 
 The primitive is proven; this is now normal feature work, not RE. Good candidate for a focused session.
