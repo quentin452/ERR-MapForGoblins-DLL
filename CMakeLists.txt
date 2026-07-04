@@ -353,6 +353,7 @@ target_link_libraries( MapForGoblins
   dxguid
   dbghelp
   bcrypt
+  version  # GetFileVersionInfo/VerQueryValue — er_exe_version build fingerprint (goblin_build_id.hpp)
   ws2_32)  # Phase 3 debug RPC loopback listener (goblin_debug_rpc.cpp)
 
 if(GOBLIN_OVERLAY_HOTRELOAD)

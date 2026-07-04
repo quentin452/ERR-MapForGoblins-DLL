@@ -124,3 +124,6 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
 - A findings doc supersedes its prompt; the prompt is kept for context. Offsets are per the ERR build
   (imagebase `0x140000000`) — verify live on the deploy build (struct offsets are far more patch-stable
   than RVAs; pin code sigs, never raw RVAs — see `common.md` AOB doctrine).
+- **Surviving a game patch:** `patch_diff_maintenance.md` — the build fingerprint (`[BUILD]` boot log +
+  `er_version` RPC) that flags when Steam updated ER under the pinned RVAs/AOBs, and the binary-diff
+  recovery recipe (BinDiff/Diaphora on the *decrypted dumps* — never the VMProtect'd on-disk exes).

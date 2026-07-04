@@ -25,6 +25,7 @@
 #include "goblin_geom_spawn.hpp"    // spawn_asset cmd — ADD via pivot-2 asset-request path (MSB-write RE)
 #include "goblin_heightfield.hpp"   // hf_probe cmd — terrain raycast heightfield (Track D2)
 #include "goblin_field_probe.hpp"  // arm_raw — serialize find-what-accesses (Phase 2)
+#include "goblin_build_id.hpp"     // er_exe_version — er_version verb (build fingerprint)
 
 #include <spdlog/spdlog.h>
 
@@ -407,7 +408,7 @@ namespace goblin::debug_rpc
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
-                       " | er_base mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone"
+                       " | er_base er_version mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
             if (cmd == "status")
@@ -1050,6 +1051,15 @@ namespace goblin::debug_rpc
                 char b[48];
                 std::snprintf(b, sizeof(b), "ok er_base=%#llx", (unsigned long long)er);
                 return std::string(b);
+            }
+            // er_version — eldenring.exe file version ("a.b.c.d"). The build fingerprint the fixed
+            // RVAs/AOBs are pinned to; verify it matches before trusting an RVA-derived address
+            // (docs/re/patch_diff_maintenance.md). Twin of er_base + the [BUILD] boot-log line.
+            if (cmd == "er_version")
+            {
+                std::string v = goblin::er_exe_version();
+                if (v.empty()) return "err version unavailable";
+                return "ok er_version=" + v;
             }
             // mem_dump <hexaddr> <len> — raw RPM hex-dump of an absolute address (follow pointers /
             // diff to locate the goods inventory). len capped at 256.

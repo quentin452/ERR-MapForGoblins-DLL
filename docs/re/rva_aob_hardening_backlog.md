@@ -1,5 +1,8 @@
 # AOB-hardening backlog — fixed-RVA resolutions that need byte signatures
 
+> Detecting + recovering from a patch that breaks these lives in
+> [`patch_diff_maintenance.md`](patch_diff_maintenance.md) (build fingerprint + binary-diff recipe).
+
 Inventory 2026-07-04. RVAs are **build-specific** (ERR 2.2.9.6): they break on a game patch and are not
 mod-agnostic. Doctrine (`re_signatures.hpp`) is to pin AOBs, keep an RVA only as a cross-checked
 fallback. This lists every fixed-RVA / hardcoded module-relative resolution still lacking an AOB, so it

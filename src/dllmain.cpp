@@ -10,6 +10,7 @@
 #include "from/params.hpp"
 #include "modutils.hpp"
 #include "re_signatures.hpp"
+#include "goblin_build_id.hpp"
 #include "goblin_log_archive.hpp"
 
 #include "goblin_collected.hpp"
@@ -223,6 +224,11 @@ static void setup_mod()
     // signature broke. Cheap, read-only; runs once at init.
     {
         GOBLIN_BENCH("init.signatures");
+        // Build fingerprint FIRST — every RVA/AOB below is pinned to one eldenring.exe build, so the
+        // version is the header for reading the PASS/FAIL lines: a fresh FAIL after an unexpected
+        // version bump = Steam updated the game under our pinned signatures (docs/re/patch_diff_maintenance.md).
+        std::string er_ver = goblin::er_exe_version();
+        spdlog::info("[BUILD] eldenring.exe version = {}", er_ver.empty() ? "<unknown>" : er_ver);
         safe_init_step(&goblin::sig::resolve_all_signatures, "AOB signature health check");
     }
 

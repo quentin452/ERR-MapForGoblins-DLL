@@ -104,6 +104,7 @@ while a human is actively using kb/mouse (`rpc_input_idle=1` in `status`; ini `r
 | Command | Usage | What it does |
 |---|---|---|
 | `er_base` | `er_base` | Absolute base of `eldenring.exe` so a Python RPM client can turn `er+RVA` anchors into absolute addresses for `mem_dump`/`mem_fwa` (used by `tools/hf_hook_scout.py`). |
+| `er_version` | `er_version` | `eldenring.exe` file version (`a.b.c.d`) — the build fingerprint the fixed RVAs/AOBs are pinned to. Verify it matches before trusting an RVA-derived address; twin of the `[BUILD]` boot-log line (`docs/re/patch_diff_maintenance.md`). |
 | `mem_dump` | `mem_dump <hexaddr> <len>` | Raw RPM hex-dump of an absolute address (len ≤ 256). |
 | `mem_fwa` | `mem_fwa <hexaddr> <len> [r\|w]` | Arm a HW find-what-accesses BP on an absolute address; trigger (e.g. a save via `warp`) → `[FWA]` logs the accessing RIP. Use a COLD target to avoid a VEH storm. |
 | `equip_dump` | `equip_dump <off(0x..)> <len>` | Hex-dump `EquipGameData+off` (len ≤ 256). |
