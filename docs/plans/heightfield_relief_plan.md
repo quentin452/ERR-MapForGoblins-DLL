@@ -114,6 +114,14 @@ ctx, **NO game-thread hook needed**. The entire "find a safe game-thread gamepla
    gates to `active_world==0`, so a persisted active custom world hides it — select Base ER. Sea/biome
    tint deferred (currently shaded grey only).
 3. **D2.4 coverage extension + persistence** (accumulate as the player warps; log nodata).
+   **KEY CONSTRAINT found 2026-07-04:** the world→cast-local transform is a single translation captured at
+   the player, so it is only valid NEAR the player's physics chunk — ER recenters the Havok frame across
+   map tiles (float precision). Measured deterministic hit rate is distance-gated: **75% @ ±512u, 36% @
+   ±1024u** (same spot, repeatable — NOT a torn-ctx/timing issue). So the correct coverage model is
+   ACCUMULATE small accurate samples as the player moves/warps (each position samples its own chunk in the
+   right frame) into a persistent world-XZ field, NOT one big grid. The Sample button now uses 1024u
+   (~76% coherent) as the accurate single-shot; D2.4 = the moving accumulation + per-chunk-origin handling
+   (or a re-capture of the offset per sample position). Sea/biome tint still deferred (grey only).
 
 The primitive is proven; this is now normal feature work, not RE. Good candidate for a focused session.
 
