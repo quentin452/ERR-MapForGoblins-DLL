@@ -157,6 +157,7 @@ namespace goblin::overlay_api
     GOBLIN_RENDER_API size_t heightfield_snapshot(std::vector<goblin::heightfield::Cell> &out);
     GOBLIN_RENDER_API float heightfield_cell_step();
     GOBLIN_RENDER_API void heightfield_request_sample(float extent, int res);
+    GOBLIN_RENDER_API bool heightfield_sampling();
     GOBLIN_RENDER_API bool marker_world_pos(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz,
                           int &out_area, float &world_x, float &world_z,
                           bool conv_underground = false);

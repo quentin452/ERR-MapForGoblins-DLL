@@ -423,7 +423,10 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     ImGui::Checkbox(tr("Relief"), &s_show_relief); // heightfield hillshade backdrop (D2.3)
     ImGui::SameLine();
     if (ImGui::SmallButton(tr("Sample terrain")))  // cast a grid around the player (map must be CLOSED)
+    {
         goblin::overlay_api::heightfield_request_sample(2048.f, 48);
+        s_show_relief = true;   // so the result is visible even if Relief was toggled off
+    }
     ImGui::SameLine();
     ImGui::SetNextItemWidth(90.0f);                                // dev: tune the warp id offset live
     ImGui::DragInt(tr("warp off"), &s_warp_offset, 10.0f, -100000, 100000);  // double-click a grace to test
@@ -559,34 +562,53 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // markers — the mod-agnostic terrain backdrop (sampled live from the 3D world, correct for any mod).
     // Each hit cell = a filled world-space square coloured by dot(surface-normal, light). Base ER only
     // (the sample is in ER world XZ). Cheap: one AddRectFilled per hit cell, off-canvas culled.
-    if (active_world == 0 && s_show_relief)
+    s_relief_hits = 0; s_relief_drawn = 0;
+    if (s_show_relief)
     {
-        static std::vector<goblin::heightfield::Cell> s_relief;
-        goblin::overlay_api::heightfield_snapshot(s_relief);
-        const float cell = goblin::overlay_api::heightfield_cell_step();
-        s_relief_hits = 0; s_relief_drawn = 0;
-        for (const auto &c : s_relief) if (c.hit) ++s_relief_hits;
-        if (cell > 0.f && !s_relief.empty())
+        // Centred hint near the top of the canvas, so "nothing shows" is never silent (the #1 confusion:
+        // relief is Base-ER-only, or no sample has run yet, or a sample is in flight).
+        auto relief_hint = [&](const char *msg) {
+            ImVec2 ts = ImGui::GetFont()->CalcTextSizeA(ImGui::GetFontSize(), FLT_MAX, 0.f, msg);
+            ImVec2 p((origin.x + canvas_end.x) * 0.5f - ts.x * 0.5f, origin.y + 24.f);
+            dl->AddRectFilled(ImVec2(p.x - 6, p.y - 4), ImVec2(p.x + ts.x + 6, p.y + ts.y + 4),
+                              IM_COL32(20, 22, 28, 205), 4.f);
+            dl->AddText(p, IM_COL32(232, 212, 140, 255), msg);
+        };
+        if (active_world != 0)
         {
-            const float h = cell * 0.5f;
-            // Light from the upper-NW (classic hillshade), normalized.
-            const float Lx = 0.40f, Ly = 0.82f, Lz = 0.40f;
-            for (const goblin::heightfield::Cell &c : s_relief)
+            // Custom worlds have their own coordinate space; the ER terrain sample doesn't apply.
+            relief_hint(tr("Terrain relief is Base-ER only — set the World selector to \"Base ER\""));
+        }
+        else
+        {
+            static std::vector<goblin::heightfield::Cell> s_relief;
+            goblin::overlay_api::heightfield_snapshot(s_relief);
+            const float cell = goblin::overlay_api::heightfield_cell_step();
+            for (const auto &c : s_relief) if (c.hit) ++s_relief_hits;
+            if (cell > 0.f && !s_relief.empty())
             {
-                if (!c.hit) continue;
-                ImVec2 a = w2s(c.wx - h, c.wz - h), b = w2s(c.wx + h, c.wz + h);
-                ImVec2 p0(a.x < b.x ? a.x : b.x, a.y < b.y ? a.y : b.y);
-                ImVec2 p1(a.x < b.x ? b.x : a.x, a.y < b.y ? b.y : a.y);
-                if (p1.x < origin.x || p0.x > canvas_end.x || p1.y < origin.y || p0.y > canvas_end.y)
-                    continue;
-                float nl = std::sqrt(c.nx * c.nx + c.ny * c.ny + c.nz * c.nz);
-                float sh = nl > 1e-4f ? (c.nx * Lx + c.ny * Ly + c.nz * Lz) / nl : 0.6f;
-                sh = sh < 0.20f ? 0.20f : (sh > 1.10f ? 1.10f : sh);   // ambient floor + gentle clip
-                // Muted terrain grey-green, shaded by the normal.
-                auto ch = [sh](float base) { int v = (int)(base * sh + 0.5f); return v < 0 ? 0 : (v > 255 ? 255 : v); };
-                dl->AddRectFilled(p0, p1, IM_COL32(ch(120), ch(132), ch(110), 220));
-                ++s_relief_drawn;
+                const float h = cell * 0.5f;
+                const float Lx = 0.40f, Ly = 0.82f, Lz = 0.40f;   // light from upper-NW (hillshade), normalized
+                for (const goblin::heightfield::Cell &c : s_relief)
+                {
+                    if (!c.hit) continue;
+                    ImVec2 a = w2s(c.wx - h, c.wz - h), b = w2s(c.wx + h, c.wz + h);
+                    ImVec2 p0(a.x < b.x ? a.x : b.x, a.y < b.y ? a.y : b.y);
+                    ImVec2 p1(a.x < b.x ? b.x : a.x, a.y < b.y ? b.y : a.y);
+                    if (p1.x < origin.x || p0.x > canvas_end.x || p1.y < origin.y || p0.y > canvas_end.y)
+                        continue;
+                    float nl = std::sqrt(c.nx * c.nx + c.ny * c.ny + c.nz * c.nz);
+                    float sh = nl > 1e-4f ? (c.nx * Lx + c.ny * Ly + c.nz * Lz) / nl : 0.6f;
+                    sh = sh < 0.20f ? 0.20f : (sh > 1.10f ? 1.10f : sh);   // ambient floor + gentle clip
+                    auto ch = [sh](float base) { int v = (int)(base * sh + 0.5f); return v < 0 ? 0 : (v > 255 ? 255 : v); };
+                    dl->AddRectFilled(p0, p1, IM_COL32(ch(120), ch(132), ch(110), 220));
+                    ++s_relief_drawn;
+                }
             }
+            if (goblin::overlay_api::heightfield_sampling())
+                relief_hint(tr("Sampling terrain…"));
+            else if (s_relief_hits == 0)
+                relief_hint(tr("No terrain sampled yet — press 'Sample terrain' (in gameplay, map closed)"));
         }
     }
 

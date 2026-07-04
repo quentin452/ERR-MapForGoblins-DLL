@@ -54,6 +54,9 @@ size_t snapshot(std::vector<Cell> &out);
 // World-units per cell (quad size) of the last completed field. 0 until a sample completes.
 float snapshot_step();
 
+// True while a grid sample is actively casting (for a "sampling…" UI hint).
+bool sampling();
+
 // Run pending heightfield work on the GAME thread. Call from the world-map step hook (hk_c32f0).
 void tick_game_thread();
 

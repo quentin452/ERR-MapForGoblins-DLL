@@ -195,6 +195,8 @@ size_t snapshot(std::vector<Cell> &out)
 
 float snapshot_step() { return g_snap_step.load(); }
 
+bool sampling() { return g_sampling; }
+
 namespace
 {
 // Capture the player frame + build the world-XZ cell queue. Runs on the game thread.
