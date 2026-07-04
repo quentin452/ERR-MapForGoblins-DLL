@@ -62,6 +62,14 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
 3. **regulation.bin / mod-VFS virtualization** — for the strong form of world-swap (vision #1). Only
    `windows_regulation_modroot_anchor_re_prompt.md` scratches it; the VFS-level swap isn't RE'd.
 4. **3D models / FLVER** — completely untouched (vision #3). No asset/model RE at all.
+4b. **Terrain / Havok collision WRITE — new frontier, scoped.** We READ the terrain (down-ray heightfield)
+   and can MOVE an object, but there is NO way to change collision GEOMETRY (deform the ground, add a
+   platform/wall). First probe scoped: **`windows_terrain_heightfield_write_re_prompt.md`** — identify the
+   terrain `hknp` shape type (editable heightfield vs baked mesh), decide Route A (deform in place) vs Route B
+   (add a dynamic collision body via `hknpWorld::addBody` / a CS wrapper / the geom-spawn path), reusing the
+   raycast anchors (`CS::PhysWorld` @ `DAT_143d76060`, `castRay`/`castShape` `FUN_14187d960/9f0`) and the
+   MSB-move lesson (drive the engine setter + broadphase refresh, never poke raw shape bytes). Expected: baked
+   terrain makes A a dead end → B (add a proxy volume) is the shippable first primitive.
 5. **Custom mob PLACEMENT** — NpcParam is param-driveable, but placing a custom enemy is MSB write (#1).
 
 ### Smaller tactical gaps (see HANDOFF)
