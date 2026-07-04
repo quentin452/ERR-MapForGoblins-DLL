@@ -70,10 +70,29 @@ Building the grid sampler surfaced that the primitive only hit ONCE (abddc05) an
   grace/event hooks = irregular). Implementing D2.2 = finding/validating such a hook (RE its full
   signature first) — real hook-engineering with crash risk.
 
-**STATUS: D2 diagnosis COMPLETE (committed); implementation PARKED pending a safe game-thread gameplay
-hook.** The sampler code + RPC harness are ready to reattach once such a hook exists. Recommendation:
-resume D2 when there's appetite for the game-loop-hook RE; meanwhile the ImGui-only GATE work (Track A
-parity) and the RVA cheap wins are higher-value + lower-risk.
+**⇒ REFRAME 2026-07-04 (new live session — the game-thread theory is DISPROVEN as the blocker):**
+Ran the scout + a fresh idle test with the CASTRAY/PHYSWORLD AOB-hardened build:
+- **`inst+0x98` is STABLE while the player is STATIONARY** — 12 reads = 1 distinct value; a FWA WRITE-watch
+  armed on `inst+0x98` caught **ZERO writes in 12 s idle**. So it is NOT written every frame while idle
+  (contradicts the earlier "written every frame → torn" claim; the torn reads happen during MOVEMENT/active
+  physics, not at rest).
+- With a **clean stable ctx** (`0xea0fe80`) AND a **non-null `ctx+8` hknpWorld** (`0x11f85080`), **6/6
+  idle present-thread casts still MISS** at the player. Clean ctx + valid hknpWorld + off-thread-but-idle
+  and it STILL misses ⇒ **the blocker is the CAST ARGS/ABI, not the thread and not a torn ctx.**
+- So a game-thread hook would NOT fix this — we'd just miss on the game thread too. The real bug is in how
+  we call `FUN_140c70360`: the 7-arg shape (rcx=ctx, rdx=filter, r8=start[3], r9=segDir[3], + outPoint/
+  outNormal/outDist on the STACK), or the start/segDir interpretation (delta vs endpoint / vector4 vs
+  vector3 / block-local vs world frame), or the filter (0x5e). `abddc05` hit once ⇒ the ABI is CLOSE but
+  marginal.
+- **⇒ NEXT (authoritative, per old unblock note #1): capture the GAME'S OWN cast call.** Hook `er+0xc70360`
+  with a logging detour (or Ghidra-xref a live caller) → dump the real `rcx/rdx/r8/r9` + the start/segDir
+  memory the engine passes on a known ground-snap → diff against ours. That pins the exact ABI/frame. It's
+  a hot-physics-fn hook (some risk) — a focused session, not a quick win. Everything downstream
+  (D2.2 sampler / D2.3 hillshade / D2.4 coverage) is unchanged and ready once the cast reliably hits.
+
+**STATUS: D2 still PARKED, but the blocker is RE-DIAGNOSED — it is the cast ABI/args, NOT a game-thread
+hook.** The sampler code + RPC harness are ready. Higher-value/lower-risk work (Track A parity, RVA/tier-S
+hardening) continues to take precedence; resume D2 when there's appetite for the cast-ABI capture.
 
 **Hook-scout harness (resume here — `tools/hf_hook_scout.py`, 2026-07-04):** a live-RPM scout that
 de-risks the safe hook from Python (it does NOT hook — that's the in-DLL detour). Three subcommands
