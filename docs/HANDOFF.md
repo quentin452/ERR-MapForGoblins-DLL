@@ -327,11 +327,16 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   player-proximity raycast AEG-asset STREAMER (`FUN_140699670`/`d80`, steps `FUN_140699170`/`FUN_14069a550`) —
   a ready template proving "name + world pos → streamer spawns+tracks the asset." **Nuance:** the path streams
   from a KNOWN-asset registry → ideal for placing copies of EXISTING AEG assets (the world-editor case);
-  arbitrary-new needs tree registration. **NEXT (Windows/Ghidra) = Q2 (make-or-break): does a serviced request
-  yield a COLLIDABLE `CSWorldGeomDynamicIns` or only a rendered model?** Trace `FUN_1406c6050(req,4)` → the
-  `req+0x90` vfunc / streamer pump → `FUN_1406b9880`/`FUN_140b32880`? Then resolve the `DAT_143d69ba8`
-  FD4Singleton AOB → a `spawn_asset <AEGname>` live probe (Linux/Proton). MOVE stays fully solved; ADD is a
-  multi-step subsystem build.
+  arbitrary-new needs tree registration. **Q2 DONE (2026-07-04): pivot 2 STATIC RE is COMPLETE.** The `req`
+  object has the EXACT `CSWorldGeom` instance layout, and `FUN_1406c6050(req,4)` is its per-frame
+  load/visibility state machine: `FUN_1406c8750`→`FUN_1406a6630` (same block instance-registry the ctor uses)
+  + `FUN_1406e38c0` (scene/render node + world matrix `FUN_1409f1320`). So `FUN_1406c7000` allocates a REAL
+  geom instance (reconciles the earlier "just a name builder") and a serviced request → a real,
+  block-registered, rendered instance — NOT visual-only. Collision follows the standard world-geom path (one
+  live checkmark left). **NEXT (small): resolve the `DAT_143d69ba8` FD4Singleton accessor AOB** (only
+  code-anchor still needed) → **live `spawn_asset <AEGname>` probe (Linux/Proton):**
+  `FUN_1406a5080([DAT_143d69ba8+0x30], L"AEG###_###")` near player → renders → walk into it for collision.
+  No static unknowns left. MOVE stays fully solved; ADD is a multi-step subsystem build.
   **Live recon (2026-07-03, `spawn_probe` + `test_spawn_probe.py`, fresh DLL) confirmed srcType + corrected
   the layout:** on a real dynamic instance (`AEG004_903`) — srcType@+0x08 `0x3c1412016ff00000` (geom tag ✓,
   hi==BlockData tag ✓; masks g0=0xff/g1=0x14/g2=0xfffff); **param_3 = the BlockData** (inst+0x10, NOT a

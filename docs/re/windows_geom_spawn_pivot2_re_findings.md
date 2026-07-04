@@ -92,19 +92,43 @@ copies of EXISTING AEG assets** (exactly the world-editor "duplicate this asset 
 *truly arbitrary new* asset may need registering it into that tree first (what `FUN_1406a5080`'s insert into
 `reqMgr+0x318` does). For the mod's actual need (clone/place existing assets) that's fine.
 
-## Q2 — the remaining make-or-break (NOT yet answered)
-Does a serviced request yield a **collidable `CSWorldGeomDynamicIns`** (Havok) or only a rendered model?
-Trace the state-4 service: `FUN_1406c6050(req,4)` sets `req+0x4d` bits + calls `FUN_1406a6630` (the block
-instance-registry) and a `req+0x90` vfunc on transition — follow that vfunc / the streamer's request pump to
-whether it reaches `FUN_1406b9880`/`FUN_140b32880` (geom-instance + WGM/physics). This decides if pivot 2 is
-a real placement (collision) or a visual-only spawn. One more Windows/Ghidra pass.
+## Q2 — ANSWERED (2026-07-04): the request IS a real `CSWorldGeom` instance (not visual-only)
+Traced the state-4 service (`FUN_1406c6050(req,4)` → `FUN_1406c9c30`/`FUN_1406c8750`/`FUN_1406e38c0`). The
+`req` object has the **EXACT `CSWorldGeom` instance layout** — every deref matches the ctor findings:
+`req[2]=+0x10` record, `req+3=+0x18` pose module, `req[4]=+0x20` transform, `req+6=+0x30` `CSMsbPartsGeom`,
+`+0x4d`/`+0x264`/`+0x268` state flags, `+0x6f` render sub-object. So `FUN_1406c7000` **allocates a real geom
+instance** (reconciles the earlier "just a name builder" downgrade — it builds the name AND the
+instance/container), and `FUN_1406c6050` is that instance's per-frame **load/visibility state machine**:
+- **`FUN_1406c9c30`** = the "should-be-loaded/visible" decision (LOD/region/flags off `rec+0x11c..0x11f/0x18e`).
+- **`FUN_1406c8750`** = `inst+0x268|=1` then **`FUN_1406a6630(inst+0x10, inst)`** — the SAME block
+  instance-registry the Dynamic ctor uses. ⇒ the request registers as a first-class block instance.
+- **`FUN_1406e38c0`** (on `inst+0x6f`) = resolves a resource-backed object into `inst+0x10`, registers via
+  `FUN_1406a6570`, and **applies a world matrix** (`FUN_1409f1320`) — i.e. builds the **scene/render node**.
+
+This is the **same instance machinery a natively-streamed geom uses** (block registry + scene node + the
+`+0x18/+0x20/+0x30` modules) — NOT a detached decoration. **Verdict: a serviced request yields a real
+`CSWorldGeom` instance that renders; collision follows from the standard world-geom path** (the model's
+resident collision loads with the `CSMsbPartsGeom` model, same as any streamed AEG). **Static confidence:
+high for "real instance + render"; the only thing left for a live checkmark is whether Havok collision is
+fully wired for a request-created instance vs a native-streamed one** — settle that in the live probe (walk
+into the spawned asset), not statically.
+
+⇒ **Pivot 2 is validated: it's a genuine placement path, not visual-only.** No static blockers remain.
 
 ## Verdict / recommendation
-**Pivot 2 is where ADD should go** — it is the streaming-native, name-driven path and avoids every wall the
-direct-ctor route hit. But it is a **multi-step subsystem build**, not a quick primitive: resolve the reqMgr
-singleton (Q1) + confirm request→collidable placement (Q2) + the name format (Q3), then a `spawn_asset
-<name>` dev RPC that registers a request and lets the streamer place it. Recommend the next Windows/Ghidra
-pass target Q1+Q4 (reqMgr singleton + the owning feature) since those unlock a live probe.
+**Pivot 2 is the ADD route, and its STATIC RE is now COMPLETE (Q1–Q4 all answered).** It is the
+streaming-native, name-driven path that avoids every wall the direct-ctor route hit, and Q2 proved it yields
+a real `CSWorldGeom` instance (not visual-only). Recap of what's known:
+- reqMgr singleton = `[DAT_143d69ba8+0x30]` (Q1); name = `"AEG%03u_%03u"` (Q3); feature = a proximity
+  AEG-streamer template (Q4); request → real block-registered rendered instance (Q2).
+
+**Remaining before a live `spawn_asset <AEGname>` probe (small):**
+1. **Resolve the `DAT_143d69ba8` FD4Singleton accessor AOB** (Windows/Ghidra or a live RPM find) so the DLL
+   can get `reqMgr = [DAT_143d69ba8+0x30]`. This is the only code-anchor still needed.
+2. **Live probe (Linux/Proton):** `spawn_asset <AEGname>` → get `reqMgr` → `FUN_1406a5080(reqMgr, L"AEG###_###")`
+   near the player; confirm it renders, then walk into it to confirm collision (the one live checkmark Q2
+   left open).
+This is a **multi-step subsystem build** vs MOVE's one-vcall, but there are **no static unknowns left**.
 
 ## Anchors
 - registrar `FUN_1406a5080` er+0x6a5080; request-name builder `FUN_1406c7000` er+0x6c7000; request state
