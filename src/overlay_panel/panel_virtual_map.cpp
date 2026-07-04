@@ -117,6 +117,10 @@ namespace
 
 bool &virtual_map_open() { return s_open; }
 
+// True when the vmap is showing the ported "Sections & categories" sidebar → the F1 window should NOT
+// also draw its copy (avoids the two-overlapping-panels + toggle confusion; single source of truth).
+bool markers_panel_open() { return s_open && s_show_markers_panel; }
+
 // Service a grace warp queued by a vmap double-click. Called POST-FRAME (after ImGui::Render, next to
 // debug_rpc::pump) — running warp mid-ImGui-draw freezes the loading screen; the RPC path works because it
 // executes here. Present thread. No-op unless a warp is pending.
@@ -508,8 +512,8 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // eventual home is a unified tabbed sidebar (Markers|Search|Quests|…); this proves the reuse path.
     if (s_show_markers_panel)
     {
-        ImGui::BeginChild("##markers_panel", ImVec2(250.0f, 0.0f), true);
-        draw_sections_categories(ctx, s_markers_filter);
+        ImGui::BeginChild("##markers_panel", ImVec2(320.0f, 0.0f), true);   // wider: category rows are dense
+        draw_sections_categories(ctx, s_markers_filter, /*with_err_integration=*/false);   // ERR moot on ImGui map
         ImGui::EndChild();
         ImGui::SameLine();
     }

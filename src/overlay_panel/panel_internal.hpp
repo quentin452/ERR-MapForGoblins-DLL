@@ -65,7 +65,8 @@ bool resolve_category_icon(const OverlayFrameCtx &ctx, int c, void *&tex, ImVec2
 void draw_dev_icon_sections(const OverlayFrameCtx &ctx, Filter &f);  // P2b / migration / sprites / grace dbg
 void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f);   // master+save, flat toggles, scale, minimap
 void draw_item_search(const OverlayFrameCtx &ctx, Filter &f);        // Find item / object
-void draw_sections_categories(const OverlayFrameCtx &ctx, Filter &f); // Sections & categories (icons) + ERR
+void draw_sections_categories(const OverlayFrameCtx &ctx, Filter &f, bool with_err_integration = true); // + ERR block (skip on the vmap — native ERR pins don't show on an ImGui map)
+bool markers_panel_open();  // vmap is hosting the categories sidebar → F1 skips its copy (single source)
 void draw_quest_browser(Filter &f);                                  // Quest navigation / Quest Browser
 void draw_clustering(Filter &f);                                     // Clustering
 void draw_dev_tools_danger(Filter &f);                               // Debug, Dev tools, Danger zone

@@ -440,8 +440,15 @@ void goblin::overlay::request_f1_tab(int idx) { g_requested_tab = idx; }
                 // Markers — the everyday "what shows on the map" controls.
                 if (ImGui::BeginTabItem(tr("Markers"), nullptr, tab_flag(0)))
                 {
-                    panel::draw_sections_categories(ctx, f);  // categories grid (with icons) + ERR
-                    panel::draw_clustering(f);                // clustering presets
+                    // Single source: if the vmap is hosting the categories sidebar, don't ALSO draw them
+                    // here (two overlapping copies broke the toggles). This is the F1→vmap migration in
+                    // action — the control lives in ONE surface.
+                    if (panel::markers_panel_open())
+                        ImGui::TextDisabled("%s", tr("Category controls are on the Virtual World Map "
+                                                     "(Markers sidebar)."));
+                    else
+                        panel::draw_sections_categories(ctx, f);  // categories grid (with icons)
+                    panel::draw_clustering(f);                    // clustering presets
                     ImGui::EndTabItem();
                 }
                 // Search — find an item/object and locate it on the map.

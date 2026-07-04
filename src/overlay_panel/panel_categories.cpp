@@ -16,7 +16,7 @@ namespace goblin::overlay::panel
 {
 using goblin::i18n::tr;  // overlay UI localization (lang/<code>.txt)
 
-void draw_sections_categories(const OverlayFrameCtx &ctx, Filter &f)
+void draw_sections_categories(const OverlayFrameCtx &ctx, Filter &f, bool with_err_integration)
 {
     // Search matches the ENGLISH label or its translation, so a localized user can type either.
     auto label_match = [](const char *lbl, const char *needle) {
@@ -169,7 +169,7 @@ void draw_sections_categories(const OverlayFrameCtx &ctx, Filter &f)
         ImGui::TreePop();
     }
 
-    if (f.match("err integration reforged hide boss markers camps completion"))
+    if (with_err_integration && f.match("err integration reforged hide boss markers camps completion"))
     {
         ImGui::SeparatorText(tr("ERR integration"));
         bool hide_bosses = goblin::overlay_api::err_hide_bosses();
