@@ -581,6 +581,8 @@ namespace goblin
         int category_section(int idx);
         bool category_visible(int idx);
         void set_category_visible(int idx, bool visible);
+        // Monotonic counter bumped on ANY visibility change (category/section/master); O(1) change-detect.
+        uint32_t visibility_generation();
         // Per-category uncollected census (drives the "<remaining>/<total>" badge
         // next to each category). category_total = collectible rows in the
         // category; category_remaining = uncollected (total - looted), or -1 when

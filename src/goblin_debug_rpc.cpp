@@ -1042,6 +1042,27 @@ namespace goblin::debug_rpc
                 return "ok hf_sample queued (extent " + std::to_string((int)extent) + ", res " +
                        std::to_string(res) + ") — stay in gameplay (map CLOSED); grep [HEIGHTFIELD]";
             }
+            // vis sec|cat <idx> <0|1> | vis master <0|1> — toggle marker visibility (test the vmap
+            // category filter + scriptable). Drives the same config the F1 category checkboxes do.
+            if (cmd == "vis")
+            {
+                std::string kind = next_token(rest), a = next_token(rest), b = next_token(rest);
+                try
+                {
+                    if (kind == "master")
+                    {
+                        bool on = std::stoi(a) != 0;
+                        goblin::ui::set_icons_enabled(on);
+                        return std::string("ok master=") + (on ? "1" : "0");
+                    }
+                    int idx = std::stoi(a);
+                    bool on = std::stoi(b) != 0;
+                    if (kind == "sec") { goblin::ui::set_section_visible(idx, on); return "ok sec " + a + "=" + (on ? "1" : "0"); }
+                    if (kind == "cat") { goblin::ui::set_category_visible(idx, on); return "ok cat " + a + "=" + (on ? "1" : "0"); }
+                }
+                catch (...) { return "err bad args"; }
+                return "err usage: vis sec|cat <idx> <0|1> | vis master <0|1>";
+            }
             // er_base — absolute base of eldenring.exe, so a Python RPM client can turn er+RVA
             // anchors into absolute addresses for mem_dump/mem_fwa (tools/hf_hook_scout.py).
             if (cmd == "er_base")

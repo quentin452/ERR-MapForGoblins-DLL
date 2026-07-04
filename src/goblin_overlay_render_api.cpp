@@ -61,6 +61,7 @@ namespace goblin::overlay_api
     void set_section_visible(int s, bool v) { goblin::ui::set_section_visible(s, v); }
     bool category_visible(int c) { return goblin::ui::category_visible(c); }
     void set_category_visible(int c, bool v) { goblin::ui::set_category_visible(c, v); }
+    uint32_t visibility_generation() { return goblin::ui::visibility_generation(); }
     const char *category_label(int c) { return goblin::ui::category_label(c); }
     const char *section_label(int idx) { return goblin::ui::section_label(idx); }
     int category_section(int c) { return goblin::ui::category_section(c); }

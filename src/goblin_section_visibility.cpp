@@ -118,6 +118,9 @@ static std::atomic<int> g_section_apply_req{-1};  // section idx to (re)apply, -
 static constexpr int NUM_CATEGORIES = static_cast<int>(Category::WorldFarmableCollectible) + 1;
 static std::atomic<bool> g_category_visible[NUM_CATEGORIES];
 static std::atomic<bool> g_category_dirty[NUM_CATEGORIES];  // set by menu, applied by watcher
+// Bumped on ANY visibility change (category/section/master). Lets a consumer (the vmap marker index)
+// cheaply detect "something toggled" in O(1) and rebuild, instead of hashing 90 category bools/frame.
+static std::atomic<uint32_t> g_vis_gen{0};
 // Native landmark-pin suppression needs a re-apply (set by menu/master toggles,
 // consumed by the watcher via take_native_landmark_dirty).
 static std::atomic<bool> g_native_landmark_dirty{false};
@@ -372,6 +375,7 @@ void goblin::ui::set_section_visible(int idx, bool visible)
     // The watcher (menu_auto_toggle_loop) applies the areaNo flips and persists.
     g_section_visible[idx].store(visible);
     g_section_apply_req.store(idx);
+    g_vis_gen.fetch_add(1);
     // No toast: the overlay menu checkbox IS the feedback. The old per-section
     // "shown/hidden" banners were the icon-toggle toasts; the toast channel is
     // now used for the live coverage-gap notice instead.
@@ -382,7 +386,9 @@ void goblin::ui::set_icons_enabled(bool on)
 {
     g_icons_user_disabled.store(!on);
     g_native_landmark_dirty.store(true);  // master gate feeds the native-pin suppression decision
+    g_vis_gen.fetch_add(1);
 }
+uint32_t goblin::ui::visibility_generation() { return g_vis_gen.load(); }
 
 int goblin::ui::category_count() { return NUM_CATEGORIES; }
 
@@ -477,6 +483,7 @@ void goblin::ui::set_category_visible(int idx, bool visible)
     if (idx < 0 || idx >= NUM_CATEGORIES) return;
     g_category_visible[idx].store(visible);
     g_category_dirty[idx].store(true);  // watcher applies the areaNo park/restore
+    g_vis_gen.fetch_add(1);
     if (idx >= kLandmarkFirst && idx <= kLandmarkLast)
         g_native_landmark_dirty.store(true);  // watcher re-applies native pin suppression
 }

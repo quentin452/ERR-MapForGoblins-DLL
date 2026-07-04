@@ -71,6 +71,7 @@ namespace
     MarkerQuadtree s_qt;
     std::vector<const goblin::worldmap::Marker *> s_grace_pts;  // group's graces (drawn on top, not clustered)
     int s_qt_group = -999;
+    uint32_t s_qt_vis_gen = 0xffffffffu;  // visibility_generation() the index was built for → rebuild on toggle
     uint64_t s_warp_pending = 0;   // grace rowId to warp to; serviced at the next frame's top (not mid-draw)
     int s_warp_offset = 0;          // added to the grace entity id before LuaWarp; 0 = entity id direct (ground truth; CT's -1000 was wrong)
     bool s_fit_requested = false;  // one-shot: on next draw, frame the selected group's markers
@@ -919,7 +920,20 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         // bottleneck). (Re)build for the open group (markers are static ⇒ rebuild only on group change);
         // origin-defaulted (0,0) markers are excluded (the "hors map" stray icons). Graces are NOT indexed
         // — they draw individually on top (few, must stay clickable/warpable).
-        if (s_qt_group != s_group)
+        // Category/section/master visibility gate — parity with the native map (the F1 category toggles).
+        // Include a marker only if its category AND section are enabled and the icon master is on. The
+        // index rebuilds whenever visibility_generation() bumps (any toggle), so hiding a category removes
+        // its markers from BOTH the singles AND the cluster piles. (Before this the vmap drew every marker
+        // regardless — the reported "toggles do nothing".)
+        auto marker_shown = [](const goblin::worldmap::Marker &m) -> bool {
+            if (!goblin::overlay_api::icons_enabled()) return false;
+            if (m.category < 0) return true;
+            if (!goblin::overlay_api::category_visible(m.category)) return false;
+            const int sec = goblin::overlay_api::category_section(m.category);
+            return sec < 0 || goblin::overlay_api::section_visible(sec);
+        };
+        const uint32_t vis_gen = goblin::overlay_api::visibility_generation();
+        if (s_qt_group != s_group || s_qt_vis_gen != vis_gen)
         {
             std::vector<const goblin::worldmap::Marker *> pts;
             pts.reserve(8192);
@@ -936,7 +950,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                 if (!L) continue;
                 for (const goblin::worldmap::Marker &m : L->markers())
                 {
-                    if (m.group != s_group || implausible(m.worldX, m.worldZ))
+                    if (m.group != s_group || implausible(m.worldX, m.worldZ) || !marker_shown(m))
                         continue;
                     if (m.category == kGraceCat)
                         s_grace_pts.push_back(&m);   // graces: kept out of the tree, drawn on top
@@ -946,6 +960,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             }
             s_qt.build(pts);
             s_qt_group = s_group;
+            s_qt_vis_gen = vis_gen;
         }
         // Fit frames ALL markers of the group → take the bbox from the index (not just the drawn subset).
         s_qt.bounds(minx, minz, maxx, maxz);
