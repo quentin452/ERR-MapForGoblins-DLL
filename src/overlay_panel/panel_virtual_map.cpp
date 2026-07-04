@@ -409,6 +409,14 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     }
     GOBLIN_BENCH_QUIET("vmap.draw");   // whole-panel cost vs the vmap.markers sub-cost (bottleneck attribution)
 
+    // Resolution-aware UI scale (parity with the minimap's `uiScale = screenH/1080`): every FIXED-PIXEL
+    // DrawList size below — icon/pin/dot radii, the player arrow, pile discs, region-label font, and the
+    // px text OFFSETS — is multiplied by this so the vmap reads the same at 720p/1080p/4K instead of
+    // tiny-at-4K / huge-at-720p. Pan/zoom (w2s, s_zoom) stays in WORLD units and is left UNSCALED — it's
+    // resolution-independent, exactly as the minimap leaves minimapZoom unscaled. Floor 0.5 so a tiny
+    // window never collapses the geometry to sub-pixel.
+    const float uiScale = (std::max)(0.5f, ImGui::GetIO().DisplaySize.y / 1080.0f);
+
     // Service a pending ER map-tile load (slice 2). Runs here on the render thread (create_tex_from_dds_mem
     // does its own submit_and_wait — must not run on the RPC thread). It's heavy but one-shot per request
     // (mirrors panel_dev_icons' on-click load); slice 3 replaces it with streamed, byte-range tile loads.
@@ -913,7 +921,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         if (!r.tried) { r.tried = true; r.ok = s_show_icons && cat >= 0 && resolve_category_icon(ctx, cat, r.tex, r.uv0, r.uv1); }
         return r;
     };
-    const float icoHalf = 8.0f;  // on-canvas icon size (px)
+    const float icoHalf = 8.0f * uiScale;  // on-canvas icon size (px, resolution-scaled)
     const bool nativeIcons = *goblin::overlay_api::cfg_nativeItemIcons_ptr();
     constexpr int kGraceCat = static_cast<int>(goblin::generated::Category::WorldGraces);
     // Hover tooltip: track the marker nearest the cursor (within a pixel radius) while drawing.
@@ -942,7 +950,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                 dl->AddImage((ImTextureID)r.tex, ImVec2(ps.x - icoHalf, ps.y - icoHalf),
                              ImVec2(ps.x + icoHalf, ps.y + icoHalf), r.uv0, r.uv1);
             else
-                dl->AddCircleFilled(ps, 3.0f, col ? col : IM_COL32(235, 130, 90, 255));
+                dl->AddCircleFilled(ps, 3.0f * uiScale, col ? col : IM_COL32(235, 130, 90, 255));
         }
         drawn++;
         if (hovered)
@@ -1081,10 +1089,10 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         {
             ImVec2 ps = w2s(pl.cx, pl.cz);
             if (ps.x < origin.x || ps.x > canvas_end.x || ps.y < origin.y || ps.y > canvas_end.y) continue;
-            float r = 7.0f + std::log2((float)pl.count) * 2.2f;
-            if (r > 22.f) r = 22.f;
+            float r = (7.0f + std::log2((float)pl.count) * 2.2f) * uiScale;
+            if (r > 22.f * uiScale) r = 22.f * uiScale;
             dl->AddCircleFilled(ps, r, IM_COL32(40, 46, 60, 225));
-            dl->AddCircle(ps, r, IM_COL32(230, 210, 140, 235), 0, 1.5f);
+            dl->AddCircle(ps, r, IM_COL32(230, 210, 140, 235), 0, 1.5f * uiScale);
             char cbuf[16];
             std::snprintf(cbuf, sizeof(cbuf), "%d", pl.count);
             ImVec2 ts = ImGui::CalcTextSize(cbuf);
@@ -1171,8 +1179,8 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     ImVec2 o = w2s(0.0f, 0.0f);
     if (o.x >= origin.x && o.x <= canvas_end.x && o.y >= origin.y && o.y <= canvas_end.y)
     {
-        dl->AddCircleFilled(o, 4.0f, IM_COL32(220, 180, 90, 255));
-        dl->AddText(ImVec2(o.x + 6, o.y + 4), IM_COL32(220, 180, 90, 255), "0,0");
+        dl->AddCircleFilled(o, 4.0f * uiScale, IM_COL32(220, 180, 90, 255));
+        dl->AddText(ImVec2(o.x + 6 * uiScale, o.y + 4 * uiScale), IM_COL32(220, 180, 90, 255), "0,0");
     }
     // Player position marker + heading arrow (A11 parity — the native minimap has this; the vmap must
     // too before it can replace the native map). Base ER only, and only when the player's group matches
@@ -1199,7 +1207,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     const float len = std::sqrt(fx * fx + fz * fz);
                     if (len > 1e-4f) { fx /= len; fz /= len; }
                     const ImVec2 fwd(fx, fz), rgt(-fwd.y, fwd.x);
-                    const float L = 11.f, B = 6.f;
+                    const float L = 11.f * uiScale, B = 6.f * uiScale;
                     const ImVec2 tip(pp.x + fwd.x * L, pp.y + fwd.y * L);
                     const ImVec2 bl(pp.x - fwd.x * B + rgt.x * B, pp.y - fwd.y * B + rgt.y * B);
                     const ImVec2 br(pp.x - fwd.x * B - rgt.x * B, pp.y - fwd.y * B - rgt.y * B);
@@ -1207,12 +1215,12 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     // altitude badge (the old blue arrow read as an altitude badge). White outline pops
                     // it off any tile. (Minimap uses the same red now — was yellow, a needless divergence.)
                     dl->AddTriangleFilled(tip, bl, br, IM_COL32(255, 48, 48, 255));
-                    dl->AddTriangle(tip, bl, br, IM_COL32(255, 255, 255, 235), 1.5f);
+                    dl->AddTriangle(tip, bl, br, IM_COL32(255, 255, 255, 235), 1.5f * uiScale);
                 }
                 else
                 {
-                    dl->AddCircleFilled(pp, 5.0f, IM_COL32(255, 48, 48, 255));
-                    dl->AddCircle(pp, 5.0f, IM_COL32(255, 255, 255, 235), 0, 1.5f);
+                    dl->AddCircleFilled(pp, 5.0f * uiScale, IM_COL32(255, 48, 48, 255));
+                    dl->AddCircle(pp, 5.0f * uiScale, IM_COL32(255, 255, 255, 235), 0, 1.5f * uiScale);
                 }
             }
         }
@@ -1227,12 +1235,12 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             if (c.group != s_group) continue;
             ImVec2 p = w2s(c.wx, c.wz);
             if (p.x < origin.x || p.x > canvas_end.x || p.y < origin.y || p.y > canvas_end.y) continue;
-            const float r = 8.0f;
+            const float r = 8.0f * uiScale;
             const ImVec2 head(p.x, p.y - r * 1.3f);
             dl->AddTriangleFilled(ImVec2(p.x - r * 0.7f, p.y - r * 1.3f), ImVec2(p.x + r * 0.7f, p.y - r * 1.3f), p, c.color);
             dl->AddCircleFilled(head, r * 0.7f, c.color);
-            dl->AddCircle(head, r * 0.7f, IM_COL32(255, 255, 255, 240), 0, 1.5f);
-            dl->AddText(ImVec2(p.x + 7.0f, p.y - r * 1.3f - 8.0f), IM_COL32(230, 240, 255, 255), c.name.c_str());
+            dl->AddCircle(head, r * 0.7f, IM_COL32(255, 255, 255, 240), 0, 1.5f * uiScale);
+            dl->AddText(ImVec2(p.x + 7.0f * uiScale, p.y - r * 1.3f - 8.0f * uiScale), IM_COL32(230, 240, 255, 255), c.name.c_str());
         }
         // Death marker (dropped runes / bloodstain) — the NATIVE MENU_MAP_DropSoul sprite from the resident
         // map-symbol sheet (mod-agnostic; same resolve path as the grace glyph). Falls back to a red disc
@@ -1244,14 +1252,14 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             if (p.x >= origin.x && p.x <= canvas_end.x && p.y >= origin.y && p.y <= canvas_end.y)
             {
                 void *tex = nullptr; float u0, v0, u1, v1; int nw = 0, nh = 0;
-                const float h = 11.0f;
+                const float h = 11.0f * uiScale;
                 if (goblin::overlay_api::map_point_glyph_uv("MENU_MAP_DropSoul", -1, tex, u0, v0, u1, v1, &nw, &nh) && tex)
                     dl->AddImage((ImTextureID)tex, ImVec2(p.x - h, p.y - h), ImVec2(p.x + h, p.y + h),
                                  ImVec2(u0, v0), ImVec2(u1, v1));
                 else
                 {
-                    dl->AddCircleFilled(p, 6.0f, IM_COL32(200, 60, 60, 235));
-                    dl->AddCircle(p, 6.0f, IM_COL32(255, 255, 255, 235), 0, 1.5f);
+                    dl->AddCircleFilled(p, 6.0f * uiScale, IM_COL32(200, 60, 60, 235));
+                    dl->AddCircle(p, 6.0f * uiScale, IM_COL32(255, 255, 255, 235), 0, 1.5f * uiScale);
                 }
                 // Hover tooltip (drawn after the marker loop's tooltip, so it wins over the icon).
                 const ImVec2 mp = ImGui::GetIO().MousePos;
@@ -1272,7 +1280,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     if (active_world == 0 && s_show_labels)
     {
         ImFont *font = ImGui::GetFont();
-        const float fontSize = ImGui::GetFontSize() * 1.4f;
+        const float fontSize = ImGui::GetFontSize() * 1.4f * uiScale;
         const bool clicked = hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
         for (int i = 0; i < regN && i < kRegCap; ++i)
         {
@@ -1285,7 +1293,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                 continue;
             ImVec2 ts = font->CalcTextSizeA(fontSize, FLT_MAX, 0.f, name);
             ImVec2 tp(p.x - ts.x * 0.5f, p.y - ts.y * 0.5f);
-            const float pad = 5.f;
+            const float pad = 5.f * uiScale;
             ImVec2 r0(tp.x - pad, tp.y - pad), r1(tp.x + ts.x + pad, tp.y + ts.y + pad);
             const bool hot = io.MousePos.x >= r0.x && io.MousePos.x <= r1.x &&
                              io.MousePos.y >= r0.y && io.MousePos.y <= r1.y;
@@ -1300,10 +1308,10 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             if (hot)
                 dl->AddRect(r0, r1, IM_COL32(238, 226, 188, 220), 4.f, 0, 1.5f);
             const ImU32 col = on ? IM_COL32(238, 226, 188, 235) : IM_COL32(150, 140, 120, 160);
-            dl->AddText(font, fontSize, ImVec2(tp.x + 1.5f, tp.y + 1.5f), IM_COL32(0, 0, 0, 190), name);
+            dl->AddText(font, fontSize, ImVec2(tp.x + 1.5f * uiScale, tp.y + 1.5f * uiScale), IM_COL32(0, 0, 0, 190), name);
             dl->AddText(font, fontSize, tp, col, name);
             if (!on)
-                dl->AddLine(ImVec2(tp.x, p.y), ImVec2(tp.x + ts.x, p.y), col, 2.0f);
+                dl->AddLine(ImVec2(tp.x, p.y), ImVec2(tp.x + ts.x, p.y), col, 2.0f * uiScale);
         }
     }
 
