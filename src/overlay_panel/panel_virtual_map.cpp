@@ -25,6 +25,7 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -54,6 +55,12 @@ namespace
     bool s_show_icons = true;      // draw real category icons (native/atlas) vs plain colour dots
     bool s_show_labels = true;     // draw coarse region name labels (A7 parity — Limgrave, Caelid, …)
     bool s_show_relief = true;      // draw the heightfield hillshade backdrop (D2.3)
+    bool s_show_graces = false;     // Track B: the grace warp-menu sidebar
+    char s_grace_filter[64] = "";   // grace-list search box
+    // Grace list cache (rebuilt on open / Refresh; discovered-state re-read live per visible row).
+    struct GraceRow { std::string name; float wx, wz; uint64_t rowId; int discFlag; int group; };
+    std::vector<GraceRow> s_graces;
+    bool s_graces_built = false;
     uint64_t s_warp_pending = 0;   // grace rowId to warp to; serviced at the next frame's top (not mid-draw)
     int s_warp_offset = 0;          // added to the grace entity id before LuaWarp; 0 = entity id direct (ground truth; CT's -1000 was wrong)
     bool s_fit_requested = false;  // one-shot: on next draw, frame the selected group's markers
@@ -422,6 +429,8 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     ImGui::SameLine();
     ImGui::Checkbox(tr("Relief"), &s_show_relief); // heightfield hillshade backdrop (D2.3)
     ImGui::SameLine();
+    if (ImGui::Checkbox(tr("Graces"), &s_show_graces) && s_show_graces) s_graces_built = false; // Track B sidebar
+    ImGui::SameLine();
     // 1024u extent = the ACCURATE zone: the world→cast-local transform is a translation captured at the
     // player, valid only near the player's physics chunk (ER recenters the frame across tiles) — 1024u
     // holds ~75% hits vs ~36% at 2048u where far cells cast in the wrong frame. Full coverage = accumulate
@@ -479,6 +488,77 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     if (!s_tiles.empty() || !s_tile_status.empty())
         ImGui::TextDisabled(tr("map tiles: %d loaded   |   last: %s"), (int)s_tiles.size(),
                             s_tile_status.c_str());
+
+    // Track B — grace warp-menu sidebar (Base ER only; graces are ER's). A collapsible list next to the
+    // canvas: search + every grace grouped-by-state, discovered = warpable (double-click), undiscovered =
+    // locate-only (single-click pans the canvas — warping to an undiscovered grace hangs on infinite load).
+    // Data is the SAME grace layer the canvas draws (row_id/discover_flag/name_id); rebuilt on open/Refresh,
+    // discovered-state re-read live per row. Drawn BEFORE the canvas so SameLine leaves it the rest.
+    if (s_show_graces && active_world == 0)
+    {
+        const int kGraceCatSb = static_cast<int>(goblin::generated::Category::WorldGraces);
+        if (!s_graces_built)
+        {
+            s_graces.clear();
+            for (auto *L : overlay_layers())
+            {
+                if (!L) continue;
+                for (const goblin::worldmap::Marker &m : L->markers())
+                    if (m.category == kGraceCatSb && m.row_id != 0)
+                    {
+                        GraceRow g{};
+                        g.wx = m.worldX; g.wz = m.worldZ; g.rowId = m.row_id;
+                        g.discFlag = m.discover_flag; g.group = m.group;
+                        g.name = m.name_id > 0 ? goblin::overlay_api::lookup_text_utf8(m.name_id) : std::string();
+                        if (g.name.empty()) g.name = "(unnamed grace)";
+                        s_graces.push_back(std::move(g));
+                    }
+            }
+            std::sort(s_graces.begin(), s_graces.end(),
+                      [](const GraceRow &a, const GraceRow &b) { return a.name < b.name; });
+            s_graces_built = true;
+        }
+        ImGui::BeginChild("##grace_sidebar", ImVec2(240.0f, 0.0f), true);
+        ImGui::Text(tr("Graces (%d)"), (int)s_graces.size());
+        ImGui::SameLine();
+        if (ImGui::SmallButton(tr("Refresh"))) s_graces_built = false;
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::InputTextWithHint("##gfilter", tr("search"), s_grace_filter, sizeof(s_grace_filter));
+        ImGui::Separator();
+        std::string flt = s_grace_filter;
+        for (char &c : flt) c = (char)std::tolower((unsigned char)c);
+        ImGui::BeginChild("##glist");
+        for (const GraceRow &g : s_graces)
+        {
+            if (!flt.empty())
+            {
+                std::string ln = g.name;
+                for (char &c : ln) c = (char)std::tolower((unsigned char)c);
+                if (ln.find(flt) == std::string::npos) continue;
+            }
+            const bool disc = g.discFlag > 0 && goblin::overlay_api::read_event_flag((uint32_t)g.discFlag);
+            ImGui::PushID((int)(g.rowId & 0x7fffffff));
+            ImVec2 cp = ImGui::GetCursorScreenPos();
+            ImGui::GetWindowDrawList()->AddCircleFilled(
+                ImVec2(cp.x + 5.0f, cp.y + ImGui::GetTextLineHeight() * 0.5f), 4.0f,
+                disc ? IM_COL32(230, 190, 80, 255) : IM_COL32(105, 105, 105, 255));
+            ImGui::Dummy(ImVec2(14.0f, 0.0f));
+            ImGui::SameLine();
+            if (ImGui::Selectable(g.name.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick))
+            {
+                if (disc && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                    s_warp_pending = g.rowId;                         // discovered → teleport (post-frame)
+                else { s_cam_x = g.wx; s_cam_z = g.wz; s_group = g.group; }  // locate: pan the canvas to it
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s", disc ? tr("double-click: warp · click: locate")
+                                             : tr("undiscovered — click: locate"));
+            ImGui::PopID();
+        }
+        ImGui::EndChild();
+        ImGui::EndChild();
+        ImGui::SameLine();
+    }
 
     // Canvas = the remaining content region. An InvisibleButton captures drag/scroll over exactly it.
     ImVec2 origin = ImGui::GetCursorScreenPos();
