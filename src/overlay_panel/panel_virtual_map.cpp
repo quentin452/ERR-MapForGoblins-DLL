@@ -58,7 +58,8 @@ namespace
     bool s_show_graces = false;     // Track B: the grace warp-menu sidebar
     char s_grace_filter[64] = "";   // grace-list search box
     // Grace list cache (rebuilt on open / Refresh; discovered-state re-read live per visible row).
-    struct GraceRow { std::string name; float wx, wz; uint64_t rowId; int discFlag; int group; };
+    struct GraceRow { std::string name; float wx, wz; uint64_t rowId; int discFlag; int group;
+                      std::string region; int regionIdx; };
     std::vector<GraceRow> s_graces;
     bool s_graces_built = false;
     uint64_t s_warp_pending = 0;   // grace rowId to warp to; serviced at the next frame's top (not mid-draw)
@@ -508,35 +509,65 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     {
                         GraceRow g{};
                         g.wx = m.worldX; g.wz = m.worldZ; g.rowId = m.row_id;
-                        g.discFlag = m.discover_flag; g.group = m.group;
+                        g.discFlag = m.discover_flag; g.group = m.group; g.regionIdx = -1;
                         g.name = m.name_id > 0 ? goblin::overlay_api::lookup_text_utf8(m.name_id) : std::string();
                         if (g.name.empty()) g.name = "(unnamed grace)";
                         s_graces.push_back(std::move(g));
                     }
             }
-            std::sort(s_graces.begin(), s_graces.end(),
-                      [](const GraceRow &a, const GraceRow &b) { return a.name < b.name; });
+            // Assign each grace to the nearest same-group major region (reuse the A7 anchors) so the list
+            // groups by region. Project each anchor to world XZ once via marker_world_pos (as A7 does).
+            struct RA { float wx, wz; int grp; const char *name; };
+            std::vector<RA> ranch;
+            {
+                using namespace goblin::generated;
+                for (int i = 0; i < (int)MAJOR_REGION_ANCHOR_COUNT; ++i)
+                {
+                    const MajorRegionAnchor &a = MAJOR_REGION_ANCHORS[i];
+                    int ga = 0; float wx = 0.f, wz = 0.f;
+                    if (goblin::overlay_api::marker_world_pos(a.area, a.gx, a.gz, a.px, a.pz, ga, wx, wz, true))
+                        ranch.push_back({wx, wz, goblin::marker_group_from(a.area, ga), a.name});
+                }
+            }
+            for (GraceRow &g : s_graces)
+            {
+                int best = -1; float bd = 1e30f;
+                for (int i = 0; i < (int)ranch.size(); ++i)
+                {
+                    if (ranch[i].grp != g.group) continue;
+                    const float du = ranch[i].wx - g.wx, dv = ranch[i].wz - g.wz, d = du * du + dv * dv;
+                    if (d < bd) { bd = d; best = i; }
+                }
+                g.regionIdx = best;
+                g.region = best >= 0 ? ranch[best].name : "Other";
+            }
+            std::sort(s_graces.begin(), s_graces.end(), [](const GraceRow &a, const GraceRow &b) {
+                if (a.region != b.region) return a.region < b.region;
+                return a.name < b.name;
+            });
             s_graces_built = true;
         }
-        ImGui::BeginChild("##grace_sidebar", ImVec2(240.0f, 0.0f), true);
+        ImGui::BeginChild("##grace_sidebar", ImVec2(250.0f, 0.0f), true);
         ImGui::Text(tr("Graces (%d)"), (int)s_graces.size());
         ImGui::SameLine();
         if (ImGui::SmallButton(tr("Refresh"))) s_graces_built = false;
         ImGui::SetNextItemWidth(-1.0f);
         ImGui::InputTextWithHint("##gfilter", tr("search"), s_grace_filter, sizeof(s_grace_filter));
-        ImGui::Separator();
         std::string flt = s_grace_filter;
         for (char &c : flt) c = (char)std::tolower((unsigned char)c);
-        ImGui::BeginChild("##glist");
-        for (const GraceRow &g : s_graces)
+
+        // Filter tabs: All / Discovered / Undiscovered (the useful warp-menu filter; the multi-world
+        // All/Current/Other-worlds split is redundant with the World selector + only Base ER has graces).
+        int mode = 0;
+        if (ImGui::BeginTabBar("##gtabs"))
         {
-            if (!flt.empty())
-            {
-                std::string ln = g.name;
-                for (char &c : ln) c = (char)std::tolower((unsigned char)c);
-                if (ln.find(flt) == std::string::npos) continue;
-            }
-            const bool disc = g.discFlag > 0 && goblin::overlay_api::read_event_flag((uint32_t)g.discFlag);
+            const char *tabs[3] = {"All", "Discovered", "Undiscovered"};
+            for (int t = 0; t < 3; ++t)
+                if (ImGui::BeginTabItem(tr(tabs[t]))) { mode = t; ImGui::EndTabItem(); }
+            ImGui::EndTabBar();
+        }
+
+        auto render_row = [&](const GraceRow &g, bool disc) {
             ImGui::PushID((int)(g.rowId & 0x7fffffff));
             ImVec2 cp = ImGui::GetCursorScreenPos();
             ImGui::GetWindowDrawList()->AddCircleFilled(
@@ -554,6 +585,27 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                 ImGui::SetTooltip("%s", disc ? tr("double-click: warp · click: locate")
                                              : tr("undiscovered — click: locate"));
             ImGui::PopID();
+        };
+
+        ImGui::BeginChild("##glist");
+        std::string curRegion; bool started = false, regionOpen = false;
+        for (const GraceRow &g : s_graces)
+        {
+            if (!flt.empty())
+            {
+                std::string ln = g.name;
+                for (char &c : ln) c = (char)std::tolower((unsigned char)c);
+                if (ln.find(flt) == std::string::npos) continue;
+            }
+            const bool disc = g.discFlag > 0 && goblin::overlay_api::read_event_flag((uint32_t)g.discFlag);
+            if ((mode == 1 && !disc) || (mode == 2 && disc)) continue;   // tab filter
+            if (!started || g.region != curRegion)                       // region header (only for shown regions)
+            {
+                curRegion = g.region; started = true;
+                regionOpen = ImGui::CollapsingHeader(curRegion.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
+            }
+            if (!regionOpen) continue;
+            render_row(g, disc);
         }
         ImGui::EndChild();
         ImGui::EndChild();
