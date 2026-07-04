@@ -94,10 +94,14 @@ static bool cast_with_ctx(void *ctx, float x, float y_high, float z, float depth
 {
     out.hit = false;
     if (!g_cast || !ctx) return false;
-    float start[3] = {x, y_high, z};
-    float dir[3]   = {0.f, -depth, 0.f};
-    float pt[3]    = {0.f, 0.f, 0.f};
-    float nrm[3]   = {0.f, 0.f, 0.f};
+    // The cast reads start/segDir as 16-byte VECTOR4 via `movaps` (live disasm er+0xc70360: movaps xmm0,
+    // [r8]; addps xmm0,[r9] => endpoint = start+segDir). movaps FAULTS on an unaligned address, so these
+    // MUST be alignas(16) float[4] — unaligned float[3] faulted into __except => "miss" (the old bug; a
+    // stack-aligned frame hit by luck once). w: position=1, delta=0 (homogeneous). Out buffers aligned too.
+    alignas(16) float start[4] = {x, y_high, z, 1.f};
+    alignas(16) float dir[4]   = {0.f, -depth, 0.f, 0.f};
+    alignas(16) float pt[4]    = {0.f, 0.f, 0.f, 0.f};
+    alignas(16) float nrm[4]   = {0.f, 0.f, 0.f, 0.f};
     uint32_t dist  = 0;
     int hit = 0;
     __try { hit = call_cast(ctx, filter, start, dir, pt, nrm, &dist); }
@@ -152,10 +156,11 @@ bool cast_down(float x, float y_high, float z, float depth, uint32_t filter, Ray
     void *ctx = resolve_ctx();
     if (!ctx) return false;
 
-    float start[3] = {x, y_high, z};
-    float dir[3]   = {0.f, -depth, 0.f};
-    float pt[3]    = {0.f, 0.f, 0.f};
-    float nrm[3]   = {0.f, 0.f, 0.f};
+    // 16-byte-aligned vector4s — the cast reads them via movaps (see cast_with_ctx). Unaligned = fault = miss.
+    alignas(16) float start[4] = {x, y_high, z, 1.f};
+    alignas(16) float dir[4]   = {0.f, -depth, 0.f, 0.f};
+    alignas(16) float pt[4]    = {0.f, 0.f, 0.f, 0.f};
+    alignas(16) float nrm[4]   = {0.f, 0.f, 0.f, 0.f};
     uint32_t dist  = 0;
     int hit = 0;
     __try { hit = call_cast(ctx, filter, start, dir, pt, nrm, &dist); }
