@@ -54,6 +54,59 @@
       "command": "python tools/rpc_tests/check_regress.py",
       "options": { "cwd": "${workspaceFolder}" },
       "problemMatcher": []
+    },
+    {
+      "label": "MFG: Run ONE RPC test (pick)",
+      "detail": "Pick a single tools/rpc_tests/test_*.py to run (cold-boots ER just for that test) instead of the whole suite.",
+      "type": "shell",
+      "command": "python tools/rpc_tests/${input:rpcTest}",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "MFG: Boot ER + RPC repl",
+      "detail": "Cold-boot ER (loads a save) + open an interactive RPC shell. Keep this running, then use 'RPC one-shot' or type verbs here (e.g. hf_probe, then open the map).",
+      "type": "shell",
+      "command": "python tools/mfg.py repl --boot",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "MFG: RPC one-shot (type command)",
+      "detail": "Send ONE RPC verb to an ALREADY-RUNNING game (needs ER up — launch it or use 'Boot ER + RPC repl' first). E.g. hf_probe, warp 1042362951, ping.",
+      "type": "shell",
+      "command": "python tools/mfg.py rpc ${input:rpcCmd}",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "rpcTest",
+      "type": "pickString",
+      "description": "Which RPC test to run?",
+      "options": [
+        "test_vmap.py",
+        "test_vworld.py",
+        "test_warp.py",
+        "test_world_bundle.py",
+        "test_world_editor.py",
+        "test_assets.py",
+        "test_move_asset.py",
+        "test_spawn_probe.py",
+        "test_goods_count.py",
+        "test_custom_item.py",
+        "test_author_items.py",
+        "test_gapc_grant.py",
+        "test_sidecar.py"
+      ]
+    },
+    {
+      "id": "rpcCmd",
+      "type": "promptString",
+      "description": "RPC command (e.g. hf_probe, warp 1042362951, ping)",
+      "default": "ping"
     }
   ]
 }

@@ -81,6 +81,11 @@ from parity — Track A is real BUILD work, not just a checklist. This IS the go
 - **Spiderify on non-clustered overlapping markers** — spiderify already ships on CLUSTERS; extend it
   to plain overlapping markers on the vmap (spread them on click/hover so each is selectable). Later.
 
+**A-SETTINGS audit DONE 2026-07-04 → full per-key table in
+[f1_settings_imgui_only_classification.md](f1_settings_imgui_only_classification.md)** (~19 DROP, 1
+HARDCODE-TRUE `grace_overlay`, ~15 PORT — clustering block dominates; 2 `?` to verify: `native_item_icons`
+residency, `dump_icon_textures`/`dump_converters` vmap dependency). Original note below.
+
 **A-SETTINGS audit (user, 2026-07-04): reframe/remove native-map-only F1 knobs.** Many F1 settings
 exist ONLY to control the native ER map overlay; once the vmap is the sole surface they're dead or
 must be re-pointed at the vmap. Audit every F1/ini knob through the ImGui-only lens (this EXTENDS the
