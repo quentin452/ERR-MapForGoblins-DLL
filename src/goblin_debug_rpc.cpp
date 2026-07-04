@@ -553,7 +553,12 @@ namespace goblin::debug_rpc
                 {
                     std::string out = "ok vworld active=" + std::to_string(goblin::vworld::active()) + " worlds:";
                     for (auto &p : goblin::vworld::list())
+                    {
                         out += " [" + std::to_string(p.first) + "]" + p.second;
+                        goblin::vworld::World w;
+                        if (goblin::vworld::get_world(p.first, w))  // false for the synthetic id 0 (Base ER)
+                            out += "(mk=" + std::to_string(w.markers.size()) + ")";
+                    }
                     return out;
                 }
                 if (sub == "clear") { goblin::vworld::clear(); return "ok vworld clear"; }

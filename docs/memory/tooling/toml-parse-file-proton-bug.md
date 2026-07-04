@@ -1,6 +1,6 @@
 ---
 name: toml-parse-file-proton-bug
-description: toml++ parse returns EMPTY under Proton in the exceptions-ON config (BOTH parse_file AND parse(string)); the ONLY working fix is #define TOML_EXCEPTIONS 0. world_bundle's parse(string) path is latently broken.
+description: toml++ parse returns EMPTY under Proton in the exceptions-ON config (BOTH parse_file AND parse(string)); the ONLY working fix is #define TOML_EXCEPTIONS 0. All DLL TOML configs (custom_items/virtual_world/world_bundle) now use it.
 metadata:
   node_type: memory
   type: bugs
@@ -22,11 +22,12 @@ throw. Switching that TU to `#define TOML_EXCEPTIONS 0` + `parse_file` fixed it 
 boot → boot-load restored the world + 5 markers). So **the ONLY reliable fix is `#define TOML_EXCEPTIONS 0`**
 (the custom_items config); the parse(string) mitigation does NOT work.
 
-**⚠ world_bundle is LATENTLY SUSPECT:** it uses exceptions-ON + parse(string) (the now-disproven fix), so
-its LOAD-from-disk almost certainly returns empty under Proton too. `test_world_editor.py` 24/24 passed
-only because it never exercises a real cold-boot reload (it saves + applies the IN-MEMORY bundle in one
-session). Migrate `goblin_world_bundle.cpp` to `#define TOML_EXCEPTIONS 0` + `parse_file` (like
-custom_items / virtual_world) before relying on its on-disk load; add a genuine save→reboot→load test.
+**✅ world_bundle MIGRATED + TESTED 2026-07-04.** `goblin_world_bundle.cpp` now `#define TOML_EXCEPTIONS 0`
++ `toml::parse_file` (was the disproven exceptions-ON `ifstream+parse(string)`). New
+`tools/rpc_tests/test_world_bundle.py` is the genuine save→reboot→load: boot-1 records 1 clone + 1 set +
+`bundle save`, cold boot, boot-2 `bundle status` reads back `clones=1 sets=1` FROM DISK (E2E 4/4 under
+Proton). NB the bundle lives in `<ERR_ROOT>/dll/offline/` (the DLL's own folder), NOT `mod/`. So EVERY
+DLL TOML config is now on the only-working `TOML_EXCEPTIONS 0` path.
 
 Historical (pre-correction) note — the two once-believed fixes: (1) `std::ifstream` +
 `toml::parse(std::string)` — **DISPROVEN, also returns empty in exceptions-ON**; (2) `#define
@@ -40,18 +41,22 @@ and `std::ofstream` had just written it to that exact path; only toml++'s own fi
 The path resolution is not the issue — the same path string round-trips through `std::ofstream` (save)
 fine; it's `parse_file`'s internal file open that fails silently under Wine.
 
-**Fix:** never use `toml::parse_file` in DLL code. Read the bytes yourself and parse the string:
+**Fix (the ONLY one that works):** `#define TOML_EXCEPTIONS 0` before including toml++, then use
+`toml::parse_file`:
 
 ```cpp
-std::ifstream in(path, std::ios::binary);
-if (!in) { /* log + bail */ }
-std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-toml::table root = toml::parse(content);   // throws toml::parse_error (this TU builds exceptions ON)
+#define TOML_EXCEPTIONS 0
+#include <toml++/toml.hpp>
+...
+auto result = toml::parse_file(path.string());
+if (!result) { spdlog::error("parse error: {}", std::string(result.error().description())); return false; }
+const toml::table &root = result.table();
 ```
 
-`std::ifstream` (the mirror of the `std::ofstream` we already save with) resolves the path correctly
-under Wine, and `toml::parse(std::string)` has no file-open step. This made `goblin_world_bundle`'s
-save→load roundtrip go 0→2 ops (E2E `test_world_editor.py` 24/24).
+**DISPROVEN (do NOT use):** the `std::ifstream` + `toml::parse(std::string)` mitigation once believed to
+work — under Proton it ALSO returns an empty table in the exceptions-ON config (virtual_worlds C3 +
+world_bundle both confirmed this). The `test_world_editor.py` 24/24 that "proved" it never cold-boot-reloaded
+(it saves+applies the in-memory bundle in one session), so it couldn't catch the empty on-disk load.
 
 **custom_items.cpp — CHECKED, NOT affected (2026-07-03).** It calls `toml::parse_file` too, but with
 `#define TOML_EXCEPTIONS 0` at the top of the file, so it takes the exceptions-OFF parse path, which

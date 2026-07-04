@@ -24,8 +24,11 @@ from F1 + open via the game MAP KEY. RPCs: `vmap`/`vworld`/`f1_tab`. **NEXT on t
   streaming remain). This is a SLICE.
 - Missed design items (captured in `docs/plans/virtual_world_multi_world_design.md`): **GAMEPAD** for the
   vmap canvas (stick→pan/zoom + reticle — add to every vmap slice); the real feature gaps = **clock /
-  blue click-marker / custom beacon** (rest of ER's map is cosmetic; grace = fast-travel = make-or-break);
-  `test_vmap.py`/`test_vworld.py` to cover the new features in the sweep.
+  blue click-marker / custom beacon** (rest of ER's map is cosmetic; grace = fast-travel = make-or-break).
+  **✅ sweep coverage DONE 2026-07-04:** `test_vmap.py` (single-boot SWEEP: open/close/group/fit round-trip,
+  10/10), `test_vworld.py` (2-boot persistence: create+2 markers+save → cold boot → `vworld list` shows
+  `(mk=2)` restored FROM DISK, 8/8), `test_world_bundle.py` (2-boot, the TOML-fix proof, 4/4). Added a
+  marker-count readout to the `vworld list` RPC (`[id]name(mk=N)`) to make the reload verifiable.
 
 **2. Test orchestration — regressions are no longer phantoms.** `mfg_session` persists PASS/FAIL to
 `tools/rpc_tests/results.jsonl` (gitignored) + inline regression flag; `check_regress.py` scans + regenerates
@@ -180,12 +183,13 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
     (ER's dimension mechanism); active world = player mapId (walkable) or explicit bundle (marker); ER's map
     is BAKED `WorldMapTile` DDS sheets (overworld/UG/DLC = separate dimensions), so custom worlds supply
     their own image/grid. Walkable worlds also need the ADD-geom frontier (pivot 2, Windows RE).
-- **`goblin_world_bundle` TOML load likely BROKEN under Proton — not verified, migrate.** It uses the
-  exceptions-ON `ifstream+parse(string)` path that virtual_worlds C3 just DISPROVEN (returns an empty table
-  under Proton). `test_world_editor.py` 24/24 never exercises a real cold-boot reload (saves+applies the
-  in-memory bundle in one session), so the on-disk load is untested. Fix: switch `goblin_world_bundle.cpp`
-  to `#define TOML_EXCEPTIONS 0` + `toml::parse_file` (like `custom_items` / `virtual_world`) and add a
-  genuine save→reboot→load test. See `docs/memory/tooling/toml-parse-file-proton-bug.md`.
+- **✅ `goblin_world_bundle` TOML load FIXED + TESTED 2026-07-04.** Migrated to `#define TOML_EXCEPTIONS 0`
+  + `toml::parse_file` (was the exceptions-ON `ifstream+parse(string)` path virtual_worlds C3 DISPROVEN).
+  New `tools/rpc_tests/test_world_bundle.py` = the missing genuine save→reboot→load (boot-1 record 1 clone +
+  1 set + `bundle save` → cold boot → boot-2 `bundle status` reads `clones=1 sets=1` FROM DISK): **E2E 4/4
+  under Proton.** So ALL DLL TOML configs now use the only-working `TOML_EXCEPTIONS 0` path. NB the bundle
+  lives in `<ERR_ROOT>/dll/offline/` (the DLL's own folder), NOT `mod/`. See
+  `docs/memory/tooling/toml-parse-file-proton-bug.md`.
 - **F1 category list → GRID LAYOUT (followup, not started).** The Markers-tab category list is a checkbox
   tree; with many custom worlds/categories it overflows into a long scroll. Replace with a GRID of
   icon-tiles (the category icon we just added as the tile, toggle visibility on click, checkmark/dim

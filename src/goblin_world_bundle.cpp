@@ -5,6 +5,11 @@
 #include <vector>
 
 #include <spdlog/spdlog.h>
+#define TOML_EXCEPTIONS 0  // parse errors returned as a result, not thrown — the ONLY config that parses
+                           // an on-disk TOML correctly under Proton. The exceptions-ON default silently
+                           // returns an EMPTY table for BOTH parse_file AND parse(string) on this Wine
+                           // build (disproven the old ifstream+parse mitigation). See
+                           // toml-parse-file-proton-bug.md.
 #include <toml++/toml.hpp>
 
 #include "goblin_inject.hpp"      // reset_lot_reader
@@ -119,27 +124,18 @@ namespace goblin::world_bundle
 
     bool load(const std::filesystem::path &path)
     {
-        // Read the file ourselves (std::ifstream, the mirror of save()'s ofstream — proven to resolve
-        // the path under Wine) and parse the STRING. toml::parse_file's own file open returned an empty
-        // table for a valid file under Proton, so we don't use it. Exceptions ON → catch parse errors.
-        std::ifstream in(path, std::ios::binary);
-        if (!in)
+        // TOML_EXCEPTIONS 0 + parse_file — the config custom_items / virtual_world proved works under
+        // Proton. The old ifstream+parse(string) mitigation is DISPROVEN (also returns an empty table in
+        // the exceptions-ON config under Wine). See toml-parse-file-proton-bug.md.
+        auto result = toml::parse_file(path.string());
+        if (!result)
         {
-            spdlog::error("[WORLDBUNDLE] load: cannot open {}", path.string());
+            const auto &err = result.error();
+            spdlog::error("[WORLDBUNDLE] load {}: parse error: {} (line {})", path.string(),
+                          std::string(err.description()), err.source().begin.line);
             return false;
         }
-        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        toml::table root;
-        try
-        {
-            root = toml::parse(content);
-        }
-        catch (const toml::parse_error &e)
-        {
-            spdlog::error("[WORLDBUNDLE] load {}: parse error: {}", path.string(),
-                          std::string(e.description()));
-            return false;
-        }
+        const toml::table &root = result.table();
         std::vector<CloneOp> clones;
         std::vector<SetOp> sets;
         if (auto *arr = root["clone"].as_array())
