@@ -2,6 +2,7 @@
 
 #include "goblin_inject.hpp"   // get_player_world_pos (local ray origin) + get_player_map_pos (world)
 #include "re_signatures.hpp"   // AOB-first FUNC resolution (CASTRAY_FN) w/ RVA cross-check
+#include "goblin_bench.hpp"    // GOBLIN_BENCH / _QUIET — localize the sampler's per-frame cost
 
 #include <spdlog/spdlog.h>
 
@@ -38,6 +39,7 @@ std::atomic<bool> g_sample_pending{false};   // request → capture-frame-and-bu
 float g_req_extent = 4096.f;
 int   g_req_res = 48;
 bool g_sampling = false;                      // actively casting queued cells
+void *g_run_ctx = nullptr;                     // ctx resolved ONCE per run (start_sample) — reused per cell
 std::vector<std::pair<float, float>> g_queue; // world XZ cells still to cast
 size_t g_qi = 0;
 std::vector<Cell> g_accum;                     // cells cast this run (world XZ)
@@ -202,6 +204,7 @@ namespace
 // Capture the player frame + build the world-XZ cell queue. Runs on the game thread.
 bool start_sample()
 {
+    GOBLIN_BENCH("heightfield.start_sample");
     int area = 0, grp = 0;
     float wx = 0.f, wz = 0.f;      // player WORLD XZ (vmap frame)
     float lx = 0.f, ly = 0.f, lz = 0.f;  // player LOCAL XYZ (cast frame)
@@ -209,6 +212,16 @@ bool start_sample()
         !goblin::get_player_world_pos(lx, ly, lz))
     {
         spdlog::warn("[HEIGHTFIELD] sample: no player pos (not in-world)");
+        return false;
+    }
+    // Resolve ctx ONCE per run (not per cell): the sample runs map-closed / idle, so the ctx pointer
+    // isn't being torn by the game thread (the torn-read hazard only bites during movement) — one
+    // clean read here, reused for every cast, drops ~2 self-RPM reads per cell off the present thread.
+    if (!g_ready.load()) resolve();
+    g_run_ctx = resolve_ctx();
+    if (!g_run_ctx)
+    {
+        spdlog::warn("[HEIGHTFIELD] sample: ctx unresolved (pre-world?)");
         return false;
     }
     g_world0x = wx; g_world0z = wz;
@@ -234,13 +247,14 @@ bool start_sample()
     // CONTROL: cast at the exact player local (the D2.1-probe condition) to confirm the cast still
     // works from this path/session before the grid loop.
     RayHit ctl{};
-    bool cok = cast_down(lx, ly + 2000.f, lz, 4000.f, FILTER_GROUND, ctl);
+    bool cok = cast_with_ctx(g_run_ctx, lx, ly + 2000.f, lz, 4000.f, FILTER_GROUND, ctl);
     spdlog::info("[HEIGHTFIELD] sample CONTROL @player-local: hit={} y={:.2f}", cok, ctl.pt[1]);
     return true;
 }
 
 void step_sample()
 {
+    GOBLIN_BENCH_QUIET("heightfield.step_sample");  // per-tick, aggregate-only (no per-frame log flood)
     int done = 0;
     for (; g_qi < g_queue.size() && done < kCellsPerTick; ++g_qi, ++done)
     {
@@ -250,7 +264,7 @@ void step_sample()
         const float lz = g_local0z + (cwz - g_world0z);
         RayHit h{};
         Cell c{cwx, cwz, 0.f, 0.f, 1.f, 0.f, false};
-        bool got = cast_down(lx, g_local0y + 2000.f, lz, 4000.f, FILTER_GROUND, h);
+        bool got = cast_with_ctx(g_run_ctx, lx, g_local0y + 2000.f, lz, 4000.f, FILTER_GROUND, h);
         if (g_qi < 3)
             spdlog::info("[HEIGHTFIELD] DBG cell{} world=({:.0f},{:.0f}) local=({:.1f},{:.1f}) "
                          "yhi={:.1f} -> hit={} y={:.2f} nrm=({:.2f},{:.2f},{:.2f})",

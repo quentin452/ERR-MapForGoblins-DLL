@@ -93,6 +93,12 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
   Water = per-region `GXSR WaterInteractionManager`/`WaterHeightMap` (no global plane → use a sea-level
   heuristic first). Findings: `windows_terrain_raycast_heightfield_re_findings.md`. Runtime (Linux): must call
   on the game thread; confirm `0x5e` excludes objects; pick sea-level const.
+- **Far-terrain elevation (the "fake 3D" distant terrain) — OPEN, `far_terrain_heightmap_re_prompt.md`.** The
+  raycast above is **loaded-region-only** (it queries physics collision, streamed in a small radius). The
+  distant terrain you SEE is visual LOD with **no collision** → the cast can't reach it, so a collision
+  heightfield can never cover the visible far map. Full-map relief needs the far-LOD **heightmap source** the
+  renderer uses (a resident height texture, or a disk no-bake asset — maybe a sibling of the `71_MapTile`
+  color archive). Near field = the raycast; far field = this. Mod-agnostic (read the active install, not a bake).
 - **WorldMapTile placement/rect — SOLVED (static, calibration fixed 2026-07-04).** The engine positions
   tiles on a `floor(mapU/cellSize)` grid with a **FLIPPED Z axis**, base 0: `gridX = clamp(floor(mapU/cs),
   0, N-1)`, `gridZ = clamp((N-1) − floor(mapV/cs), 0, N-1)`, per-tier `cs/N = {256/41, 342/31, 1288/9}`

@@ -113,7 +113,12 @@ ctx, **NO game-thread hook needed**. The entire "find a safe game-thread gamepla
    Screenshot-verified: 791 shaded quads around the player, markers layered on top. **Gotcha:** relief
    gates to `active_world==0`, so a persisted active custom world hides it — select Base ER. Sea/biome
    tint deferred (currently shaded grey only).
-3. **D2.4 coverage extension + persistence** (accumulate as the player warps; log nodata).
+3. **D2.4 coverage extension + persistence** (accumulate as the player warps; log nodata). NB the raycast is
+   fundamentally **loaded-region-only** (collision) — it can NEVER cover the distant terrain you SEE (that's
+   visual LOD with no collision, "fake 3D"). Warp-accumulate (now automatable via the `warp_xyz` RPC) extends
+   coverage the slow way; the COMPLETE far-map source is the far-LOD heightmap → `docs/re/far_terrain_heightmap_re_prompt.md`.
+   Within the player's block, misses are the ±2000 vertical window (widen it) + sea (filter 0x5e skips water →
+   classify miss-under-sealevel as sea, don't "fix"), NOT frame drift.
 
 The primitive is proven; this is now normal feature work, not RE. Good candidate for a focused session.
 
