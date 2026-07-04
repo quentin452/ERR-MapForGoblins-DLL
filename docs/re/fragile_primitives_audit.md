@@ -45,6 +45,12 @@ Rank danger by: *does it fail SILENTLY?* + *does it WRITE?* + *how hard does it 
    the on-disk save → save corruption / crash, silently. The inventory strip is the scariest (it edits
    what gets serialized). **Mitigation:** a layout canary (assert a neighbouring known field before the
    write); the strip already snapshots+restores 0x18 bytes, which bounds the blast radius.
+   - ✅ **Inventory chain canary DONE 2026-07-04** (`goblin_inventory.cpp` `verify_inventory_layout`):
+     asserts the EquipInventoryData structural invariants (`seg1 <= span`, plausible+aligned segment
+     bases, last node readable at stride 0x18) before `strip_goods`/`goods_count` trust the chain. Latches
+     the OK result (process-stable → ~free after first pass); a conclusive violation logs `[INVLAYOUT]
+     … FAILED` once and DISABLES the strip. Live-verified: `canary OK (seg1=384 span=435)`, strip
+     round-trips. This is the reference pattern for the remaining write-struct canaries.
 
 ## Tier A — as insidious as RVA, but the LARGEST surface (silent, undetected)
 
@@ -82,6 +88,7 @@ fragile primitive. Recommend: leave unless a broader cross-platform pass wants `
 ## Suggested order (highest danger-per-effort first)
 1. ~~The 2 grace-suppression **hooked RVAs** (tier S-2)~~ ✅ DONE 2026-07-04 (flag-gated dump, not trampoline).
 2. The 2 engine **vtable slots** (tier S-1: geom setter 26, grace SetTo vt[1]) — resolve/assert from a ctor AOB. ← NEXT
-3. A few **layout canaries** on the hottest write structs (tier S-3 inventory strip) + hottest read chains (tier A).
+3. A few **layout canaries** on the hottest write structs — ✅ inventory strip DONE (the reference
+   pattern); remaining: WorldGeomIns transform (+0x220 move write) + the hottest read chains (tier A).
 4. Continue the RVA backlog's PHYSWORLD slot + vtable/slot set.
 Field-offset mass-annotation and QPC→chrono are explicitly NOT worth doing.
