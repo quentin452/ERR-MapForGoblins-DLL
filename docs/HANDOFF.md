@@ -417,6 +417,20 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   confirms Clips sessions per ER launch) filling a disk buffer during REAL gameplay; user disabling Clips is
   the fix. To re-confirm if it recurs: watch deleted-open files by REAL `st_blocks` (not logical size), while
   actually playing. Don't re-investigate our code.
+- **Terrain / Havok collision WRITE — NEW frontier, first probe scoped + partly RE'd (static, 2026-07-04,
+  `docs/re/windows_terrain_heightfield_write_re_{prompt,findings}.md`).** The write counterpart to the
+  read-only heightfield raycast: change collision GEOMETRY (deform ground / add a platform). **Static done:**
+  RTTI inventory of the full `hknp` shape+body toolkit; terrain is a **baked `hknpCompressedMeshShape`**
+  (vtable er+0x2eeb908) ⇒ **Route A (deform-in-place) is a near-certain DEAD END** (an editable
+  `hknpHeightFieldShape` er+0x2ee2a18 also exists — the live shape-vtable read decides). **Route B (add a
+  dynamic collision body) is the path** and reuses the geom-spawn shape-of-work. `CSPhysWorld` ctor
+  `FUN_140c6f120` mapped: **`hknpWorld*` @ `CSPhysWorld+0x08`** (confirms the raycast `ctx+8`), hknpWorld ctor
+  `FUN_1418a6760`, world event slots `FUN_1418ae7d0`, shape-tag codec `hknpUFMShapeTagCodec<3,5,8>`
+  (`FUN_14187dc50`). Route B shapes = `hknpBoxShape`/`hknpSphereShape`; vehicle = `CSPhysIns@CS` (~0x60B) +
+  DLRF factory. **⇒ NEXT (Linux, decisive):** (a) read a live ground-hit body's shape vtable → confirm mesh
+  vs heightfield; (b) dump the live `hknpWorld` vtable (er+0x2eedc78) → locate `addBody`; (c) `add_collision
+  <dx dy dz>` box smoke test verified with the existing `hf_probe` raycast. Frame is Havok BLOCK-LOCAL. The
+  only static gap left = the exact `addBody` slot (easier live).
 
 - **Dev "creative mode" mini-track — SCOPED 2026-07-03 (do after ADD; not on ADD's critical path).** Two
   small/moderate RE items that together give a dev sandbox loop (warp into a throwaway map + fly around +
