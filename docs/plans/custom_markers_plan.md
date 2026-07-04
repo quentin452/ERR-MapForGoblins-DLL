@@ -47,13 +47,15 @@ the warp findings + `warp` (LuaWarp) already work for graces; a coord-warp with 
      native map-point sprite by name (used for graces). Need the exact lost-runes/bloodstain symbol name.
      *USER to confirm which `.dcx` icon is the rune-loss one.*
    - Draw ONE at a time (a new death replaces it; clear on pickup — later). Same store + minimap path.
-2. **Other-player icons (multiplayer)** — show other players (co-op/invasion). SOURCE CONFIRMED 2026-07-04:
-   NOT GameDataMan (that's single-player save data — inventory/stats/bloodstain/flags). Other players are
-   **ChrIns entries in WorldChrMan** (already resolved). Path: walk WorldChrMan's chr list, filter by
-   chrType (host/coop/invader), read pos @ ChrIns+0x6C0 (same offset as LocalPlayer). Native icons found:
-   `MENU_MAP_Host/Guests/Coop_01-02/Friend_00-03/Enemy_00-03/Raid_01-02`. SAME for the local **player icon**:
-   today minimap/vmap draw our RED arrow → use the native "you are here" glyph (`MENU_MAP_Player_02`+`Bearing`,
-   rotated by yaw via AddImageQuad) once wired.
+2. **Player icons — split into (a) achievable now, (b) RE effort** (recon 2026-07-04):
+   - **(a) Native LOCAL player cursor** (replace our red arrow) — NO new RE. We have pos + yaw; draw
+     `MENU_MAP_Player_02` (effigy) + `MENU_MAP_Bearing` (arrow, ROTATED by yaw via `dl->AddImageQuad` — 4
+     rotated corners; calibrate a +π/2 offset) instead of the hand-made red triangle, on vmap + minimap.
+   - **(b) OTHER players (co-op/invaders/phantoms)** — real RE. NOT GameDataMan (single-player save). Other
+     players are ChrIns in WorldChrMan, but there's NO CT recipe for the list: must RE WorldChrMan's ChrSet
+     (the ChrIns array + count), filter by chrType/handle (player vs NPC vs local), read pos @ ChrIns+0x6C0.
+     ALSO hard to test (needs a live MP session with phantoms — the offline dev box has none). Track-2-ish.
+     Native icons found: `MENU_MAP_Host/Guests/Coop_01-02/Friend_00-03/Enemy_00-03/Raid_01-02`.
 
 ### vmap not resolution-aware (2026-07-04)
 The minimap scales everything by `uiScale = screenH/1080` (icons/size follow the resolution). The vmap
