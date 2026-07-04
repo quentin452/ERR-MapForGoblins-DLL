@@ -65,6 +65,10 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
 5. **Custom mob PLACEMENT** — NpcParam is param-driveable, but placing a custom enemy is MSB write (#1).
 
 ### Smaller tactical gaps (see HANDOFF)
+- **Loading-screen / world-load state (stuck-load watchdog)** — detect a load that never finishes (bad
+  warp target, missing asset). The freeze watchdog misses it (present keeps beating during a load). Needs
+  a load-in-progress flag + a progress/phase signal + the target mapId. Prompt:
+  `windows_loading_screen_state_re_prompt.md`.
 - **Terrain raycast → heightfield (procedural relief map) — SOLVED (static, 2026-07-04).** Down-ray primitive
   `FUN_140c70360(ctx, filter, start, segDir, &pt, &nrm, &dist)→hit` (Havok `hknpWorld::castRay` `FUN_14187d960`
   "TtWorldCastRay"); `ctx = *(DAT_143d76060 + 0x98)` (`CS::PhysWorld` singleton, RTTI `PhysWorld@CS@@`). END =
