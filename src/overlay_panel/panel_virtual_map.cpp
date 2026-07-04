@@ -699,8 +699,9 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                 s_cam_x = c.wx; s_cam_z = c.wz; s_group = c.group;
                 if (s_zoom < 0.10f) s_zoom = 0.10f;
             }
-            ImGui::SameLine();
-            if (ImGui::SmallButton(tr("TP"))) goblin::overlay_api::warp_to_world_xz(c.wx, c.wz);
+            // TP button hidden: coordinate-teleport doesn't exist in ER (warp_to_world_xz is an
+            // intra-region local-pos poke, unreliable). Keep only "Go" (pan) until a proper streaming
+            // teleport lands — see the Track-B fast-travel note in docs/plans/custom_markers_plan.md.
             ImGui::SameLine();
             if (ImGui::SmallButton(tr("Delete"))) del = i;
             ImGui::Separator();
