@@ -86,7 +86,7 @@ bool to_grace(int32_t grace_id, int32_t offset)
         return false;
     }
 
-    uint32_t code = static_cast<uint32_t>(grace_id + offset);  // r8d = grace_id + offset (CT: offset=-1000)
+    uint32_t code = static_cast<uint32_t>(grace_id + offset);  // r8d = grace_id + offset (offset=0 = entity id direct)
     // Arm the load watchdog BEFORE the call: a hung fast-travel keeps the loading screen
     // rendering (freeze watchdog blind), so this catches the "infinite loading" and dumps
     // all-thread stacks + the target grace for diagnosis.

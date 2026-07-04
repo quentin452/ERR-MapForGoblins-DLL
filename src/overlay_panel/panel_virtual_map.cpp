@@ -52,7 +52,7 @@ namespace
     int s_group = 0;
     bool s_show_icons = true;      // draw real category icons (native/atlas) vs plain colour dots
     uint64_t s_warp_pending = 0;   // grace rowId to warp to; serviced at the next frame's top (not mid-draw)
-    int s_warp_offset = -1000;      // added to the grace entity id before LuaWarp (CT default -1000; tune live)
+    int s_warp_offset = 0;          // added to the grace entity id before LuaWarp; 0 = entity id direct (ground truth; CT's -1000 was wrong)
     bool s_fit_requested = false;  // one-shot: on next draw, frame the selected group's markers
     bool s_focus_player = false;   // one-shot: on next draw, centre the camera on the player + their group
     int s_drawn = 0;               // marker count drawn last frame (toolbar readout)

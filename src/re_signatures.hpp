@@ -99,9 +99,10 @@ namespace goblin::sig
     // ── Grace warp (fast-travel to a site of grace — dev-world navigation) ──
     // From the Hexinton CT ("Coinsworth"). LuaWarp_01 = the game's Lua-event warp: proper
     // area-load fast-travel. AOB anchors on the previous fn's `C3` ret; the callable is
-    // MATCH + 2. Convention (from the CT's Warp stub): LuaWarp_01(rcx=[CSLuaEventManager+0x18],
-    // rdx=[CSLuaEventManager+0x08], r8d = graceId - 1000). graceId = the bonfire entity id
-    // (e.g. 1042362951 = The First Step, 10002951 = Margit).
+    // MATCH + 2. Convention: LuaWarp_01(rcx=[CSLuaEventManager+0x18], rdx=[CSLuaEventManager+0x08],
+    // r8d = grace id). graceId = the bonfire entity id (e.g. 1042362951 = The First Step, 10002951 =
+    // Margit). NOTE: the CT documented r8d = graceId-1000, but that lands ONE BONFIRE OFF (same map
+    // cell); ground truth (2026-07-04) is the bonfireEntityId DIRECTLY (offset 0).
     inline constexpr const char *LUA_WARP =
         "C3 ?? ?? ?? ?? ?? ?? 57 48 83 EC ?? 48 8B FA 44";
     // CSLuaEventManager singleton (mov rax,[rip+disp]; disp@+3, instr len 7 → slot = match+7+disp).

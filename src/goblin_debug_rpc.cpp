@@ -996,14 +996,13 @@ namespace goblin::debug_rpc
             }
             // warp <graceId> [offset] — fast-travel to a site of grace (dev-world nav). graceId = the
             // bonfire entity id (e.g. 1042362951 = The First Step, 10002951 = Margit). Optional offset
-            // (default -1000) is added before LuaWarp_01 — use it to tune the bonfire→warp-point offset
-            // empirically (e.g. `warp 1043371950 0` vs `warp 1043371950 -1000` to find which lands on the
-            // grace). Must be in-world + the grace unlocked. grep [WARP] for the call result.
+            // (default 0 = entity id direct, the ground-truthed value; the CT's -1000 landed one bonfire
+            // off) is added before LuaWarp_01. Must be in-world + the grace unlocked. grep [WARP].
             if (cmd == "warp")
             {
                 std::string id_s = next_token(rest);
                 if (id_s.empty()) return "err usage: warp <graceId> [offset] (e.g. 1042362951 = The First Step)";
-                int32_t gid = 0, off = -1000;
+                int32_t gid = 0, off = 0;
                 try { gid = static_cast<int32_t>(std::stol(id_s, nullptr, 0)); }
                 catch (...) { return "err bad graceId"; }
                 std::string off_s = next_token(rest);
