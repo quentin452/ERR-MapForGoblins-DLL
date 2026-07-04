@@ -27,6 +27,7 @@
 #include "goblin_quest_steps.hpp"     // generated::NpcQuest
 #include "worldmap/loot_disk.hpp"     // DiskLootState
 #include "goblin_world_editor.hpp"    // WEAsset, WEGoods (World Editor picker enumeration)
+#include "goblin_heightfield.hpp"     // heightfield::Cell (D2.3 relief render on the vmap)
 
 namespace goblin::overlay_api
 {
@@ -152,6 +153,10 @@ namespace goblin::overlay_api
     GOBLIN_RENDER_API std::vector<goblin::GraceCandidate> grace_candidates();
     GOBLIN_RENDER_API void set_grace_from_candidate(size_t index);
     GOBLIN_RENDER_API const std::vector<goblin::LiveGrace> &live_graces();
+    // ── Heightfield relief (D2.3): the vmap draws the last completed sample as hillshade ──
+    GOBLIN_RENDER_API size_t heightfield_snapshot(std::vector<goblin::heightfield::Cell> &out);
+    GOBLIN_RENDER_API float heightfield_cell_step();
+    GOBLIN_RENDER_API void heightfield_request_sample(float extent, int res);
     GOBLIN_RENDER_API bool marker_world_pos(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz,
                           int &out_area, float &world_x, float &world_z,
                           bool conv_underground = false);

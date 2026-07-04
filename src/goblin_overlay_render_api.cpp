@@ -194,6 +194,10 @@ namespace goblin::overlay_api
     size_t harvested_count() { return goblin::harvested_count(); }
     std::vector<int> harvested_ids(size_t max) { return goblin::harvested_ids(max); }
     std::vector<goblin::GraceCandidate> grace_candidates() { return goblin::grace_candidates(); }
+
+    size_t heightfield_snapshot(std::vector<goblin::heightfield::Cell> &out) { return goblin::heightfield::snapshot(out); }
+    float heightfield_cell_step() { return goblin::heightfield::snapshot_step(); }
+    void heightfield_request_sample(float extent, int res) { goblin::heightfield::request_sample(extent, res); }
     void set_grace_from_candidate(size_t index) { goblin::set_grace_from_candidate(index); }
     const std::vector<goblin::LiveGrace> &live_graces() { return goblin::live_graces(); }
     bool marker_world_pos(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz,

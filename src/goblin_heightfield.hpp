@@ -51,6 +51,9 @@ void request_sample(float extent, int res);
 // count; fills `out`. Empty until a sample completes.
 size_t snapshot(std::vector<Cell> &out);
 
+// World-units per cell (quad size) of the last completed field. 0 until a sample completes.
+float snapshot_step();
+
 // Run pending heightfield work on the GAME thread. Call from the world-map step hook (hk_c32f0).
 void tick_game_thread();
 

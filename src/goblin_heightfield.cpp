@@ -48,6 +48,7 @@ constexpr int kCellsPerTick = 48;             // rate-limit: cells cast per game
 
 std::mutex g_snap_mtx;
 std::vector<Cell> g_snapshot;                  // last completed field (renderer reads this)
+std::atomic<float> g_snap_step{0.f};           // world-units per cell of the last completed field (quad size)
 
 void resolve()
 {
@@ -192,6 +193,8 @@ size_t snapshot(std::vector<Cell> &out)
     return out.size();
 }
 
+float snapshot_step() { return g_snap_step.load(); }
+
 namespace
 {
 // Capture the player frame + build the world-XZ cell queue. Runs on the game thread.
@@ -211,6 +214,7 @@ bool start_sample()
 
     const int res = g_req_res;
     const float step = g_req_extent / static_cast<float>(res);
+    g_snap_step.store(step);
     const float half = g_req_extent * 0.5f;
     g_queue.clear();
     g_queue.reserve(static_cast<size_t>(res) * res);
