@@ -27,6 +27,7 @@
 #include "goblin_inject.hpp"   // goblin::world_map_open()
 #include "goblin_markers.hpp"   // goblin::markers::set_event_flag()
 #include "goblin_worldmap_probe.hpp"   // get_live_view() for the marker prototype
+#include "goblin_heightfield.hpp"      // tick_present() — heightfield present-thread probe (D2.2)
 #include "goblin_map_data.hpp"         // generated::MAP_ENTRIES (graces for Phase 1)
 #include "worldmap/grace_layer.hpp"      // goblin::worldmap::GraceLayer
 #include "worldmap/quest_npc_layer.hpp"  // goblin::worldmap::QuestNpcLayer
@@ -1990,6 +1991,9 @@ namespace
         // Service a vmap grace-warp queued by a double-click THIS frame — post-Render, same safe point as
         // the RPC pump (running warp mid-ImGui-draw froze the loading screen).
         goblin::overlay::panel::virtual_map_service_pending_warp();
+        // Heightfield present-thread probe (D2.2 experiment): no-op unless queued; casts only during
+        // gameplay (map closed). Tests whether a read-only ray-cast is safe off the present thread.
+        goblin::heightfield::tick_present();
 
         // Sidecar flag replay (slice 1b): SetEventFlag must run on the present thread, so
         // the poll-thread world-enter edge only QUEUES the replay; this drains it. No-op

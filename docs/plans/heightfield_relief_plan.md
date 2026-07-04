@@ -32,7 +32,33 @@ The on-disk `eldenring.exe` is Steam/VMProtect-wrapped → **cannot derive AOBs 
   produce byte signatures for `re_signatures.hpp`, so it survives a patch / works mod-agnostic.
 
 ## Slices
-### D2.1 — validate the primitive — ✅ DONE + LIVE-VERIFIED 2026-07-04 (`abddc05`+float-fix)
+### ⚠ D2.2 BLOCKED (2026-07-04) — RVA cast/ctx resolution is NOT reliable
+Building the grid sampler surfaced that the primitive only hit ONCE (abddc05) and never reproduced:
+- **abddc05 hit was real** (frac 0.527 = the 2088→10.67 y-drop / 4000 — geometry-consistent, not garbage).
+- **Every run since misses** — game-thread (hk_c32f0, map open: sample CONTROL + all 1600 cells) AND
+  present-thread (gameplay, map closed). Same player spot each time.
+- **ctx diagnostic (5 interpretations, `diag_ctx`):** `*slot`→inst=`0x6ff0800` (a real object: `*(inst)`
+  is a vtable in the exe), but NONE of {`*(inst+0x98)`, `*(slot+0x98)`, `inst`, `*(inst)`, `*(inst+0x8)`}
+  hit, and `*(inst+0x98)` is **VOLATILE** (changes every read: 0x1bd575600 ↔ 0xd725180) — a torn/transient
+  value, not a stable world-holder pointer.
+- Likely causes (compounding): the ctx field is updated by the game thread so an off-thread read is torn;
+  AND/OR the RVA-resolved cast fn / singleton slot is subtly wrong (the on-disk exe is packed, so the
+  RVAs come from a decrypted Ghidra dump whose runtime layout we haven't verified); AND/OR collision
+  streaming state.
+
+**Unblock path (proper runtime RE, not more RVA guessing):**
+1. **find-what-accesses** (debug RPC) on the cast site during a KNOWN-good in-game cast (walk into
+   something / the AEG streamer) → capture the REAL ctx pointer + how it's derived + the exact fn. This
+   is the tool AGENTS.md points to for exactly this.
+2. Verify the runtime module layout: `mem_dump` at `er+0xc70360` and confirm it's the expected function
+   prologue (rule out a packer RVA mismatch); if wrong, derive the fn + singleton by AOB from live memory.
+3. Only then resume D2.2 (sampler code below is structurally ready — it just needs a cast that reliably
+   hits, on the correct thread).
+
+The D2.1/D2.2 code (`goblin_heightfield.*`, RPCs `hf_probe`/`hf_sample`/`hf_probe_present`, `diag_ctx`)
+stays as the harness for that RE.
+
+### D2.1 — validate the primitive — ⚠ HIT ONCE, NOT REPRODUCIBLE (see D2.2 BLOCKED above)
 Cold-boot RPC test (`hf_probe` → open map → `[HEIGHTFIELD]` log) confirmed:
 - Resolution OK (cast fn + PhysWorld singleton; ctx = *(*(er+0x3d76060)+0x98) — both plausible ptrs).
 - **Cast HITS with a valid UP normal** `(0.075, 0.994, -0.085)` = walkable ground. Ran on the GAME

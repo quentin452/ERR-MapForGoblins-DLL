@@ -1020,6 +1020,27 @@ namespace goblin::debug_rpc
                 goblin::heightfield::request_probe();
                 return "ok hf_probe queued — open the map; grep [HEIGHTFIELD] in the log";
             }
+            // hf_probe_present — like hf_probe but fires on the PRESENT thread during GAMEPLAY (map
+            // CLOSED). Tests whether a read-only cast is safe off the game thread (map-open unloads
+            // collision, so the game-thread hk_c32f0 path can't sample). Do NOT open the map.
+            if (cmd == "hf_probe_present")
+            {
+                goblin::heightfield::request_present_probe();
+                return "ok hf_probe_present queued — stay in gameplay (map CLOSED); grep [HEIGHTFIELD]";
+            }
+            // hf_sample [extent] [res] — queue a heightfield GRID sample around the player (D2.2).
+            // extent = world-units square side (default 4096), res = cells/side (default 48). Runs on the
+            // game thread → OPEN THE MAP after issuing. Result → [HEIGHTFIELD] sample DONE (hit%, Y range).
+            if (cmd == "hf_sample")
+            {
+                float extent = 4096.f; int res = 48;
+                std::string es = next_token(rest), rs = next_token(rest);
+                if (!es.empty()) { try { extent = std::stof(es); } catch (...) { return "err bad extent"; } }
+                if (!rs.empty()) { try { res = std::stoi(rs); } catch (...) { return "err bad res"; } }
+                goblin::heightfield::request_sample(extent, res);
+                return "ok hf_sample queued (extent " + std::to_string((int)extent) + ", res " +
+                       std::to_string(res) + ") — open the map; grep [HEIGHTFIELD]";
+            }
             // mem_dump <hexaddr> <len> — raw RPM hex-dump of an absolute address (follow pointers /
             // diff to locate the goods inventory). len capped at 256.
             if (cmd == "mem_dump")
