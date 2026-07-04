@@ -12,7 +12,8 @@
 
 #include "panel_internal.hpp"
 #include "goblin_i18n.hpp"
-#include "goblin_overlay_render_api.hpp"  // lookup_text_utf8 / category_label (marker tooltips)
+#include "goblin_overlay_render_api.hpp"  // lookup_text_utf8 / category_label / warp_to_grace
+#include "goblin_map_data.hpp"            // generated::Category::WorldGraces (click-to-warp)
 #include "worldmap/marker_layer.hpp"   // Marker / MarkerLayer (overlay_layers → markers to project)
 #include "worldmap/maptile.hpp"        // maptile ART reader (endgame phase-1a slice 2/3)
 #include "goblin_worldmap_probe.hpp"   // live converter affine + map-space extent (slice 3 tile placement)
@@ -49,6 +50,7 @@ namespace
     // slice C ties markers to a custom world). group = isDLC*2|isUG → 0/1/2/3.
     int s_group = 0;
     bool s_show_icons = true;      // draw real category icons (native/atlas) vs plain colour dots
+    uint64_t s_warp_pending = 0;   // grace rowId to warp to; serviced at the next frame's top (not mid-draw)
     bool s_fit_requested = false;  // one-shot: on next draw, frame the selected group's markers
     int s_drawn = 0;               // marker count drawn last frame (toolbar readout)
     const char *const kGroupNames[4] = {"Base overworld", "Base underground", "DLC overworld",
@@ -342,6 +344,16 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     }
     if (!s_open) return;
 
+    // Service a pending grace warp (queued last frame by a double-click) BEFORE building this frame's UI —
+    // warp tears down menu state, so it must not run mid-ImGui-draw.
+    if (s_warp_pending)
+    {
+        uint64_t gid = s_warp_pending; s_warp_pending = 0;
+        bool ok = goblin::overlay_api::warp_to_grace((int32_t)gid);
+        s_tile_status = ok ? ("warped to grace " + std::to_string(gid))
+                           : ("warp failed (locked/undiscovered?) " + std::to_string(gid));
+    }
+
     ImGui::SetNextWindowSize(ImVec2(720.0f, 560.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImVec2(470.0f, 40.0f), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin(tr("MapForGoblins \xE2\x80\x94 Virtual World Map (WIP)"), &s_open))
@@ -538,8 +550,8 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     };
     const float icoHalf = 8.0f;  // on-canvas icon size (px)
     // Hover tooltip: track the marker nearest the cursor (within a pixel radius) while drawing.
-    float hoverBestD = 1e18f; int hoverName = -1, hoverCat = -1; std::string hoverV;
-    auto plot = [&](float wx, float wz, uint32_t col, int cat, int nameId, const char *vname) {
+    float hoverBestD = 1e18f; int hoverName = -1, hoverCat = -1; std::string hoverV; uint64_t hoverRow = 0;
+    auto plot = [&](float wx, float wz, uint32_t col, int cat, int nameId, const char *vname, uint64_t rowId) {
         if (wx < minx) minx = wx;
         if (wx > maxx) maxx = wx;
         if (wz < minz) minz = wz;
@@ -557,7 +569,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         {
             float dx = ps.x - io.MousePos.x, dy = ps.y - io.MousePos.y, d = dx * dx + dy * dy;
             if (d < hoverBestD && d < icoHalf * icoHalf * 2.0f)
-            { hoverBestD = d; hoverName = nameId; hoverCat = cat; hoverV = vname ? vname : ""; }
+            { hoverBestD = d; hoverName = nameId; hoverCat = cat; hoverV = vname ? vname : ""; hoverRow = rowId; }
         }
     };
     if (active_world == 0)
@@ -566,7 +578,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         {
             if (!L) continue;
             for (const goblin::worldmap::Marker &m : L->markers())
-                if (m.group == s_group) plot(m.worldX, m.worldZ, m.color, m.category, m.name_id, nullptr);
+                if (m.group == s_group) plot(m.worldX, m.worldZ, m.color, m.category, m.name_id, nullptr, m.row_id);
         }
     }
     else
@@ -574,22 +586,30 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         goblin::vworld::World w;
         if (goblin::vworld::get_world(active_world, w))
             for (const goblin::vworld::Marker &m : w.markers)
-                plot(m.x + w.originX, m.z + w.originZ, m.color, m.category, -1, m.name.c_str());  // C1 identity
+                plot(m.x + w.originX, m.z + w.originZ, m.color, m.category, -1, m.name.c_str(), 0);  // C1 identity
     }
-    // Tooltip for the hovered marker (name via FMG + category label).
+    // Tooltip for the hovered marker (name via FMG + category label). A grace (has a warp rowId) also
+    // offers double-click → fast-travel (the make-or-break map feature).
+    constexpr int kGraceCat = static_cast<int>(goblin::generated::Category::WorldGraces);
+    const bool hoverGrace = (hoverCat == kGraceCat && hoverRow != 0);
     if (hoverBestD < 1e17f)
     {
         std::string nm = !hoverV.empty() ? hoverV
                          : (hoverName > 0 ? goblin::overlay_api::lookup_text_utf8(hoverName) : std::string());
         const char *clab = hoverCat >= 0 ? goblin::overlay_api::category_label(hoverCat) : nullptr;
-        if (!nm.empty() || clab)
+        if (!nm.empty() || clab || hoverGrace)
         {
             ImGui::BeginTooltip();
             if (!nm.empty()) ImGui::TextUnformatted(nm.c_str());
             else ImGui::TextDisabled("(unnamed)");
             if (clab) ImGui::TextDisabled("%s", clab);
+            if (hoverGrace) ImGui::TextColored(ImVec4(0.90f, 0.78f, 0.35f, 1.f), "double-click to warp");
             ImGui::EndTooltip();
         }
+        // Double-click a grace → fast-travel. Deferred to the next frame's top (warp tears down menu/UI
+        // state; firing it mid-ImGui-draw is unsafe). Double-click avoids the drag-pan click conflict.
+        if (hoverGrace && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+            s_warp_pending = hoverRow;
     }
     s_drawn = drawn;
     // Fit: frame the selected group's bbox (cam/zoom feed w2s next frame → 1-frame settle).

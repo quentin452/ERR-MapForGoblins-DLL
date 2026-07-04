@@ -18,6 +18,7 @@
 #include "goblin_param_edit.hpp"          // param_set_field bridge (World Editor)
 #include "goblin_world_bundle.hpp"        // world-bundle save/apply bridge (World Editor)
 #include "goblin_geom_move.hpp"           // live placement move bridge (World Editor)
+#include "goblin_warp.hpp"                // warp_to_grace bridge (vmap click-to-warp)
 #include "worldmap/loot_disk.hpp"
 #include "worldmap/map_entry_layer.hpp"   // rebuild_markers (refresh_markers RPC)
 #include "worldmap/name_fmg_en.hpp"
@@ -95,6 +96,7 @@ namespace goblin::overlay_api
     { return goblin::overlay::panel::virtual_map_load_lod(dim, lod, cap); }
     std::string virtual_map_load_resident() { return goblin::overlay::panel::virtual_map_load_resident(); }
     int virtual_map_dump_markers(const char *path) { return goblin::overlay::panel::dump_markers_csv(path); }
+    bool warp_to_grace(int32_t graceId) { return goblin::warp::to_grace(graceId); }
     void virtual_map_set_view(float camX, float camZ, float zoom)
     { goblin::overlay::panel::virtual_map_set_view(camX, camZ, zoom); }
     void virtual_map_set_flip(bool flipX, bool flipZ)
