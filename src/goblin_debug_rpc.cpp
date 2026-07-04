@@ -1076,6 +1076,18 @@ namespace goblin::debug_rpc
                 return std::string(b);
             }
             if (cmd == "death_clear") { goblin::death_marker::clear(); return "ok death_clear"; }
+            if (cmd == "map_rect")
+            {
+                // map_rect <MENU_MAP_name> — dump the parsed sheet sub-rect so a name can be cropped +
+                // previewed offline. Needs the map-point layout parsed (open the native map once first).
+                std::string nm = next_token(rest);
+                int x = 0, y = 0, w = 0, h = 0; std::string sheet;
+                bool ok = goblin::map_point_rect_by_name(nm, x, y, w, h, sheet);
+                char b[192];
+                std::snprintf(b, sizeof(b), "ok map_rect name=%s sheet=%s x=%d y=%d w=%d h=%d found=%d",
+                              nm.c_str(), sheet.c_str(), x, y, w, h, (int)ok);
+                return std::string(b);
+            }
             if (cmd == "bloodstain_probe")
             {
                 float x = 0, y = 0, z = 0; uint32_t map = 0; int32_t souls = 0;
