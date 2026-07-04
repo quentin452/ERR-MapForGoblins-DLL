@@ -1,6 +1,6 @@
 # RE coverage map — what of ELDEN RING is reverse-engineered, and what isn't
 
-Index + honest coverage map for `docs/re/`. **164 RE docs** live here. Two kinds:
+Index + honest coverage map for `docs/re/`. **165 RE docs** live here. Two kinds:
 - `*_re_findings.md` / `*_RESOLVED.md` — a SOLVED structure/function (the answer).
 - `*_re_prompt.md` / `*_analysis.md` — an OPEN or historical RE task handed to Ghidra/CE.
 
@@ -65,11 +65,14 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
 5. **Custom mob PLACEMENT** — NpcParam is param-driveable, but placing a custom enemy is MSB write (#1).
 
 ### Smaller tactical gaps (see HANDOFF)
-- **Terrain raycast → heightfield (procedural relief map)** — sample the LIVE 3D world with down-rays over an
-  XZ grid → hillshade, mod-agnostic (never stale, unlike baked tiles). Needs the raycast fn + a TERRAIN-only
-  filter + a water level; objects are EXCLUDED (we have them as markers/MSB). Lead `FUN_140c74c70` on
-  `DAT_143d76060` (AEG streamer cast, query 0x5d/0x67). Prompt:
-  `windows_terrain_raycast_heightfield_re_prompt.md`.
+- **Terrain raycast → heightfield (procedural relief map) — SOLVED (static, 2026-07-04).** Down-ray primitive
+  `FUN_140c70360(ctx, filter, start, segDir, &pt, &nrm, &dist)→hit` (Havok `hknpWorld::castRay` `FUN_14187d960`
+  "TtWorldCastRay"); `ctx = *(DAT_143d76060 + 0x98)` (`CS::PhysWorld` singleton, RTTI `PhysWorld@CS@@`). END =
+  start+segDir; returns ground point + surface normal (→ hillshade) + distance, in the marker world frame.
+  Terrain filter = **`0x5e`** (the engine's snap-to-ground value; AEG shape cast `0x5d/0x67`, char probe `0xe0`).
+  Water = per-region `GXSR WaterInteractionManager`/`WaterHeightMap` (no global plane → use a sea-level
+  heuristic first). Findings: `windows_terrain_raycast_heightfield_re_findings.md`. Runtime (Linux): must call
+  on the game thread; confirm `0x5e` excludes objects; pick sea-level const.
 - **WorldMapTile placement/rect — SOLVED (static, calibration fixed 2026-07-04).** The engine positions
   tiles on a `floor(mapU/cellSize)` grid with a **FLIPPED Z axis**, base 0: `gridX = clamp(floor(mapU/cs),
   0, N-1)`, `gridZ = clamp((N-1) − floor(mapV/cs), 0, N-1)`, per-tier `cs/N = {256/41, 342/31, 1288/9}`
