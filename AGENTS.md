@@ -21,6 +21,10 @@ runtime RE and in-game verification happen here (proven on Linux/Proton — the 
 the dev box). A background job can even cold-boot ER and run a self-contained RPC session.
 
 - **Command catalog + how to enable/drive it:** `docs/memory/tooling/rpc-commands.md`.
+- **⚠ FRESHNESS FIRST:** before RPC-verifying code you just changed, run `mfg.py rpc mfg_build` — `ping`
+  answers from a STALE DLL too (the listener lives, but the running DLL may predate your edits → your new
+  verbs are `unknown`). A rebuild needs a game **restart**/hot-reload to load; a redeploy alone keeps the
+  old DLL. Also confirm you're **in-world**, not the main menu (`status`). See the hardening note below.
 - **Driver:** `tools/mfg.py` (`rpc` one-shot / `repl` / `run <script>` / `test`). Enable with ini
   `[Debug] debug_rpc_port = 38700`.
 - **Scripting gotchas (mandatory):** `docs/memory/tooling/mfg-rpc-driver-hardening.md` — the game can
