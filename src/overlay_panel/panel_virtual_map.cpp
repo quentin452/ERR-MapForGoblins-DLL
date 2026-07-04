@@ -1237,8 +1237,8 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         // Death marker (dropped runes / bloodstain) — the NATIVE MENU_MAP_DropSoul sprite from the resident
         // map-symbol sheet (mod-agnostic; same resolve path as the grace glyph). Falls back to a red disc
         // until the sprite is resident (map opened once).
-        float dwx, dwz; int dgrp;
-        if (goblin::death_marker::get(dwx, dwz, dgrp) && dgrp == s_group)
+        float dwx, dwz; int dgrp, dsouls;
+        if (goblin::death_marker::get(dwx, dwz, dgrp, dsouls) && dgrp == s_group)
         {
             ImVec2 p = w2s(dwx, dwz);
             if (p.x >= origin.x && p.x <= canvas_end.x && p.y >= origin.y && p.y <= canvas_end.y)
@@ -1253,6 +1253,10 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     dl->AddCircleFilled(p, 6.0f, IM_COL32(200, 60, 60, 235));
                     dl->AddCircle(p, 6.0f, IM_COL32(255, 255, 255, 235), 0, 1.5f);
                 }
+                // Hover tooltip (drawn after the marker loop's tooltip, so it wins over the icon).
+                const ImVec2 mp = ImGui::GetIO().MousePos;
+                if (hovered && std::fabs(mp.x - p.x) <= h && std::fabs(mp.y - p.y) <= h)
+                    ImGui::SetTooltip("%s — %d %s", tr("Bloodstain"), dsouls, tr("runes"));
             }
         }
     }

@@ -55,6 +55,12 @@ the warp findings + `warp` (LuaWarp) already work for graces; a coord-warp with 
    today minimap/vmap draw our RED arrow → use the native "you are here" glyph (`MENU_MAP_Player_02`+`Bearing`,
    rotated by yaw via AddImageQuad) once wired.
 
+### vmap not resolution-aware (2026-07-04)
+The minimap scales everything by `uiScale = screenH/1080` (icons/size follow the resolution). The vmap
+(`panel_virtual_map.cpp`) uses FIXED px for its icons/pins/text — no uiScale, no FontGlobalScale. Readable at
+1080p, but tiny at 4K / huge at 720p (partly mitigated by the resizable window). TODO: thread a uiScale into
+the vmap draw (icon half, pin sizes, tooltip text) like the minimap does.
+
 ### Minimap icons too small (2026-07-04)
 `draw_minimap`: `half = 6px * uiScale * masterScale * iconScale`, clamped `[3px, 10px]`. At 1080p (uiScale=1)
 that's 12px icons capped hard at 10px — small (the death marker uses the same `half`, so it reads tiny too).

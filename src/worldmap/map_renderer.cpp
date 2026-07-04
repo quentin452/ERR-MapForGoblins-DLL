@@ -2699,8 +2699,8 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
     }
     // Death marker (DropSoul) on the minimap — native icon, edge-clamped like the rest.
     {
-        float dwx, dwz; int dgrp;
-        if (goblin::death_marker::get(dwx, dwz, dgrp) && dgrp == pgroup)
+        float dwx, dwz; int dgrp, dsouls;
+        if (goblin::death_marker::get(dwx, dwz, dgrp, dsouls) && dgrp == pgroup)
         {
             float dx = (dwx - pwx) * scale, dy = -(dwz - pwz) * scale;
             const float d = std::sqrt(dx * dx + dy * dy);

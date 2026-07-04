@@ -36,8 +36,8 @@ namespace goblin::death_marker
 // The single "you died here" marker (dropped runes / bloodstain), drawn with the native MENU_MAP_DropSoul
 // icon on the vmap + minimap. Set on death (get_player_map_pos), replaced by the next death, cleared on
 // pickup/manual. World-frame (map-space) so no chunk->world bridge needed.
-void set(float wx, float wz, int group);
-bool get(float &wx, float &wz, int &group);   // false = none active
+void set(float wx, float wz, int group, int souls);
+bool get(float &wx, float &wz, int &group, int &souls);   // false = none active; souls = runes waiting
 void clear();
 // Per-frame: reads player HP, and on the alive->dead edge records get_player_map_pos as the death spot.
 // Call every present frame (runs during gameplay, map closed). Cheap; no-op until the HP chain resolves.

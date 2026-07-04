@@ -72,18 +72,18 @@ namespace
 std::mutex g_dm_mtx;
 bool g_active = false;
 float g_wx = 0.f, g_wz = 0.f;
-int g_group = 0;
+int g_group = 0, g_souls = 0;
 }
-void set(float wx, float wz, int group)
+void set(float wx, float wz, int group, int souls)
 {
     std::lock_guard<std::mutex> lk(g_dm_mtx);
-    g_active = true; g_wx = wx; g_wz = wz; g_group = group;
+    g_active = true; g_wx = wx; g_wz = wz; g_group = group; g_souls = souls;
 }
-bool get(float &wx, float &wz, int &group)
+bool get(float &wx, float &wz, int &group, int &souls)
 {
     std::lock_guard<std::mutex> lk(g_dm_mtx);
     if (!g_active) return false;
-    wx = g_wx; wz = g_wz; group = g_group;
+    wx = g_wx; wz = g_wz; group = g_group; souls = g_souls;
     return true;
 }
 void clear()
@@ -104,6 +104,6 @@ void tick()
     const uint8_t areaNo = (mapid >> 24) & 0xFF, gx = (mapid >> 16) & 0xFF, gz = (mapid >> 8) & 0xFF;
     int out_area = 0; float wx = 0.f, wz = 0.f;
     if (!goblin::marker_world_pos(areaNo, gx, gz, x, z, out_area, wx, wz, /*conv_underground=*/true)) return;
-    set(wx, wz, goblin::marker_group_from(areaNo, out_area));
+    set(wx, wz, goblin::marker_group_from(areaNo, out_area), souls);
 }
 } // namespace goblin::death_marker
