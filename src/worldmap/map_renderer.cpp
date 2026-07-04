@@ -2736,14 +2736,17 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
         void *pt = nullptr; float pu0, pv0, pu1, pv1;
         if (goblin::overlay_api::map_point_glyph_uv("MENU_MAP_Player_01", -1, pt, pu0, pv0, pu1, pv1) && pt)
         {
-            const float hh = 12.0f * uiScale;          // half-height
-            const float hw = hh * (72.0f / 150.0f);    // half-width (preserve the sprite aspect)
+            const float hh = 15.0f * uiScale;          // half-height (bigger — the native yellow pin blended
+            const float hw = hh * (72.0f / 150.0f);    // into the yellow markers; half-width keeps aspect)
+            // Cool glow halo behind so the warm-yellow player pin POPS off the yellow graces/markers, +
+            // a bright tint over the sprite so it reads clearly on any tile.
+            fg->AddCircleFilled(ctr, hh * 0.95f, IM_COL32(40, 130, 255, 95));
             const ImVec2 tl(ctr.x - rgt.x * hw + fwd.x * hh, ctr.y - rgt.y * hw + fwd.y * hh);
             const ImVec2 tr(ctr.x + rgt.x * hw + fwd.x * hh, ctr.y + rgt.y * hw + fwd.y * hh);
             const ImVec2 br(ctr.x + rgt.x * hw - fwd.x * hh, ctr.y + rgt.y * hw - fwd.y * hh);
             const ImVec2 bl(ctr.x - rgt.x * hw - fwd.x * hh, ctr.y - rgt.y * hw - fwd.y * hh);
             fg->AddImageQuad((ImTextureID)pt, tl, tr, br, bl, ImVec2(pu0, pv0), ImVec2(pu1, pv0),
-                             ImVec2(pu1, pv1), ImVec2(pu0, pv1));
+                             ImVec2(pu1, pv1), ImVec2(pu0, pv1), IM_COL32(255, 255, 210, 255));
         }
         else
         {

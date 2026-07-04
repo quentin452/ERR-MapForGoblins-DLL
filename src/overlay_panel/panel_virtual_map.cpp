@@ -1219,13 +1219,15 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     void *pt = nullptr; float pu0, pv0, pu1, pv1;
                     if (goblin::overlay_api::map_point_glyph_uv("MENU_MAP_Player_01", -1, pt, pu0, pv0, pu1, pv1) && pt)
                     {
-                        const float hh = 12.0f * uiScale, hw = hh * (72.0f / 150.0f);
+                        const float hh = 16.0f * uiScale, hw = hh * (72.0f / 150.0f);
+                        // Cool glow halo + bright tint so the yellow player pin stands out from the yellow markers.
+                        dl->AddCircleFilled(pp, hh * 0.9f, IM_COL32(40, 130, 255, 95));
                         const ImVec2 tl(pp.x - rgt.x * hw + fwd.x * hh, pp.y - rgt.y * hw + fwd.y * hh);
                         const ImVec2 tr(pp.x + rgt.x * hw + fwd.x * hh, pp.y + rgt.y * hw + fwd.y * hh);
                         const ImVec2 br(pp.x + rgt.x * hw - fwd.x * hh, pp.y + rgt.y * hw - fwd.y * hh);
                         const ImVec2 bl(pp.x - rgt.x * hw - fwd.x * hh, pp.y - rgt.y * hw - fwd.y * hh);
                         dl->AddImageQuad((ImTextureID)pt, tl, tr, br, bl, ImVec2(pu0, pv0), ImVec2(pu1, pv0),
-                                         ImVec2(pu1, pv1), ImVec2(pu0, pv1));
+                                         ImVec2(pu1, pv1), ImVec2(pu0, pv1), IM_COL32(255, 255, 210, 255));
                     }
                     else
                     {
