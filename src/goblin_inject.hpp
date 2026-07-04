@@ -171,7 +171,9 @@ namespace goblin
         uint8_t areaNo, gridXNo, gridZNo;
         float posX, posY, posZ;  // posY = block-local altitude (NOT XZ-folded); altitude-badge reference
         int textId;        // textId1 = place-name (resolve via MsgRepository)
-        uint64_t rowId;
+        uint64_t rowId;    // BonfireWarpParam ROW KEY (ERR remaps these — NOT the warp id!)
+        uint32_t bonfireEntityId;  // field @0x08 — the WARP id (goblin::warp::to_grace wants THIS,
+                           // e.g. 1042362951 = The First Step). The row key is a different number.
         int discoverFlag;  // eventflagId = per-grace discovery flag (set when reached)
         bool underground;  // iconId == 44 → ERR cave/underground grace icon (else normal bonfire)
         int subCat;        // bonfireSubCategoryId → region PlaceName (when valid) + tab via subcat param

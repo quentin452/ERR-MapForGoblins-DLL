@@ -50,7 +50,8 @@ const std::vector<Marker> &GraceLayer::markers() const
         // (graces aren't collectible; discovery is handled by discover_flag).
         Marker m{wx, wz, grp, (int)e.areaNo, gc, ckey, pname, e.textId,
                  category_color(gc), "show_graces", frag,
-                 e.rowId, 0, 0, e.discoverFlag};   // row_id = BonfireWarpParam rowId → the vmap warp id
+                 e.bonfireEntityId, 0, 0, e.discoverFlag};   // row_id = bonfireEntityId → the vmap warp id
+                 // (NOT the param row key: ERR remaps row keys, and warp::to_grace wants the entity id)
         m.raw_area = e.areaNo; m.raw_gx = e.gridXNo; m.raw_gz = e.gridZNo;
         m.raw_px = e.posX; m.raw_pz = e.posZ;
         m.worldY = e.posY;  // block-local grace altitude → reference for off-page markers' altitude badge

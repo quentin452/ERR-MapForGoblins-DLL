@@ -553,8 +553,12 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     };
     const float icoHalf = 8.0f;  // on-canvas icon size (px)
     const bool nativeIcons = *goblin::overlay_api::cfg_nativeItemIcons_ptr();
+    constexpr int kGraceCat = static_cast<int>(goblin::generated::Category::WorldGraces);
     // Hover tooltip: track the marker nearest the cursor (within a pixel radius) while drawing.
-    float hoverBestD = 1e18f; int hoverName = -1, hoverCat = -1, hoverDisc = 0; std::string hoverV; uint64_t hoverRow = 0;
+    // Graces draw ON TOP (2nd pass) so they must also WIN the hover — track a priority (grace=1) so a
+    // grace within radius beats an underlying non-grace, matching the visible z-order (the tooltip/warp
+    // then targets the grace you see on top, not the object beneath it).
+    float hoverBestD = 1e18f; int hoverName = -1, hoverCat = -1, hoverDisc = 0, hoverPrio = -1; std::string hoverV; uint64_t hoverRow = 0;
     float hoverWx = 0.f, hoverWz = 0.f;  // world pos of the hovered marker (for warp diagnostics)
     int hoverArea = -1;                  // the hovered marker's REAL area (mp->raw_area), for warp diagnostics
     // mp != null (base ER) → reuse the native state-aware per-marker draw (grace discovered/undiscovered
@@ -582,14 +586,14 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         if (hovered)
         {
             float dx = ps.x - io.MousePos.x, dy = ps.y - io.MousePos.y, d = dx * dx + dy * dy;
-            if (d < hoverBestD && d < icoHalf * icoHalf * 2.0f)
-            { hoverBestD = d; hoverName = nameId; hoverCat = cat; hoverV = vname ? vname : ""; hoverRow = rowId; hoverDisc = discFlag; hoverWx = wx; hoverWz = wz; hoverArea = mp ? mp->raw_area : -1; }
+            const int prio = (cat == kGraceCat) ? 1 : 0;   // graces (drawn on top) win the hover
+            if (d < icoHalf * icoHalf * 2.0f && (prio > hoverPrio || (prio == hoverPrio && d < hoverBestD)))
+            { hoverBestD = d; hoverPrio = prio; hoverName = nameId; hoverCat = cat; hoverV = vname ? vname : ""; hoverRow = rowId; hoverDisc = discFlag; hoverWx = wx; hoverWz = wz; hoverArea = mp ? mp->raw_area : -1; }
         }
     };
     // Graces draw ON TOP of every other marker (parity with the native map, which draws the grace layer
     // last). Two passes: pass 1 = all non-grace markers, pass 2 = graces — so a grace effigy is never
-    // hidden under a co-located loot/landmark glyph.
-    constexpr int kGraceCat = static_cast<int>(goblin::generated::Category::WorldGraces);
+    // hidden under a co-located loot/landmark glyph. (kGraceCat defined above for the hover priority.)
     if (active_world == 0)
     {
         for (int pass = 0; pass < 2; ++pass)
