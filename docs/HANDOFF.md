@@ -322,10 +322,16 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   non-blocking asset-request REGISTRAR (name/id → RB-tree at `reqMgr+0x318`, state 4, streamer services it on
   ITS thread), and consumer `FUN_140699670` proves the path yields a tracked, player-positioned placement
   from a NAME. Beats pivot 1: no standalone hang, the engine builds the owned descriptor itself, name-driven.
-  **NEXT (Windows/Ghidra) = pivot-2 Q1+Q4:** resolve the reqMgr singleton (`FUN_1406a5080` param_1) + name the
-  owning feature (`FUN_140699670`'s caller `FUN_14069a9b0`) → unlocks a `spawn_asset <name>` live probe; also
-  confirm request→collidable geom (Q2) + the name format (Q3). MOVE stays fully solved; ADD is a multi-step
-  subsystem build, bigger than the spawn_clone route hoped.
+  **Q1/Q3/Q4 DONE (2026-07-04):** reqMgr singleton = **`[DAT_143d69ba8+0x30]`** (er+0x3d69ba8, FD4Singleton);
+  name format = **`"AEG%03u_%03u"`** (request an asset by its AEG###_### name); owning feature = a periodic
+  player-proximity raycast AEG-asset STREAMER (`FUN_140699670`/`d80`, steps `FUN_140699170`/`FUN_14069a550`) —
+  a ready template proving "name + world pos → streamer spawns+tracks the asset." **Nuance:** the path streams
+  from a KNOWN-asset registry → ideal for placing copies of EXISTING AEG assets (the world-editor case);
+  arbitrary-new needs tree registration. **NEXT (Windows/Ghidra) = Q2 (make-or-break): does a serviced request
+  yield a COLLIDABLE `CSWorldGeomDynamicIns` or only a rendered model?** Trace `FUN_1406c6050(req,4)` → the
+  `req+0x90` vfunc / streamer pump → `FUN_1406b9880`/`FUN_140b32880`? Then resolve the `DAT_143d69ba8`
+  FD4Singleton AOB → a `spawn_asset <AEGname>` live probe (Linux/Proton). MOVE stays fully solved; ADD is a
+  multi-step subsystem build.
   **Live recon (2026-07-03, `spawn_probe` + `test_spawn_probe.py`, fresh DLL) confirmed srcType + corrected
   the layout:** on a real dynamic instance (`AEG004_903`) — srcType@+0x08 `0x3c1412016ff00000` (geom tag ✓,
   hi==BlockData tag ✓; masks g0=0xff/g1=0x14/g2=0xfffff); **param_3 = the BlockData** (inst+0x10, NOT a

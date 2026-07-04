@@ -68,6 +68,37 @@ the asset and the streamer places+tracks it — and because the work is queued t
    or a gameplay summon, its setup is a ready-made template for our probe. Decompile its caller
    `FUN_14069a9b0` (er+0x69a9b0) to name the feature.
 
+## Q1 + Q3 + Q4 — ANSWERED (2026-07-04, callers `FUN_1406d0040` / `FUN_140699d80` / `FUN_14069a9b0`)
+- **Q1 — reqMgr singleton FOUND.** `FUN_140699d80` derives `FUN_1406a5080`'s `param_1` as
+  **`*(DAT_143d69ba8 + 0x30)`** — so **`DAT_143d69ba8` (er+0x3d69ba8) is the FD4Singleton** (assert-guarded,
+  `w:\...\FD4Singleton.h`) and the request manager is `[singleton+0x30]`. Resolve `DAT_143d69ba8` via the
+  standard FD4Singleton accessor AOB (like `MSG_REPOSITORY`) so the DLL can get a live reqMgr. (The other
+  caller `FUN_1406d0040` instead reuses a request slot `treeNode[5]` from a tree at its own `param_1+0x20` —
+  a per-frame refresh path; the singleton route is the one to drive.)
+- **Q3 — name format FOUND.** `FUN_1406d0040` builds the asset name with
+  **`swprintf(L"AEG%03u_%03u", n/1000, n%1000)`** (`FUN_14018fa70`) from an asset number `n` — i.e. spawnable
+  assets are `"AEG###_###"` (e.g. `AEG099_090`). The `FUN_140699670`/`d80` path instead formats an
+  `id = base+10000000` via `FUN_1401dbd90`. So: **request an asset by its `AEG###_###` name.**
+- **Q4 — owning feature.** `FUN_140699670`/`FUN_140699d80` are **periodic, player-proximity, raycast-driven
+  AEG-asset STREAMERS**: per-frame steps (`FUN_140699170`→`FUN_14069a9b0`, `FUN_14069a550`→`d80`) accumulate
+  timers (`ctrl+0x8/0xc/0x10`), raycast from LocalPlayer (`FUN_140c74c70(..,0x5d/0x67,..)` on
+  `DAT_143d76060`), resolve a nearby AEG asset, `FUN_1406a5080`-request it, and track it in a `std::list`
+  (`ctrl+0x78/0x80/0x88`). This is an ambient/proximity asset system (grass/props/gimmick streaming shape) —
+  a ready template: it proves "given a name + a world position, the streamer spawns+tracks the asset."
+
+**Nuance that scopes pivot 2:** this path streams assets **from a known-asset registry** (the request
+manager's tree). It cleanly re-requests/positions an asset the manager already knows → **ideal for placing
+copies of EXISTING AEG assets** (exactly the world-editor "duplicate this asset over there" case). Placing a
+*truly arbitrary new* asset may need registering it into that tree first (what `FUN_1406a5080`'s insert into
+`reqMgr+0x318` does). For the mod's actual need (clone/place existing assets) that's fine.
+
+## Q2 — the remaining make-or-break (NOT yet answered)
+Does a serviced request yield a **collidable `CSWorldGeomDynamicIns`** (Havok) or only a rendered model?
+Trace the state-4 service: `FUN_1406c6050(req,4)` sets `req+0x4d` bits + calls `FUN_1406a6630` (the block
+instance-registry) and a `req+0x90` vfunc on transition — follow that vfunc / the streamer's request pump to
+whether it reaches `FUN_1406b9880`/`FUN_140b32880` (geom-instance + WGM/physics). This decides if pivot 2 is
+a real placement (collision) or a visual-only spawn. One more Windows/Ghidra pass.
+
 ## Verdict / recommendation
 **Pivot 2 is where ADD should go** — it is the streaming-native, name-driven path and avoids every wall the
 direct-ctor route hit. But it is a **multi-step subsystem build**, not a quick primitive: resolve the reqMgr
@@ -80,4 +111,9 @@ pass target Q1+Q4 (reqMgr singleton + the owning feature) since those unlock a l
   machine `FUN_1406c6050` er+0x6c6050 (state arg; `req+0x4d` bits; `FUN_1406a6630` block-registry).
 - consumer `FUN_140699670` er+0x699670 (caller `FUN_14069a9b0` er+0x69a9b0); managers `DAT_143d69ba8`,
   `DAT_143d69968`, `DAT_143d76060`; player `DAT_143d65f88` (+0x1e508 = LocalPlayer).
+- **reqMgr singleton `DAT_143d69ba8` (er+0x3d69ba8); request manager = `[DAT_143d69ba8+0x30]`** (= `FUN_1406a5080` param_1).
+- name format `swprintf(L"AEG%03u_%03u", n/1000, n%1000)` via `FUN_14018fa70`; clean wrapper `FUN_1406d0040`
+  er+0x6d0040 (`request AEG#n at pos`, but needs the asset pre-registered in its `param_1+0x20` tree).
+- per-frame streamer steps `FUN_140699170` er+0x699170, `FUN_14069a550` er+0x69a550; raycast `FUN_140c74c70`
+  on `DAT_143d76060` (query types 0x5d/0x67).
 - RB-tree ops `FUN_14069e660`/`FUN_1406a0270` on `mgr+0x318` (comparator `PTR_142a81860`).
