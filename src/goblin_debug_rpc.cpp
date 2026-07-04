@@ -503,11 +503,32 @@ namespace goblin::debug_rpc
                     goblin::overlay_api::virtual_map_clear_tiles();
                     return "ok vmap tiles_clear";
                 }
+                // vmap view <camX> <camZ> <zoom> — frame the canvas directly (dev/test screenshots).
+                if (arg == "view")
+                {
+                    std::string xs = next_token(rest), zs = next_token(rest), zm = next_token(rest);
+                    float cx = 0, cz = 0, z = 0;
+                    try { cx = std::stof(xs); cz = std::stof(zs); if (!zm.empty()) z = std::stof(zm); }
+                    catch (...) { return "err usage: vmap view <camX> <camZ> <zoom>"; }
+                    goblin::overlay_api::virtual_map_set_view(cx, cz, z);
+                    return "ok vmap view";
+                }
+                // vmap tiles_lod <dim> <lod> [cap] — load a whole ER dimension+LOD placed via the LIVE
+                // converter affine (slice 3). Needs the native ER map open (converter VM + art extent read
+                // live). dim: 0=overworld 1=underground 10=DLC 11=DLC-ug; lod 0(fine)..3/4(coarse).
+                if (arg == "tiles_lod")
+                {
+                    std::string ds = next_token(rest), ls = next_token(rest), cs = next_token(rest);
+                    int dim = 0, lod = 3, cap = 240;
+                    try { dim = std::stoi(ds); lod = std::stoi(ls); } catch (...) { return "err usage: vmap tiles_lod <dim> <lod> [cap]"; }
+                    if (!cs.empty()) { try { cap = std::stoi(cs); } catch (...) {} }
+                    return "ok vmap tiles_lod " + goblin::overlay_api::virtual_map_load_lod(dim, lod, cap);
+                }
                 if (arg == "0") goblin::overlay_api::virtual_map_set_open(false);
                 else if (arg == "1") goblin::overlay_api::virtual_map_set_open(true);
                 else if (arg == "toggle" || arg.empty())
                     goblin::overlay_api::virtual_map_set_open(!goblin::overlay_api::virtual_map_is_open());
-                else return "err vmap takes 0|1|toggle | fit | group <0-3> | tile <needle> [rect] | tiles_clear";
+                else return "err vmap takes 0|1|toggle | fit | group <0-3> | tile <needle> [rect] | tiles_lod <dim> <lod> [cap] | tiles_clear";
                 return "ok vmap=" + std::to_string(goblin::overlay_api::virtual_map_is_open() ? 1 : 0);
             }
             // assets_probe — path-loading regression guard: does the mod's disk loader resolve the key

@@ -508,6 +508,36 @@ int project_page(uintptr_t vm, int area, int gx, int gz, float px, float pz, int
     return -1; // no converter accepts it (e.g. m19 Chapel) → game doesn't place it
 }
 
+// Read the live per-area converter affine from the VM converter array (VM+0xF8, stride 0x30, count
+// VM+0x280). The overworld (area 60) affine is what the tile layer needs to place map ART in the SAME
+// map-space markers project into (slice 3). Cached per area once read (the converter is static per session
+// — findings §4), so it keeps working after the map closes. `vm` = live find_view_model().
+bool read_converter_affine(uintptr_t vm, int area, goblin::worldmap_probe::ConvAffine &out)
+{
+    if (!vm) return false;
+    uint64_t count = 0;
+    seh_read8(reinterpret_cast<void *>(vm + 0x280), &count);
+    uint64_t n = count > 8 ? 8 : count;
+    for (uint64_t i = 0; i < n; ++i)
+    {
+        uintptr_t conv = vm + 0xF8 + i * 0x30;
+        int key = 0;
+        if (!seh_read_i32(reinterpret_cast<void *>(conv + 0x08), &key)) continue;
+        int a = (key >> 24) & 0xff;
+        if (a != area) continue;
+        out.area = a;
+        out.gridXbase = (key >> 16) & 0xff;
+        out.gridZbase = (key >> 8) & 0xff;
+        bool ok = seh_read4(reinterpret_cast<void *>(conv + 0x0C), &out.originX) &&
+                  seh_read4(reinterpret_cast<void *>(conv + 0x14), &out.originZ) &&
+                  seh_read4(reinterpret_cast<void *>(conv + 0x18), &out.biasX) &&
+                  seh_read4(reinterpret_cast<void *>(conv + 0x1C), &out.biasZ) &&
+                  seh_read4(reinterpret_cast<void *>(conv + 0x20), &out.scale);
+        return ok;
+    }
+    return false;
+}
+
 // Find the live CS::WorldMapViewModel (cached). Resolves from the active map cursor →
 // WorldMapDialog (cursor-0x2DB0) → scan its pointer fields for an object whose first qword
 // is the VM vtable. Re-validates the cached ptr cheaply; re-scans only when it goes stale
@@ -1040,6 +1070,24 @@ bool project(int area, int gridX, int gridZ, float posX, float posZ, float &mapU
         }
     }
     return false; // no converter accepts it
+}
+
+bool get_converter_affine(int area, ConvAffine &out)
+{
+    // Cache per area (up to 4: overworld 60, DLC-OW 61, base-UG 12, …). Once read it survives map close.
+    static ConvAffine s_cache[8];
+    static bool s_have[8] = {};
+    static int s_areas[8] = {};
+    for (int i = 0; i < 8; ++i)
+        if (s_have[i] && s_areas[i] == area) { out = s_cache[i]; return true; }
+
+    ConvAffine a{};
+    if (!read_converter_affine(find_view_model(), area, a))
+        return false;  // map not open yet / area not in the table
+    for (int i = 0; i < 8; ++i)
+        if (!s_have[i]) { s_cache[i] = a; s_areas[i] = area; s_have[i] = true; break; }
+    out = a;
+    return true;
 }
 
 bool get_live_view(LiveView &out)

@@ -113,6 +113,9 @@ namespace goblin::overlay_api
     // the world quad is auto-derived from the tile's col/row. Serviced on the render thread next draw.
     GOBLIN_RENDER_API void virtual_map_request_tile(const char *needle, float wx0, float wz0, float wx1, float wz1);
     GOBLIN_RENDER_API void virtual_map_clear_tiles();
+    // Load a whole dimension+LOD via the live converter affine (slice 3). Returns a status string.
+    GOBLIN_RENDER_API std::string virtual_map_load_lod(int dim, int lod, int cap);
+    GOBLIN_RENDER_API void virtual_map_set_view(float camX, float camZ, float zoom);  // dev/test framing
     GOBLIN_RENDER_API int virtual_map_get_group();
     GOBLIN_RENDER_API void request_save();
     GOBLIN_RENDER_API void reset_quest_progress();

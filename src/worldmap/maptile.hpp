@@ -29,6 +29,12 @@ struct Entry
 // Parse a BHF4 header blob into entries. false on bad magic / out-of-range table.
 bool parse_bhf4(const std::vector<uint8_t> &bhd, std::vector<Entry> &out);
 
+// The col/row extent of one dimension+LOD, parsed from the tile names ("...M{MM}_L{L}_{col}_{row}_..."),
+// so the tile grid can be laid over the map-space art extent (slice 3 placement). `prefix` e.g. "M00_L0".
+// col/row are parsed as HEX (names go 00,01,…,09,0a,…). Returns count matched; false if none.
+struct GridRange { int minCol = 0, maxCol = 0, minRow = 0, maxRow = 0, count = 0; };
+bool grid_range(const std::vector<Entry> &entries, const std::string &prefix, GridRange &out);
+
 // Read + parse the tile archive off the active install. rel_base = "menu/71_MapTile" (no extension);
 // reads rel_base+".tpfbhd" and rel_base+".tpfbdt". Keeps the (small, ~MB) .tpfbdt in `bdt` for on-demand
 // tile extraction. false if either file is missing or the header is not BHF4.

@@ -7,6 +7,7 @@
 
 #include <windows.h>
 
+#include <cstdlib>
 #include <cstring>
 #include <map>
 
@@ -85,6 +86,34 @@ bool parse_bhf4(const std::vector<uint8_t> &bhd, std::vector<Entry> &out)
         out.push_back(std::move(en));
     }
     return true;
+}
+
+bool grid_range(const std::vector<Entry> &entries, const std::string &prefix, GridRange &out)
+{
+    out = GridRange{};
+    bool any = false;
+    for (const Entry &e : entries)
+    {
+        size_t p = e.name.find(prefix);  // e.g. "M00_L0"
+        if (p == std::string::npos) continue;
+        size_t c0 = p + prefix.size();
+        if (c0 >= e.name.size() || e.name[c0] != '_') continue;
+        size_t c1 = e.name.find('_', c0 + 1);          // after col
+        size_t r1 = (c1 == std::string::npos) ? std::string::npos : e.name.find('_', c1 + 1);  // after row
+        if (c1 == std::string::npos || r1 == std::string::npos) continue;
+        long col = std::strtol(e.name.substr(c0 + 1, c1 - c0 - 1).c_str(), nullptr, 16);
+        long row = std::strtol(e.name.substr(c1 + 1, r1 - c1 - 1).c_str(), nullptr, 16);
+        if (!any) { out.minCol = out.maxCol = (int)col; out.minRow = out.maxRow = (int)row; any = true; }
+        else
+        {
+            if (col < out.minCol) out.minCol = (int)col;
+            if (col > out.maxCol) out.maxCol = (int)col;
+            if (row < out.minRow) out.minRow = (int)row;
+            if (row > out.maxRow) out.maxRow = (int)row;
+        }
+        out.count++;
+    }
+    return any;
 }
 
 bool load_archive(const std::string &rel_base, std::vector<Entry> &entries, std::vector<uint8_t> &bdt)

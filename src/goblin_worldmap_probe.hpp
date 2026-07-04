@@ -150,6 +150,19 @@ namespace goblin::worldmap_probe
     GOBLIN_RENDER_API bool project(int area, int gridX, int gridZ, float posX, float posZ, float &mapU,
                  float &mapV, int &page);
 
+    // The live per-area converter affine (VM+0xF8 slot, findings §1) — the map-space transform the map ART
+    // tiles must share so they align with markers (endgame phase-1a slice 3). Read LIVE from the active VM
+    // (never hardcoded — see docs/plans/procedural_map_derivation_design.md), cached per area once the map
+    // has been open. mapX = (worldX-originX)*scale + biasX ; mapZ = -(worldZ-originZ)*scale + biasZ.
+    // Inverse (map→world, for tile placement): worldX = (mapX-biasX)/scale + originX ;
+    //   worldZ = originZ - (mapZ-biasZ)/scale. area 60 = overworld. false if the map never opened.
+    struct ConvAffine
+    {
+        int area = 0, gridXbase = 0, gridZbase = 0;
+        float originX = 0, originZ = 0, biasX = 0, biasZ = 0, scale = 1.0f;
+    };
+    GOBLIN_RENDER_API bool get_converter_affine(int area, ConvAffine &out);
+
     // DIAG: the currently-published active cursor address (0 = none). Lets the
     // overlay tell apart "probe hasn't found a cursor yet" (0) from "found but the
     // live read failed" (non-0 but get_live_view false) when chasing open latency.

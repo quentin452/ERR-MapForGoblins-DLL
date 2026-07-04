@@ -13,10 +13,14 @@
 #include "panel_internal.hpp"
 #include "goblin_i18n.hpp"
 #include "worldmap/marker_layer.hpp"   // Marker / MarkerLayer (overlay_layers → markers to project)
-#include "worldmap/maptile.hpp"        // maptile::extract_named — ER map-tile ART (endgame phase-1a slice 2)
+#include "worldmap/maptile.hpp"        // maptile ART reader (endgame phase-1a slice 2/3)
+#include "goblin_worldmap_probe.hpp"   // live converter affine + map-space extent (slice 3 tile placement)
 #include "goblin_virtual_world.hpp"    // vworld registry — the active custom world's markers (slice C)
 #include "goblin_inject.hpp"           // goblin::world_map_open() — the game map-key trigger (slice D)
 
+#include <spdlog/spdlog.h>
+
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -83,6 +87,15 @@ void virtual_map_request_fit() { s_fit_requested = true; }
 void virtual_map_set_group(int g) { if (g >= 0 && g < 4) s_group = g; }
 int virtual_map_group() { return s_group; }
 
+// Dev/test: set the canvas view directly (world-space cam centre + zoom px/unit). Lets a driver frame a
+// region for a screenshot without the marker-bbox Fit. zoom<=0 leaves zoom unchanged.
+void virtual_map_set_view(float camX, float camZ, float zoom)
+{
+    s_cam_x = camX; s_cam_z = camZ;
+    if (zoom > 0.0f) s_zoom = (zoom < kZoomMin ? kZoomMin : (zoom > kZoomMax ? kZoomMax : zoom));
+    s_open = true;
+}
+
 // Request an ER map ART tile load (slice 2). `needle` selects the tile by name substring
 // (e.g. "M00_L0_00_00_00000000"); if wx1<=wx0 the world quad is auto-derived from the tile's col/row.
 // Serviced on the next draw (create_tex must run on the render thread, not the RPC thread) + opens the map.
@@ -96,6 +109,147 @@ void virtual_map_request_tile(const char *needle, float wx0, float wz0, float wx
 // Drop cached tiles. NB: the SRV handles are NOT recycled (create_tex_from_dds_mem has no free list yet),
 // so this frees the CPU records but not the GPU descriptors — slice 3 adds SRV recycling.
 void virtual_map_clear_tiles() { s_tiles.clear(); s_tile_status = "cleared"; }
+
+// Load a whole ER map dimension+LOD onto the canvas, placed in WORLD space via the LIVE converter affine
+// (slice 3a). Tiles share the SAME map-space markers project into, so they align. Requires the native ER
+// map to have been OPEN (the converter VM + the art extent are read live — never hardcoded, per
+// procedural_map_derivation_design.md). Reads the archive ONCE (not per tile), extracts+uploads up to
+// `cap` tiles nearest the grid centre (SRV heap has a hard 256 cap, no recycle yet). area 60 = overworld.
+std::string virtual_map_load_lod(int dim, int lod, int cap)
+{
+    // 1) the map-space ART extent (needs the map open) — the tile grid is laid over it.
+    goblin::worldmap_probe::LiveView lv;
+    if (!goblin::worldmap_probe::get_live_view(lv) || lv.mapMaxU <= lv.mapMinU || lv.mapMaxV <= lv.mapMinV)
+        return (s_tile_status = "map extent unavailable — open the ER map AND MOVE it (pan/zoom) so the probe "
+                               "publishes the cursor, then retry");
+
+    // 2) DERIVE the map-space → vmap-world inverse from the LIVE engine projection: project every overworld
+    // marker (project() = the engine's own converter, folds LegacyConv) and take the ROBUST MEDIAN offset
+    // per axis with a fixed ±1 slope (the converter scale is live-confirmed = 1). This uses the real live
+    // projection (never hardcoded 7040/16512 — see procedural_map_derivation_design.md) and is immune to the
+    // folded dungeon/DLC markers whose world frame differs (a least-squares slope was skewed by them). So
+    // worldX = mapU + medianOf(worldX - projU) ; worldZ = -mapV + medianOf(worldZ + projV). The vmap draws
+    // markers at (worldX,worldZ), so tiles placed via this inverse align with them.
+    std::vector<float> dX, dZ;
+    for (auto *L : overlay_layers())
+    {
+        if (!L) continue;
+        for (const goblin::worldmap::Marker &m : L->markers())
+        {
+            if (m.group != 0 || m.raw_area < 0) continue;
+            float u = 0, v = 0; int pg = -1;
+            if (!goblin::worldmap_probe::project(m.raw_area, m.raw_gx, m.raw_gz, m.raw_px, m.raw_pz, u, v, pg) ||
+                pg != 0)
+                continue;
+            dX.push_back(m.worldX - u);   // worldX = u + dX
+            dZ.push_back(m.worldZ + v);   // worldZ = -v + dZ
+        }
+    }
+    if (dX.size() < 8)
+        return (s_tile_status = "not enough live-projected overworld markers to fit the map transform (" +
+                                std::to_string(dX.size()) + ") — open the overworld map + move it");
+    auto median = [](std::vector<float> &v) {
+        std::sort(v.begin(), v.end());
+        return v[v.size() / 2];
+    };
+    const int nfit = (int)dX.size();
+    const float ax = 1.0f, az = -1.0f;          // converter scale = 1 (live)
+    const float bx = median(dX), bz = median(dZ);
+
+    // 3) archive + enumerate this dim/LOD's tiles. A tile name is M{dim}_L{lod}_{col}_{row}_{suffix}: the
+    // {suffix} is a MORTON (Z-order interleave) code of the sub-tile within each (col,row) block (8×8, 3
+    // bits/axis) — so the TRUE tile grid is globalX = col*8 + mortonX, globalZ = row*8 + mortonZ (decoded
+    // from the tile names, 2026-07-04). The grid is sparse (only where map art exists).
+    char prefix[16];
+    std::snprintf(prefix, sizeof(prefix), "M%02d_L%d_", dim, lod);
+    std::vector<goblin::worldmap::maptile::Entry> entries;
+    std::vector<uint8_t> bdt;
+    if (!goblin::worldmap::maptile::load_archive("menu/71_MapTile", entries, bdt))
+        return (s_tile_status = "maptile archive unavailable");
+
+    auto morton = [](uint32_t s, int &x, int &z) {
+        x = z = 0;
+        for (int b = 0; b < 16; ++b) { x |= ((s >> (2 * b)) & 1u) << b; z |= ((s >> (2 * b + 1)) & 1u) << b; }
+    };
+    struct Tile { const goblin::worldmap::maptile::Entry *e; int gx, gz; float d2; };
+    std::vector<Tile> tiles;
+    for (const auto &e : entries)
+    {
+        size_t p = e.name.find(prefix);
+        if (p == std::string::npos) continue;
+        size_t c0 = p + std::strlen(prefix);
+        size_t c1 = e.name.find('_', c0);          // after col
+        size_t r1 = (c1 == std::string::npos) ? std::string::npos : e.name.find('_', c1 + 1);  // after row
+        size_t s1 = (r1 == std::string::npos) ? std::string::npos : e.name.find('.', r1 + 1);  // ".tpf"
+        if (c1 == std::string::npos || r1 == std::string::npos || s1 == std::string::npos) continue;
+        long col = std::strtol(e.name.substr(c0, c1 - c0).c_str(), nullptr, 16);
+        long row = std::strtol(e.name.substr(c1 + 1, r1 - c1 - 1).c_str(), nullptr, 16);
+        uint32_t suf = (uint32_t)std::strtoul(e.name.substr(r1 + 1, s1 - r1 - 1).c_str(), nullptr, 16);
+        // NOTE (slice 3a WIP): the {suffix} is a Morton (Z-order) code but the per-(col,row)-block sub-grid
+        // is a VARIABLE-DEPTH quadtree (dense land cells subdivide deeply, empty ocean cells hold 1 tile) —
+        // not the uniform 8×8 assumed here. So this global grid is approximate: tiles land in the right
+        // WORLD REGION (the map→world transform below is exact) but the per-tile SIZE/packing is not yet
+        // right (gaps/overlap). Cracking the exact suffix→cell decode is the remaining slice-3a sub-task.
+        int sx, sz; morton(suf, sx, sz);
+        tiles.push_back({&e, (int)col * 256 + sx, (int)row * 256 + sz, 0.0f});
+    }
+    if (tiles.empty())
+        return (s_tile_status = std::string("no tiles for ") + prefix);
+
+    int minGX = tiles[0].gx, maxGX = tiles[0].gx, minGZ = tiles[0].gz, maxGZ = tiles[0].gz;
+    for (const auto &t : tiles)
+    {
+        minGX = (std::min)(minGX, t.gx); maxGX = (std::max)(maxGX, t.gx);
+        minGZ = (std::min)(minGZ, t.gz); maxGZ = (std::max)(maxGZ, t.gz);
+    }
+    const int gw_cells = maxGX - minGX + 1, gh_cells = maxGZ - minGZ + 1;
+    const float du = lv.mapMaxU - lv.mapMinU, dv = lv.mapMaxV - lv.mapMinV;
+    const float cgx = (minGX + maxGX) * 0.5f, cgz = (minGZ + maxGZ) * 0.5f;
+    for (auto &t : tiles) { float dx = t.gx - cgx, dz = t.gz - cgz; t.d2 = dx * dx + dz * dz; }
+    std::sort(tiles.begin(), tiles.end(), [](const Tile &a, const Tile &b) { return a.d2 < b.d2; });
+
+    // tile globalcell → map-space rect (uniform grid over the art extent) → vmap-WORLD via the fitted inverse.
+    auto map2world = [&](float mapX, float mapZ, float &wx, float &wz) {
+        wx = ax * mapX + bx;
+        wz = az * mapZ + bz;
+    };
+    virtual_map_clear_tiles();
+    int loaded = 0, failed = 0;
+    for (const Tile &t : tiles)
+    {
+        if (loaded >= cap) break;
+        std::string tex; uint32_t tw = 0, th = 0;
+        std::vector<uint8_t> dds = goblin::worldmap::maptile::extract_dds(bdt, *t.e, tex, &tw, &th);
+        if (dds.empty()) { ++failed; continue; }
+        int gw = 0, gh = 0; DXGI_FORMAT gf;
+        unsigned long long srv = create_tex_from_dds_mem(dds.data(), dds.size(), gw, gh, gf);
+        if (!srv) { s_tile_status = "SRV cap hit at " + std::to_string(loaded) + " tiles"; break; }
+
+        float mapX0 = lv.mapMinU + float(t.gx - minGX) / gw_cells * du;
+        float mapX1 = lv.mapMinU + float(t.gx - minGX + 1) / gw_cells * du;
+        float mapZ0 = lv.mapMinV + float(t.gz - minGZ) / gh_cells * dv;
+        float mapZ1 = lv.mapMinV + float(t.gz - minGZ + 1) / gh_cells * dv;
+        float wxA, wzA, wxB, wzB;
+        map2world(mapX0, mapZ0, wxA, wzA);
+        map2world(mapX1, mapZ1, wxB, wzB);
+        LoadedTile lt;
+        lt.srv = srv; lt.w = gw; lt.h = gh; lt.name = tex;
+        lt.wx0 = (std::min)(wxA, wxB); lt.wx1 = (std::max)(wxA, wxB);
+        lt.wz0 = (std::min)(wzA, wzB); lt.wz1 = (std::max)(wzA, wzB);
+        s_tiles.push_back(lt);
+        ++loaded;
+    }
+    s_open = true;
+    spdlog::info("[MAPTILE3] fit n={} worldX={:.3f}*U+{:.1f} worldZ={:.3f}*V+{:.1f} | extent U[{:.0f},{:.0f}] "
+                 "V[{:.0f},{:.0f}] | global gx[{},{}] gz[{},{}] | first tile world x[{:.0f},{:.0f}] z[{:.0f},{:.0f}]",
+                 nfit, ax, bx, az, bz, lv.mapMinU, lv.mapMaxU, lv.mapMinV, lv.mapMaxV, minGX, maxGX, minGZ, maxGZ,
+                 s_tiles.empty() ? 0.f : s_tiles[0].wx0, s_tiles.empty() ? 0.f : s_tiles[0].wx1,
+                 s_tiles.empty() ? 0.f : s_tiles[0].wz0, s_tiles.empty() ? 0.f : s_tiles[0].wz1);
+    char st[176];
+    std::snprintf(st, sizeof(st), "%s %d/%d tiles (global grid %dx%d, cap %d, failed %d)", prefix, loaded,
+                  (int)tiles.size(), gw_cells, gh_cells, cap, failed);
+    return (s_tile_status = st);
+}
 
 void draw_virtual_map(const OverlayFrameCtx & /*ctx*/)
 {

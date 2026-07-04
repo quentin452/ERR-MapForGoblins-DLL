@@ -79,6 +79,9 @@ void virtual_map_set_group(int g);    // 0..3 = base-OW / base-UG / DLC-OW / DLC
 // ER map ART tile (endgame phase-1a slice 2). needle = tile-name substring; wx1<=wx0 → auto grid quad.
 void virtual_map_request_tile(const char *needle, float wx0, float wz0, float wx1, float wz1);
 void virtual_map_clear_tiles();
+// Load a whole dimension+LOD placed via the live converter affine (slice 3). Returns a status string.
+std::string virtual_map_load_lod(int dim, int lod, int cap);
+void virtual_map_set_view(float camX, float camZ, float zoom);  // dev/test: frame the canvas directly
 int virtual_map_group();
 } // namespace panel
 } // namespace goblin::overlay
