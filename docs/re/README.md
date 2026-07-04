@@ -1,6 +1,6 @@
 # RE coverage map — what of ELDEN RING is reverse-engineered, and what isn't
 
-Index + honest coverage map for `docs/re/`. **165 RE docs** live here. Two kinds:
+Index + honest coverage map for `docs/re/`. **166 RE docs** live here. Two kinds:
 - `*_re_findings.md` / `*_RESOLVED.md` — a SOLVED structure/function (the answer).
 - `*_re_prompt.md` / `*_analysis.md` — an OPEN or historical RE task handed to Ghidra/CE.
 
@@ -65,10 +65,13 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
 5. **Custom mob PLACEMENT** — NpcParam is param-driveable, but placing a custom enemy is MSB write (#1).
 
 ### Smaller tactical gaps (see HANDOFF)
-- **Loading-screen / world-load state (stuck-load watchdog)** — detect a load that never finishes (bad
-  warp target, missing asset). The freeze watchdog misses it (present keeps beating during a load). Needs
-  a load-in-progress flag + a progress/phase signal + the target mapId. Prompt:
-  `windows_loading_screen_state_re_prompt.md`.
+- **Loading-screen / world-load state (stuck-load watchdog) — SOLVED (static, 2026-07-04).** Load-in-progress
+  flag + phase = **`CSFD4LocationStep+0x48`** (the area-transition step index; `-1`=idle, `>=0`=loading &
+  advancing; getter vtable[5] `FUN_140b413c0`, idle test vtable[4] `==-1`; vtable er+0x2b6b750). Zero-RE
+  anchor = **`LocalPlayer==null`** (`[er+0x3d65f88]+0x1E508`, pinned). Screen-blacked-out refinement =
+  `CSFD4FadeSystem+0x2c` alpha (vtable er+0x2b6a458). Target = `PLAYER_MAPID_SLOT` (pinned). Watchdog mirrors
+  `goblin_freeze_watchdog.cpp`. Findings: `windows_loading_screen_state_re_findings.md`. Runtime gap (Linux):
+  resolve the LocationStep/FD4-singleton instances via find-what-accesses (reflection-lazy — not static-pinnable).
 - **Terrain raycast → heightfield (procedural relief map) — SOLVED (static, 2026-07-04).** Down-ray primitive
   `FUN_140c70360(ctx, filter, start, segDir, &pt, &nrm, &dist)→hit` (Havok `hknpWorld::castRay` `FUN_14187d960`
   "TtWorldCastRay"); `ctx = *(DAT_143d76060 + 0x98)` (`CS::PhysWorld` singleton, RTTI `PhysWorld@CS@@`). END =
