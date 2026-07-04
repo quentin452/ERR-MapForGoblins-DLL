@@ -71,6 +71,9 @@ Registry fields today (name-addressed): `EquipParamGoods.{goodsType,sortGroupId}
 | `loot_at` | `loot_at <aegRow>` | Resolve LIVE what the map's loot marker for an AssetEnvironmentGeometry row shows: `pickUpItemLotParamId → ItemLotParam_map → item name` (the exact map-build chain). Verify a repoint headless. |
 | `refresh_markers` | `refresh_markers` | Force a fresh marker/bucket build so a live param edit shows on the drawn map (disk worker, async). NB a newly CLONED lot won't resolve yet (LotReader-index reset — see HANDOFF v2). |
 | `warp` | `warp <graceId>` | Fast-travel to a site of grace (e.g. `1042362951` = The First Step). Must be in-world + grace unlocked. |
+| `coords` | `coords` | Player position in BOTH frames: `local=` tile-local Havok (`LocalPlayer+0x6C0`, = er_console_mod's `coords`/`tp` frame) + `world=` unified marker frame (`grid*256+local`) + `area`/`grid`. The teleport-harness read + streaming-gate probe. |
+| `warp_local` | `warp_local <x> <y> <z>` | Write the tile-local Havok pos DIRECTLY (mirrors er_console `tp`). Absolute-within-tile. Discriminating test: same `x y z` twice → same spot = absolute-in-frame; drifts = pure delta. **First player-pos WRITE.** |
+| `warp_xyz` | `warp_xyz <worldX> <worldZ> [worldY]` | ABSOLUTE teleport in the unified world/marker frame (converts to tile-local via `world=grid*256+local`, keeping the current tile). Intra-region only — a far cross-map target may hit unstreamed void (the streaming gate). |
 | `we_scan` | `we_scan` | Build the World Editor picker lists (pickup assets + named goods) from live params; reports `assets= goods= total=`. Same scan the F1 "Browse" button runs. |
 | `bundle` | `bundle <sub>` | World-bundle persistence (World Editor edits saved as TOML, re-applied at boot). Subs: `status`, `clone <param> <src> <new>`, `set <param> <row> <field> <value>`, `save [path]`, `load <path>`, `apply [path]`, `clear`. Default path `<mod>/world_bundle.toml`. |
 

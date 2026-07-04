@@ -406,7 +406,7 @@ namespace goblin::debug_rpc
             if (cmd == "help" || cmd == "?")
                 return "ok commands: help ping status open_f1 f1_tab vmap vworld assets_probe maptile_probe pause set screenshot dumpmenu reload_overlay"
                        " | param_get param_set param_getf param_setf param_clone"
-                       " | loot_at refresh_markers warp we_scan"
+                       " | loot_at refresh_markers warp coords warp_local warp_xyz we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
                        " | er_base er_version mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
@@ -1060,6 +1060,70 @@ namespace goblin::debug_rpc
                 std::string v = goblin::er_exe_version();
                 if (v.empty()) return "err version unavailable";
                 return "ok er_version=" + v;
+            }
+            // coords — player position in BOTH frames the teleport work needs: the tile-local Havok
+            // frame (LocalPlayer+0x6C0, what er_console_mod's coords/tp use) and the unified WORLD /
+            // marker frame (grid*256 + local). Cross-checks er_console's frame + feeds warp_xyz.
+            if (cmd == "coords")
+            {
+                float lx, ly, lz;
+                if (!goblin::get_player_world_pos(lx, ly, lz))
+                    return "err not in-world (LocalPlayer null / loading)";
+                int area = 0, gx = 0, gz = 0; float wx = 0, wz = 0;
+                bool okw = goblin::get_player_map_pos(area, wx, wz, &gx, &gz);
+                char b[224];
+                if (okw)
+                    std::snprintf(b, sizeof(b),
+                        "ok local=(%.2f,%.2f,%.2f) world=(%.2f,%.2f) area=%d grid=(%d,%d)",
+                        lx, ly, lz, wx, wz, area, gx, gz);
+                else
+                    std::snprintf(b, sizeof(b),
+                        "ok local=(%.2f,%.2f,%.2f) world=? (map-pos unresolved)", lx, ly, lz);
+                return std::string(b);
+            }
+            // warp_local <x> <y> <z> — write the tile-local Havok pos DIRECTLY (mirrors er_console
+            // `tp`). Absolute within the current tile frame. The discriminating test: warp_local to
+            // the SAME x y z twice → same spot ⇒ absolute-in-frame; drifts ⇒ pure delta.
+            if (cmd == "warp_local")
+            {
+                std::string xs = next_token(rest), ys = next_token(rest), zs = next_token(rest);
+                if (xs.empty() || ys.empty() || zs.empty()) return "err usage: warp_local <x> <y> <z>";
+                float x, y, z;
+                try { x = std::stof(xs); y = std::stof(ys); z = std::stof(zs); }
+                catch (...) { return "err bad x/y/z"; }
+                if (!goblin::write_player_local_pos(x, y, z, /*set_y=*/true))
+                    return "err write failed (not in-world?)";
+                float rx = 0, ry = 0, rz = 0; goblin::get_player_world_pos(rx, ry, rz);  // read-back
+                char b[160];
+                std::snprintf(b, sizeof(b),
+                    "ok warp_local set=(%.2f,%.2f,%.2f) readback=(%.2f,%.2f,%.2f)", x, y, z, rx, ry, rz);
+                return std::string(b);
+            }
+            // warp_xyz <worldX> <worldZ> [worldY] — ABSOLUTE teleport in the unified WORLD/marker
+            // frame. Converts via the CONFIRMED linear map (world = grid*256 + local): keep the
+            // current tile, newLocal = curLocal + (worldTarget − curWorldRaw). Intra-region only —
+            // a far cross-map target may hit unstreamed void (the streaming gate). worldY = height.
+            if (cmd == "warp_xyz")
+            {
+                std::string xs = next_token(rest), zs = next_token(rest), ys = next_token(rest);
+                if (xs.empty() || zs.empty()) return "err usage: warp_xyz <worldX> <worldZ> [worldY]";
+                float twx, twz, twy = 0.0f; bool has_y = !ys.empty();
+                try { twx = std::stof(xs); twz = std::stof(zs); if (has_y) twy = std::stof(ys); }
+                catch (...) { return "err bad coords"; }
+                float lx, ly, lz;
+                if (!goblin::get_player_world_pos(lx, ly, lz)) return "err not in-world";
+                int area = 0; float cwx = 0, cwz = 0;
+                if (!goblin::get_player_raw_pos(area, cwx, cwz)) return "err world-pos unresolved";
+                float nlx = lx + (twx - cwx), nlz = lz + (twz - cwz), nly = has_y ? twy : ly;
+                if (!goblin::write_player_local_pos(nlx, nly, nlz, /*set_y=*/true))
+                    return "err write failed";
+                int narea = 0; float rwx = 0, rwz = 0;
+                goblin::get_player_raw_pos(narea, rwx, rwz);  // read-back in the world frame
+                char b[224];
+                std::snprintf(b, sizeof(b),
+                    "ok warp_xyz target_world=(%.2f,%.2f) readback_world=(%.2f,%.2f) local=(%.2f,%.2f,%.2f)",
+                    twx, twz, rwx, rwz, nlx, nly, nlz);
+                return std::string(b);
             }
             // mem_dump <hexaddr> <len> — raw RPM hex-dump of an absolute address (follow pointers /
             // diff to locate the goods inventory). len capped at 256.

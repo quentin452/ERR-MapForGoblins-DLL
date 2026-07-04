@@ -9,6 +9,44 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
+## ⇒ SESSION WRAP 2026-07-04 (later) — RE-tooling hardening + player teleport harness + dev-dimension direction
+
+All committed (local master ahead of origin). Three things landed + a strategic direction set.
+
+**1. RE-tooling hardening (patch-resilience).**
+- **`tools/hf_hook_scout.py`** — live-RPM scout for the D2.2 safe-hook (subcommands `slot`/`fwa`/`disasm`;
+  the remote branch then added `--aob` and used it to AOB-harden the 3 hot-path FUNCs + 2 hooked grace fns).
+- **Build fingerprint** — `goblin_build_id.hpp::er_exe_version()` (reads `eldenring.exe` VS_FIXEDFILEINFO)
+  → `[BUILD]` boot-log line before the AOB health check + **`er_version`** RPC verb (twin of the new
+  **`er_base`** verb). So "am I on the build my RVAs/AOBs are pinned to?" is verifiable. `patch_diff_maintenance.md`
+  freezes the recovery recipe (BinDiff/Diaphora on the **decrypted dumps**, never the VMProtect'd on-disk exe).
+  ⚠ needs a DLL rebuild+deploy for `er_base`/`er_version`/`[BUILD]` to exist.
+
+**2. ⭐ Player teleport harness — the mod's FIRST player-pos WRITE (`d8adca3`).** RPC `coords` / `warp_local`
+/ `warp_xyz`, all on the tile-local Havok frame `LocalPlayer+0x6C0/6C4/6C8` (the frame `get_player_world_pos`
+reads and **er_console_mod's `tp`** writes). `write_player_local_pos` mirrors the read-probe noinline+SEH
+shape; `warp_xyz` converts world→tile-local via the confirmed `world=grid*256+local` map. **NEXT = run the
+streaming-gate verification IN-GAME** (needs deploy): (a) `coords` vs er_console `coords` → same `+0x6C0`
+frame?; (b) `warp_local X Y Z` twice, same values → same spot = absolute-in-tile, drifts = pure delta;
+(c) `warp_xyz` intra-region (should hold — a ~1500-unit hop already streamed auto per user) then push to a
+far cell / dungeon / underground + probe with `hf_probe` → find where collision stops following = the
+open-world-continuous vs cross-map-transition boundary.
+
+**3. Direction set — "dev dimension" walking skeleton (the way to see what's missing for runtime modding).**
+Survey of the RE frontier done (map mission's frontier in `docs/re/README.md` = MSB-write, terrain/collision-
+write, ESD/EzState, regulation-VFS, FLVER; PLUS gameplay-modding pans OFF the map's radar: EMEVD-execute,
+SpEffect-apply, damage-hook, live-enemy-spawn, anim/behavior, arbitrary-teleport, bullet-spawn, weather).
+Weapon Arts = `EquipParamGem` (Ash of War, id nibble 0x8) + `SwordArtsParam` behavior — data driveable,
+behavior/install NOT RE (same wall). **Plan idea (not yet written):** a TOML-declared dev dimension whose
+*realizer logs each field it can't yet honor* → the missing-primitive checklist writes itself live in-game.
+Key facts established this session: streaming-safe warps in ER are ALL anchor-based (grace id / EMEVD
+warp-to-entity), there is NO native warp-to-XYZ; but a raw `+0x6C0` write DOES ride open-world continuous
+streaming (er_console 1500-unit hop). Zero-inventory dev player ≈ free today (`strip_goods`/`restore_goods`).
+**Open next:** decide whether to write `docs/plans/dev_dimension_walking_skeleton_plan.md` + scope the
+streaming-gate / free-teleport question once the harness test above returns data.
+
+---
+
 ## ⇒ SESSION WRAP 2026-07-04 — Virtual World Map (mod-owned page) + test orchestration
 
 Big session. Two tracks landed (all committed, in-game verified where noted; local master ahead of origin):

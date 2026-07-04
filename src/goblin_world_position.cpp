@@ -606,6 +606,35 @@ void *goblin::get_local_player_ptr()
     return pr.lp;
 }
 
+// ─── Player-position WRITE — the mod's FIRST pos write (teleport harness) ─────────────────
+// Writes the tile-local Havok pos at LocalPlayer+0x6C0/+0x6C4/+0x6C8 — the SAME frame the read
+// probe above reads and er_console_mod's `tp` writes. Same noinline-CALL + SEH shape as the
+// read probes (clang-cl elides a __try wrapped directly around raw stores — see
+// docs/memory/tooling/clang-cl-seh-noinline.md). set_y=false leaves +0x6C4 (height) untouched.
+__declspec(noinline) static void write_player_body(uint8_t *lp, float x, float y, float z,
+                                                   bool set_y, bool *ok)
+{
+    *reinterpret_cast<float *>(lp + 0x6C0) = x;
+    if (set_y) *reinterpret_cast<float *>(lp + 0x6C4) = y;
+    *reinterpret_cast<float *>(lp + 0x6C8) = z;
+    *ok = true;
+}
+
+static bool write_player_seh(uint8_t *lp, float x, float y, float z, bool set_y)
+{
+    bool ok = false;
+    __try { write_player_body(lp, x, y, z, set_y, &ok); }
+    __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
+    return ok;
+}
+
+bool goblin::write_player_local_pos(float x, float y, float z, bool set_y)
+{
+    auto *lp = reinterpret_cast<uint8_t *>(get_local_player_ptr());
+    if (!lp) return false;
+    return write_player_seh(lp, x, y, z, set_y);
+}
+
 // ─── Player MARKER-space position — CONFIRMED Target-A chain (playerpos doc) ──
 // Both statics are AOB-anchored (drift per patch, so never hardcode the RVAs):
 //   player-MapId singleton (was 0x3d691d8): unique site that loads it then calls

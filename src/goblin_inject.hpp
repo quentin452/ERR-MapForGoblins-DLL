@@ -79,10 +79,20 @@ namespace goblin
     // cluster's PlaceName string (shown by the cluster-label toggle).
     const std::vector<std::pair<int, std::string>> &cluster_label_census();
 
-    // Local player's world position (WorldChrMan chain, AOB-resolved + cached).
+    // Local player's TILE-LOCAL Havok position (LocalPlayer+0x6C0/+0x6C4/+0x6C8; Y=height) —
+    // the ray-origin frame, NOT global world (despite the name). world = grid*256 + this (see
+    // get_player_map_pos). Confirmed == WorldMapPointParam posX/posZ frame. Cached WCM chain.
     // Returns false if not yet resolvable (early load) or the chain faulted.
-    // For proximity clustering (v2). Coordinate space = global/world (verify).
     bool get_player_world_pos(float &x, float &y, float &z);
+
+    // Teleport by WRITING the tile-local Havok pos (LocalPlayer+0x6C0/+0x6C4/+0x6C8) — the SAME
+    // frame get_player_world_pos reads and er_console_mod's `tp` writes. set_y=false keeps the
+    // current height (horizontal hop). Intra-region only: open-world streaming follows the physics
+    // body (a ~1500-unit hop streams automatically), but a cross-map target may land in unstreamed
+    // void — the coords/warp_xyz RPC harness characterizes that streaming gate. The mod's FIRST
+    // position write; races the physics step (a 1-frame non-atomic glitch, not a crash). false if
+    // LocalPlayer unresolved / the write faults.
+    bool write_player_local_pos(float x, float y, float z, bool set_y = false);
 
     // Raw player-chain pointers for the inventory-accessor RE + the Gap C / sidecar
     // grant chain. WorldChrMan = the engine char-manager singleton; LocalPlayer =
