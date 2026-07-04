@@ -30,10 +30,12 @@ Rank danger by: *does it fail SILENTLY?* + *does it WRITE?* + *how hard does it 
 2. **MinHook detour installs (code patching).** ~24 sites in 12 files (`modutils::hook`). A hook WRITES a
    JMP over the target prologue — a wrong address (RVA/AOB drift) or a shorter-than-expected prologue
    corrupts LIVE code → instant crash or subtle corruption. Strictly worse than a read-RVA (it writes).
-   - **The two most dangerous unhardened items in the whole codebase:** the grace-suppression hooks at
-     `er+0x88b7b0` / `er+0x87ae20` (`goblin_grace_suppression.cpp:126/148`) — fixed RVA **+** a code
-     write **+** crash-on-wrong. These are the un-AOB'd hooks the RVA backlog flags; harden FIRST (read
-     the original bytes from the MinHook trampoline to craft their AOB, since the live bytes are the JMP).
+   - ~~**The two most dangerous unhardened items:** the grace-suppression hooks at `er+0x88b7b0` /
+     `er+0x87ae20`~~ ✅ **HARDENED 2026-07-04** (`WARPPIN_BUILDER_FN`/`WARPPIN_SETTO_FN`, AOB-first via
+     `resolve_func_aob`). The live-dump-reads-the-JMP problem was solved by booting with
+     `grace_suppress_native=false` (the hook install is gated on it) to dump the original prologue, NOT
+     the trampoline. Both PASS+UNIQUE; hooks install at the AOB address ([SIG]/resolve run before the
+     patch). This retires tier S-2's top items.
    - Everything else routes through an AOB (`icon_harvest`, `overlay`, DXGI/DInput) — lower risk.
 
 3. **Direct engine/​save memory WRITES.** ~17 sites (`write_dw`/`write_bytes`/`WriteProcessMemory`):
@@ -78,8 +80,8 @@ portability/cleanliness, but there is **no correctness or hardening benefit** �
 fragile primitive. Recommend: leave unless a broader cross-platform pass wants `<chrono>` everywhere.
 
 ## Suggested order (highest danger-per-effort first)
-1. The 2 grace-suppression **hooked RVAs** (tier S-2) — RVA + write + crash; harden via the trampoline.
-2. The 2 engine **vtable slots** (tier S-1: geom setter 26, grace SetTo vt[1]) — resolve/assert from a ctor AOB.
+1. ~~The 2 grace-suppression **hooked RVAs** (tier S-2)~~ ✅ DONE 2026-07-04 (flag-gated dump, not trampoline).
+2. The 2 engine **vtable slots** (tier S-1: geom setter 26, grace SetTo vt[1]) — resolve/assert from a ctor AOB. ← NEXT
 3. A few **layout canaries** on the hottest write structs (tier S-3 inventory strip) + hottest read chains (tier A).
 4. Continue the RVA backlog's PHYSWORLD slot + vtable/slot set.
 Field-offset mass-annotation and QPC→chrono are explicitly NOT worth doing.

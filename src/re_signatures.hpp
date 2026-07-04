@@ -344,6 +344,20 @@ namespace goblin::sig
     // FUN_1406a5080: EnsureAssetRequest(reqMgr, wchar_t* name) — geom ADD pivot-2. RVA 0x6a5080.
     inline constexpr const char *ENSURE_ASSET_REQUEST_FN =
         "40 56 57 48 83 EC 58 80 B9 85 01 00 00 00 48 8B F2 48 8B F9 75 ?? 33 C0 48 83 C4 58 5F 5E C3";
+    // ── Grace-pin suppression HOOK targets (tier-S: RVA + code-patch write + crash-on-wrong) ──
+    // These two are HOOKED (MinHook JMP), so a LIVE dump reads the detour, not the prologue — the AOBs
+    // below were captured with the hook DISABLED (grace_suppress_native=false). docs/re/
+    // fragile_primitives_audit.md ranks these the most dangerous unhardened items. RE e4b3f6a §1.
+    // FUN_14088b7b0: WarpPinData builder (per-pin GFx build). RVA 0x88b7b0.
+    inline constexpr const char *WARPPIN_BUILDER_FN =
+        "40 55 56 57 41 54 41 55 41 56 41 57 48 81 EC 80 00 00 00 48 C7 44 24 30 FE FF FF FF "
+        "48 89 9C 24 C8 00 00 00 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 44 24 78 4D 8B F0 4C 8B EA "
+        "48 8B F1 48 89 4C 24 38";
+    // FUN_14087ae20: WorldMap(Warp|Point)PinData::SetTo = vt[1] (per-refresh widget bind). RVA 0x87ae20.
+    inline constexpr const char *WARPPIN_SETTO_FN =
+        "48 8B C4 48 89 50 10 56 57 41 56 48 81 EC A0 00 00 00 48 C7 44 24 28 FE FF FF FF "
+        "48 89 58 08 48 89 68 18 48 8B F2 4C 8B F1 33 FF 89 7C 24 20 0F B6 51 0C 48 8B CE "
+        "E8 ?? ?? ?? ?? 4C 8D 05 ?? ?? ?? ??";
 
     // ── Health check ───────────────────────────────────────────────────────────
     // Scans every AOB above (no relative_offsets — a base match is enough to prove the
@@ -395,6 +409,8 @@ namespace goblin::sig
             {"CASTRAY_FN", CASTRAY_FN},
             {"GEOM_MATRIX_GETTER_FN", GEOM_MATRIX_GETTER_FN},
             {"ENSURE_ASSET_REQUEST_FN", ENSURE_ASSET_REQUEST_FN},
+            {"WARPPIN_BUILDER_FN", WARPPIN_BUILDER_FN},
+            {"WARPPIN_SETTO_FN", WARPPIN_SETTO_FN},
         };
         count = sizeof(table) / sizeof(table[0]);
         return table;

@@ -28,18 +28,20 @@ verified **PASS + UNIQUE** in the live `[SIG]` health check + exercised in-world
 | ENSURE_ASSET_REQUEST_FN | 0x6a5080 | EnsureAssetRequest(reqMgr,name) | goblin_geom_spawn.cpp |
 | GEOM_MATRIX_GETTER_FN | 0x6c46e0 | geom matrix getter (6 sites) | goblin_geom_move.cpp |
 | CASTRAY_FN | 0xc70360 | PhysWorld cast-ray (heightfield) | goblin_heightfield.cpp |
+| WARPPIN_BUILDER_FN | 0x88b7b0 | WarpPinData builder (**hooked**) | goblin_grace_suppression.cpp |
+| WARPPIN_SETTO_FN | 0x87ae20 | vt[1] SetTo (**hooked**) | goblin_grace_suppression.cpp |
+
+The 2 grace fns (tier-S: RVA + code-patch write + crash-on-wrong, the audit's top items) were the
+trickiest — being HOOKED, a live dump reads the detour JMP, not the prologue. **Captured by booting with
+`grace_suppress_native=false`** (the hook install is fully gated on that flag → the RVAs hold their
+original prologue), dumping via the normal `mem_dump`, then restoring the ini. Both verified PASS+UNIQUE
++ hooks install at the AOB-resolved address (init order is safe: `[SIG]`/resolve run BEFORE the hook
+patches the bytes). Trampoline-read was NOT needed — the flag-gate is simpler.
 
 ## FUNC — call targets with NO AOB (move every patch)
 | symbol | RVA | resolves | file |
 |---|---|---|---|
-| — | er+0x88b7b0 | WarpPinData builder (**hooked**) | goblin_grace_suppression.cpp:126 |
-| — | er+0x87ae20 | vt[1] SetTo (**hooked**) | goblin_grace_suppression.cpp:148 |
 | icon-harvest | er+0xd63c30,0x1f5560,0xd77550,0xd771d0,0xd69640,0xd724c0 | image-repo find/load/group/tick | goblin_icon_harvest.cpp |
-
-**⚠ The 2 grace fns are already HOOKED** by our DLL — a live dump at their address reads the detour
-JMP, not the original prologue, so `hf_hook_scout disasm --aob` can't craft their AOB from a running
-game. Harden them by reading the ORIGINAL bytes from the MinHook trampoline (or dump before the hook
-installs), then wildcard as usual.
 
 ## STATIC-SLOT — singleton/vtable slots with NO AOB
 | symbol | RVA | resolves | file |
@@ -82,9 +84,10 @@ a region is VMProtect-*mutated* per-run (no stable AOB exists — rare; detect b
 
 ## Priority
 ~~Hot-path FUNCs (CASTRAY, ENSURE_ASSET_REQUEST, GETTER)~~ ✅ + ~~cheap-win switches (CSMenuMan,
-CreateImage)~~ ✅ DONE 2026-07-04. Remaining, in order: **PHYSWORLD** slot (heightfield — FWA a load
-site); the two **hooked** grace-suppression FUNCs (wrong hook addr = crash; read the trampoline, not the
-live bytes); then the worldmap vtables/slots and the icon-harvest set.
+CreateImage)~~ ✅ + ~~the 2 hooked grace-suppression FUNCs (tier-S, the audit's top danger)~~ ✅ DONE
+2026-07-04. Remaining, in order: **PHYSWORLD** slot (heightfield — FWA a load site); the tier-S engine
+**vtable slots** (geom setter 26, grace SetTo vt[1] — resolve/assert from a ctor AOB, per
+`fragile_primitives_audit.md`); then the worldmap vtables/slots and the icon-harvest set.
 
 Note: `goblin_markers.cpp` old RVAs 0x3D5DF38/0x2AC21D8 are already migrated to AOB (comments only).
 See [re-signatures-registry](../memory/tooling/re-signatures-registry.md) for how to add a signature.
