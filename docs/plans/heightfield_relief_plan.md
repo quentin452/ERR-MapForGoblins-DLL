@@ -100,10 +100,12 @@ stack frame hit once (`abddc05`). Fix (`d3ca993`): pass start/segDir/outPoint/ou
 ctx, **NO game-thread hook needed**. The entire "find a safe game-thread gameplay hook" track is retired.
 
 **⇒ D2 remaining (now a clear build, present-thread, no frontier RE):**
-1. **D2.2 grid sampler** — cast a few cells/frame on the present thread, idle-gated (a torn ctx during
-   movement just misses+retries; resolve_ctx fresh each cast). Still needs the **block-local↔world frame
-   conversion** (D2.1 finding: the cast frame is Havok BLOCK-LOCAL — convert world XZ → chunk-local before
-   casting, hit XZ back to world for drawing). The sampler code is already staged.
+1. ✅ **D2.2 grid sampler DONE 2026-07-04 (`f5323e6`)** — runs in `tick_present` (present thread, every
+   frame, gameplay only / map-closed): captures the player frame on `hf_sample`, casts `kCellsPerTick=48`
+   cells/frame until drained, publishes `{worldXZ, groundY, normal, hit}` to `snapshot()`. World XZ →
+   block-local via the captured `(local0−world0)` translation. Live: `hf_sample 2048 32` → 1024 cells,
+   **362 hits (35%)**, groundY [−134.6..265.7]; edge cells miss (outside the loaded physics block =
+   nodata, expected). Tighter extents raise %hit; multi-block coverage = D2.4.
 2. **D2.3 hillshade render** on the vmap (dot(normal, light); sea = y<seaLevel) under markers/tiles.
 3. **D2.4 coverage extension + persistence** (accumulate as the player warps; log nodata).
 
