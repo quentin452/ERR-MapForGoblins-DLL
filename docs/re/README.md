@@ -1,6 +1,6 @@
 # RE coverage map — what of ELDEN RING is reverse-engineered, and what isn't
 
-Index + honest coverage map for `docs/re/`. **162 RE docs** live here. Two kinds:
+Index + honest coverage map for `docs/re/`. **164 RE docs** live here. Two kinds:
 - `*_re_findings.md` / `*_RESOLVED.md` — a SOLVED structure/function (the answer).
 - `*_re_prompt.md` / `*_analysis.md` — an OPEN or historical RE task handed to Ghidra/CE.
 
@@ -65,17 +65,18 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
 5. **Custom mob PLACEMENT** — NpcParam is param-driveable, but placing a custom enemy is MSB write (#1).
 
 ### Smaller tactical gaps (see HANDOFF)
-- **WorldMapTile placement decode — SOLVED (static).** Tiles are a **uniform 256×256-map-space sparse
-  grid** (constant size `DAT_143b37d00..d0c={0,0,256,256}`), NOT a variable-size quadtree. Name decode:
-  `suffix = 8·morton(subX,subY)` in a `64×64`-cell block → `gridX=col·64+subX`, `gridZ=row·64+subY`,
-  `rect = ((gridX−gridXbase)·256, (gridZ−gridZbase)·256) + (0,0,256,256)` (`gridXbase/gridZbase` from the
-  live converter). No `WorldMapTileParam` (pure name-decode). LOD = per-LOD layer stack, zoom-gated.
-  Findings: `windows_worldmap_tile_placement_re_findings.md`. **⚠ LIVE MISMATCH (2026-07-04):** the tile
-  NAME-grid ≠ the converter grid — land tiles at name-gridX~64 vs converter~43 (offset ~21/~14, non-uniform)
-  → tiles load but are OFFSET from markers. The real origin is the un-decoded REGION-WALK
-  (`FUN_1409d8c30`/`FUN_1409da9f0`). **Open prompt (narrow — rects/calibration only, textures deferred):**
-  `windows_worldmap_tile_rect_reach_re_prompt.md` (reach a live layer's resolved base `+0x21c/+0x220` / tile
-  rect `self+0x98`, OR decode the region-walk origin formula). SRV recycling + byte-range reads = later.
+- **WorldMapTile placement/rect — SOLVED (static, calibration fixed 2026-07-04).** The engine positions
+  tiles on a `floor(mapU/cellSize)` grid with a **FLIPPED Z axis**, base 0: `gridX = clamp(floor(mapU/cs),
+  0, N-1)`, `gridZ = clamp((N-1) − floor(mapV/cs), 0, N-1)`, per-tier `cs/N = {256/41, 342/31, 1288/9}`
+  (overworld = 256/41). Tile map-space rect = `(gridX·cs, (N-1-gridZ)·cs)` + `256×256` (const). `tileId =
+  dim*10000 + gridX*100 + gridZ` (@`WorldMapTile+0x30`, rect @`+0x98`). Calibration fn `FUN_1408849e0`,
+  cell walk `FUN_1409d9ba0`, view-rect build `FUN_1409ce7d0`. Live-read chain: `WorldMapArea`(vt
+  er+0x2b2cb08, layer vec `+0x390` stride 0x110) → `WorldMapTiledLayer`(vt er+0x2b2caf0, tree `+0x230`) →
+  `WorldMapTile{+0x30 id, +0x98 rect}`. Findings: `windows_worldmap_tile_rect_reach_re_findings.md`.
+  ⚠ the earlier `windows_worldmap_tile_placement_re_findings.md` grid math (`col·64` morton, no Z-flip) was
+  WRONG for placement (that offset by ~21/~14) — corrected/superseded; its `suffix=8·morton` only describes
+  the archive FILENAME (texture-fetch, deferred). Remaining: archive name↔cell (textures), SRV recycling,
+  byte-range reads.
 - **LotReader index rebuild** — snapshotted at init; newly cloned lots don't resolve (`refresh_markers` v2).
 - **F2 fog-locate clamp** — the reticle-clamp bounds source in the `c32f0` subtree is unfound
   (`linux_f2_fog_locate_clamp_re_findings.md`).

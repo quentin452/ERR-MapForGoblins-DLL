@@ -1,5 +1,15 @@
 # RE findings — WorldMapTile placement: decode `{col,row,suffix}` → map-space rect + LOD
 
+> ⚠️ **PARTIALLY SUPERSEDED (2026-07-04).** The GRID math in §0/§2 below (`gridX = col·64 + morton`,
+> `W=64`, `(gridX−gridXbase)·256`, no Z-flip) is **WRONG for placement** — it placed tiles offset from
+> markers in live testing. The engine positions tiles on a `floor(mapU/cellSize)` grid with a **flipped Z
+> axis** and per-tier `cellSize/count` (`{256,342,1288}`/`{41,31,9}`), base 0. Use
+> **`windows_worldmap_tile_rect_reach_re_findings.md`** for the correct rect/placement formula + the live
+> read chain. The parts of this doc that remain valid: the class/function map (§1/§6), the constant
+> `256×256` texture rect, `tileId = dim*10000+gridX*100+gridZ`, no `WorldMapTileParam`, the zoom-gated LOD
+> layer stack, and that `suffix=8·morton` describes the ARCHIVE FILENAME (a texture-fetch concern, not
+> placement).
+
 Answers `docs/re/windows_worldmap_tile_placement_re_prompt.md`. Static Ghidra RE on `D:\ghidra_proj2\ER`
 (App 2.6.2.0 / ERR 2.2.9.6, imagebase `0x140000000`, read-only). Builds on
 `windows_world_to_mapspace_projection_re_findings.md` (the solved map-space→world converter, live off

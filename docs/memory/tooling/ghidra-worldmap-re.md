@@ -856,3 +856,24 @@ poisoned, delete the offending `.java` from the shared dir. Un-analyzed engine r
 vtable/jump, e.g. the tile create tail er+0x9da9f0) have NO Ghidra function — `disassemble(addr)` +
 `createFunction(addr,null)`, then check `getFunctionContaining(call).getBody().contains(call)`; the true
 entry may be a 16-aligned boundary a few bytes into an un-disassembled gap (walk candidate starts).
+
+---
+
+**WORLDMAP TILE PLACEMENT — CALIBRATION CORRECTED (2026-07-04, doc
+`docs/re/windows_worldmap_tile_rect_reach_re_findings.md`).** The first-pass decode
+(`..._tile_placement_re_findings.md`: `gridX=col·64+morton(suffix)`, no Z-flip) placed tiles OFFSET from
+markers in live testing (name-gridX~64 vs the real ~41-cell grid). The REAL engine grid (from the region
+walk, NOT the archive name): `FUN_1408849e0(&range, dimByte, viewRect)` = `gridX=clamp(floor(mapU/cs),0,N-1)`,
+`gridZ=clamp((N-1)−floor(mapV/cs),0,N-1)` **with the Z axis FLIPPED and base 0**; per-tier `cs/N` =
+`{256/41 (0x100/0x29), 342/31 (0x156/ceil(30.69)), 1288/9 (0x508/ceil(8.15))}` — 3 coarseness tiers each
+covering the same ~10.5k map extent (overworld = 256/41). Cell walk `FUN_1409d9ba0`:
+`tileId=((u16)dimByte*100+gridX)*100+gridZ` (= dim*10000+gridX*100+gridZ). Tile map-space rect (inverse) =
+`(gridX·cs, (N-1-gridZ)·cs)` + const `256×256`. Per-frame chain: `WorldMapArea::tick FUN_1409cd390` →
+`FUN_1409ce7d0` (view fields area+0x340/+0x344/+0x348/+0x34c, zoom DAT_14329e660=0.5 → viewRect) →
+`FUN_1409e1230` → `FUN_1409d8fa0` → `FUN_1409d9ba0`. **Live-read chain (the robust MFG fix, no name decode):**
+`WorldMapArea` (vt er+0x2b2cb08, ctor FUN_1409cb9c0, size 0x5d8, per-LOD `WorldMapTiledLayer` DLFixedVector at
+`+0x390`/`+0x398` stride 0x110, back-ptr VM `+0x6c`) → `WorldMapTiledLayer` (vt er+0x2b2caf0, tile
+`std::map<u16,WorldMapTile*>` at `+0x230`; node left@0/parent@8/right@0x10/isnil@0x19/key@0x20/val@0x28) →
+`WorldMapTile` (tileId u16 @`+0x30`, "Tile_gx_gz" label @`+0x38`, map-space rect floats @`+0x98..0xA4`).
+`WorldMapDialog` vt er+0x2b2d7d8 (size 0x3ed0) holds the area; pin the dialog→area member live by scanning
+for a ptr whose vtable==er+0x2b2cb08 (the ctor FUN_1409cf8f0 is a thin thunk, member hidden from static view).

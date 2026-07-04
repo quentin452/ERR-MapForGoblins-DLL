@@ -38,18 +38,19 @@ from F1 + open via the game MAP KEY. RPCs: `vmap`/`vworld`/`f1_tab`. **NEXT on t
   (co-located with markers, live-verified). **Testing gotchas found:** `set rpc_auto_idle false` before
   scripted input (auto-idle SUSPENDS it when a human is at the PC); the map cursor/VM only publishes once
   the map view is NON-static (pan/zoom); the ER world map opens with the **`m`** key on this install.
-  **NEXT (3b/3c/decode):** (1) **`{suffix}` decode — CRACKED (static Ghidra, 2026-07-04,
-  `docs/re/windows_worldmap_tile_placement_re_findings.md`).** NOT a variable-depth quadtree: every tile is
-  a **constant 256×256 map-space quad** (`DAT_143b37d00..d0c={0,0,256,256}`) on a **uniform SPARSE grid**.
-  Decode: `suffix = 8·morton(subX,subY)` in a **64×64-cell block** → `gridX=col·64+subX`,
-  `gridZ=row·64+subY`, `rect = ((gridX−gridXbase)·256,(gridZ−gridZbase)·256)+(0,0,256,256)`
-  (`gridXbase/gridZbase` live from the converter). Verified: `morton(52,38)·8=0x69c0` = block-02_03 max.
-  No `WorldMapTileParam` (pure name-decode). LOD = per-LOD layer stack, zoom-gated (`WorldMapTiledLayer`
-  array at mgr+0x390, stride 0x110). Implement `decode_suffix`+`tile_map_rect` in `maptile.cpp` (ref C in
-  the findings). **Runtime to confirm on Linux:** Morton axis-order (even-bit = col-axis or row-axis?) +
-  `W=64` holds for the active archive, via one screenshot vs. a known marker. (2) **SRV recycling** —
-  256-cap no free list; even coarsest M00_L3=561>256. (3) byte-range reads (extract reads whole 1.26 GB
-  .tpfbdt). Then the full seamless overworld renders under the markers.
+  **NEXT (3b/3c/placement):** (1) **Tile RECT/placement — SOLVED + calibration fixed (static Ghidra,
+  2026-07-04, `docs/re/windows_worldmap_tile_rect_reach_re_findings.md`).** The engine grid is
+  `gridX=clamp(floor(mapU/cs),0,N-1)`, `gridZ=clamp((N-1)−floor(mapV/cs),0,N-1)` **(Z axis FLIPPED, base 0)**,
+  per-tier `cs/N={256/41, 342/31, 1288/9}` (overworld 256/41). Tile map-space rect `=(gridX·cs,(N-1-gridZ)·cs)`
+  `+256×256`; `tileId=dim*10000+gridX*100+gridZ`. Calibration fn `FUN_1408849e0`, cell walk `FUN_1409d9ba0`.
+  **This CORRECTS the first pass** (`..._tile_placement_re_findings.md`): the `col·64` morton name-grid + the
+  missing Z-flip caused the live offset (name-gridX~64 vs the real N=41 grid). **The reliable MFG fix = read
+  LIVE rects** (no name decode): walk `WorldMapArea`(vt er+0x2b2cb08, layers `+0x390` stride 0x110) →
+  `WorldMapTiledLayer`(tree `+0x230`) → `WorldMapTile{+0x30 tileId, +0x98 rect}`; that gives
+  `(gridX,gridZ)→rect` authoritatively. Implement in `maptile.cpp` (ref C in the findings) + confirm live on
+  Linux. `suffix=8·morton` only describes the archive FILENAME (texture-fetch = deferred). (2) **SRV
+  recycling** — 256-cap no free list; even coarsest M00_L3=561>256. (3) byte-range reads (extract reads whole
+  1.26 GB .tpfbdt). Then the full seamless overworld renders under the markers.
 - Missed design items (captured in `docs/plans/virtual_world_multi_world_design.md`): **GAMEPAD** for the
   vmap canvas (stick→pan/zoom + reticle — add to every vmap slice); the real feature gaps = **clock /
   blue click-marker / custom beacon** (rest of ER's map is cosmetic; grace = fast-travel = make-or-break).
