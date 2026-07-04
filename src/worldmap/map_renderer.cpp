@@ -1841,6 +1841,17 @@ void draw_region_labels(ImDrawList *fg, int open_grp,
 
 } // namespace
 
+// Public wrapper (external linkage): draw ONE marker with the FULL state-aware logic (grace discovered/
+// undiscovered sprite, collected-dim, cleared check, boss redify, rune glow, altitude badge) at screen
+// (px,py) on `dl`. Lets the virtual map REUSE the native per-marker draw instead of duplicating the if/else
+// — same icons/states on both maps. atlas = baked-atlas SRV; native = config nativeItemIcons. (IconSet +
+// draw_marker_impl are file-local above; reachable here in the same TU.)
+void draw_marker_glyph(ImDrawList *dl, const Marker &m, float px, float py, void *atlas, bool native, float half)
+{
+    IconSet icons(reinterpret_cast<ImTextureID>(atlas), native);
+    draw_marker_impl(dl, m, ImVec2(px, py), icons, half);
+}
+
 bool inworld_hovered() { return s_inworld_hot; }
 
 // ── Item search highlight (F1 search bar) ───────────────────────────────────────────────────────

@@ -15,6 +15,7 @@
 #include "goblin_overlay_render_api.hpp"  // lookup_text_utf8 / category_label / warp_to_grace
 #include "goblin_map_data.hpp"            // generated::Category::WorldGraces (click-to-warp)
 #include "worldmap/marker_layer.hpp"   // Marker / MarkerLayer (overlay_layers → markers to project)
+#include "worldmap/map_renderer.hpp"   // draw_marker_glyph — reuse the native state-aware per-marker draw
 #include "worldmap/maptile.hpp"        // maptile ART reader (endgame phase-1a slice 2/3)
 #include "goblin_worldmap_probe.hpp"   // live converter affine + map-space extent (slice 3 tile placement)
 #include "goblin_virtual_world.hpp"    // vworld registry — the active custom world's markers (slice C)
@@ -551,21 +552,30 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         return r;
     };
     const float icoHalf = 8.0f;  // on-canvas icon size (px)
+    const bool nativeIcons = *goblin::overlay_api::cfg_nativeItemIcons_ptr();
     // Hover tooltip: track the marker nearest the cursor (within a pixel radius) while drawing.
     float hoverBestD = 1e18f; int hoverName = -1, hoverCat = -1, hoverDisc = 0; std::string hoverV; uint64_t hoverRow = 0;
-    auto plot = [&](float wx, float wz, uint32_t col, int cat, int nameId, const char *vname, uint64_t rowId, int discFlag) {
+    // mp != null (base ER) → reuse the native state-aware per-marker draw (grace discovered/undiscovered
+    // sprite, collected-dim, cleared check, rune glow, badge) so the vmap does NOT duplicate that logic.
+    auto plot = [&](float wx, float wz, uint32_t col, int cat, int nameId, const char *vname, uint64_t rowId,
+                    int discFlag, const goblin::worldmap::Marker *mp) {
         if (wx < minx) minx = wx;
         if (wx > maxx) maxx = wx;
         if (wz < minz) minz = wz;
         if (wz > maxz) maxz = wz;
         ImVec2 ps = w2s(wx, wz);
         if (ps.x < origin.x || ps.x > canvas_end.x || ps.y < origin.y || ps.y > canvas_end.y) return;
-        const IcoRes &r = icon_for(cat);
-        if (r.ok)
-            dl->AddImage((ImTextureID)r.tex, ImVec2(ps.x - icoHalf, ps.y - icoHalf),
-                         ImVec2(ps.x + icoHalf, ps.y + icoHalf), r.uv0, r.uv1);
+        if (mp && s_show_icons)
+            goblin::worldmap::draw_marker_glyph(dl, *mp, ps.x, ps.y, ctx.atlas_srv, nativeIcons, icoHalf);
         else
-            dl->AddCircleFilled(ps, 3.0f, col ? col : IM_COL32(235, 130, 90, 255));
+        {
+            const IcoRes &r = icon_for(cat);
+            if (s_show_icons && r.ok)
+                dl->AddImage((ImTextureID)r.tex, ImVec2(ps.x - icoHalf, ps.y - icoHalf),
+                             ImVec2(ps.x + icoHalf, ps.y + icoHalf), r.uv0, r.uv1);
+            else
+                dl->AddCircleFilled(ps, 3.0f, col ? col : IM_COL32(235, 130, 90, 255));
+        }
         drawn++;
         if (hovered)
         {
@@ -580,7 +590,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         {
             if (!L) continue;
             for (const goblin::worldmap::Marker &m : L->markers())
-                if (m.group == s_group) plot(m.worldX, m.worldZ, m.color, m.category, m.name_id, nullptr, m.row_id, m.discover_flag);
+                if (m.group == s_group) plot(m.worldX, m.worldZ, m.color, m.category, m.name_id, nullptr, m.row_id, m.discover_flag, &m);
         }
     }
     else
@@ -588,7 +598,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         goblin::vworld::World w;
         if (goblin::vworld::get_world(active_world, w))
             for (const goblin::vworld::Marker &m : w.markers)
-                plot(m.x + w.originX, m.z + w.originZ, m.color, m.category, -1, m.name.c_str(), 0, 0);  // C1 identity
+                plot(m.x + w.originX, m.z + w.originZ, m.color, m.category, -1, m.name.c_str(), 0, 0, nullptr);  // C1
     }
     // Tooltip for the hovered marker (name via FMG + category label). A grace (has a warp rowId) also
     // offers double-click → fast-travel (the make-or-break map feature).
