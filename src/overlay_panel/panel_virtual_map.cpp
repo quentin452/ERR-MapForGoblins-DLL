@@ -506,7 +506,11 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     {
         for (auto &p : worlds)
             if (ImGui::Selectable(p.second.c_str(), p.first == active_world))
+            {
                 goblin::vworld::set_active(p.first);
+                goblin::vworld::save_default();   // persist the choice (incl. Base ER=0) → survives restart
+                if (p.first == 0) s_focus_player = true;   // switched to base ER → recentre on the player
+            }
         ImGui::EndCombo();
     }
     // ER group selector — only meaningful for Base ER (a custom world has its own single marker set).
