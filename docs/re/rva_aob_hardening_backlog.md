@@ -1,5 +1,12 @@
 # AOB-hardening backlog — fixed-RVA resolutions that need byte signatures
 
+**Re-verified current 2026-07-04** (full re-scan of `_RVA` symbols + `er+0x` literals across `src/`):
+every fixed-RVA site in code is already listed below. No new resolutions since the initial inventory —
+the only delta was `RENDER_MGR_SLOT_RVA` (a local alias of `CANVAS_SINGLETON_RVA` 0x47ef360, now noted).
+All other uncovered `er+0x` hits are comments / log strings restating documented RVAs (WorldChrMan
+fallback already dual-pathed; FieldIns `er+0x3d7b0c0` is comment-only — impl uses the WGM walk). The
+A7 region-labels work added zero RVAs. The 3 cheap-win switch-to-existing-AOB items are still open.
+
 Inventory 2026-07-04. RVAs are **build-specific** (ERR 2.2.9.6): they break on a game patch and are not
 mod-agnostic. Doctrine (`re_signatures.hpp`) is to pin AOBs, keep an RVA only as a cross-checked
 fallback. This lists every fixed-RVA / hardcoded module-relative resolution still lacking an AOB, so it
@@ -22,7 +29,7 @@ can be hardened. STRUCT FIELD offsets (`+0x98`, `+0x6C0`, `+0x1E508`, …) are s
 | WORLDMAP_VIEWMODEL_VTABLE_RVA | 0x2ad82e0 | WorldMapViewModel vtable (+page table) | re_signatures.hpp:272 |
 | CURSOR_VTABLE_RVA | 0x2b29a90 | WorldMapCursorControl vtable (many sites) | re_signatures.hpp:305 |
 | ICON_MGR_SLOT_RVA / _SIBLING | 0x3d6e9b0 / 0x3d6f558 | CSWorldMapPointMan (native-pin suppression) | re_signatures.hpp:315/316 |
-| CANVAS_SINGLETON_RVA | 0x47ef360 | WorldMap canvas/render mgr | re_signatures.hpp:309 |
+| CANVAS_SINGLETON_RVA | 0x47ef360 | WorldMap canvas/render mgr | re_signatures.hpp:309 (+ alias `RENDER_MGR_SLOT_RVA` worldmap_probe.cpp:1944) |
 | — | er+0x2ad8228 | WorldMapWarpPinData vftable | goblin_grace_suppression.cpp:147 |
 | icon-harvest | er+0x3d82510, er+0x3d5b0f8; base+0x2f05928, +0x2b761b0 | image-repo/CSFile slots + GX vtables | goblin_icon_harvest.cpp |
 
