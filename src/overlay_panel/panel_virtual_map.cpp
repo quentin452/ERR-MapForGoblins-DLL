@@ -61,6 +61,13 @@ namespace
     bool s_show_markers_panel = false;  // F1→vmap port: the Sections & categories controls in a sidebar
     Filter s_markers_filter;            // default (not filtering) → draw_sections_categories shows all
     float s_markers_w = 320.0f, s_graces_w = 250.0f;  // user-resizable sidebar widths (drag the splitter)
+    // Custom player-placed markers (our OWN system — right-click the canvas to drop one). Drawn on TOP of
+    // every other icon; listed in a sidebar with per-marker location + teleport (DX: "where's my marker").
+    struct CustomMarker { float wx, wz; int group; std::string name; uint32_t color; };
+    std::vector<CustomMarker> s_custom;
+    bool s_show_custom = false;        // custom-marker list sidebar toggle
+    float s_custom_w = 250.0f;         // its resizable width
+    int s_custom_seq = 1;              // auto-name counter
     char s_grace_filter[64] = "";   // grace-list search box
     // Grace list cache (rebuilt on open / Refresh; discovered-state re-read live per visible row).
     struct GraceRow { std::string name; float wx, wz; uint64_t rowId; int discFlag; int group;
@@ -450,6 +457,8 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     ImGui::SameLine();
     ImGui::Checkbox(tr("Markers"), &s_show_markers_panel);  // F1→vmap: category visibility controls
     ImGui::SameLine();
+    ImGui::Checkbox(tr("Custom"), &s_show_custom);  // our own player-placed markers (right-click to drop)
+    ImGui::SameLine();
     // 1024u extent = the ACCURATE zone: the world→cast-local transform is a translation captured at the
     // player, valid only near the player's physics chunk (ER recenters the frame across tiles) — 1024u
     // holds ~75% hits vs ~36% at 2048u where far cells cast in the wrong frame. Full coverage = accumulate
@@ -665,6 +674,42 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         vsplitter("##graces_split", s_graces_w, 180.0f, 520.0f);
     }
 
+    // Custom-marker LIST sidebar (#2) — the DX answer to "where's my custom marker?": each shows which map
+    // (group) + coords, with Go (pan the canvas there), TP (teleport in-game, intra-region), and delete.
+    if (s_show_custom && active_world == 0)
+    {
+        ImGui::BeginChild("##custom_panel", ImVec2(s_custom_w, 0.0f), true);
+        ImGui::Text(tr("Custom markers (%d)"), (int)s_custom.size());
+        ImGui::TextDisabled("%s", tr("right-click the map to add"));
+        ImGui::Separator();
+        int del = -1;
+        for (int i = 0; i < (int)s_custom.size(); ++i)
+        {
+            CustomMarker &c = s_custom[i];
+            ImGui::PushID(i);
+            char nbuf[64];
+            std::snprintf(nbuf, sizeof(nbuf), "%s", c.name.c_str());
+            ImGui::SetNextItemWidth(-1.0f);
+            if (ImGui::InputText("##nm", nbuf, sizeof(nbuf))) c.name = nbuf;
+            const char *gname = (c.group >= 0 && c.group < 4) ? kGroupNames[c.group] : "?";
+            ImGui::TextDisabled("%s  (%.0f, %.0f)", tr(gname), c.wx, c.wz);
+            if (ImGui::SmallButton(tr("Go")))
+            {
+                s_cam_x = c.wx; s_cam_z = c.wz; s_group = c.group;
+                if (s_zoom < 0.10f) s_zoom = 0.10f;
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton(tr("TP"))) goblin::overlay_api::warp_to_world_xz(c.wx, c.wz);
+            ImGui::SameLine();
+            if (ImGui::SmallButton(tr("Delete"))) del = i;
+            ImGui::Separator();
+            ImGui::PopID();
+        }
+        if (del >= 0) s_custom.erase(s_custom.begin() + del);
+        ImGui::EndChild();
+        vsplitter("##custom_split", s_custom_w, 180.0f, 480.0f);
+    }
+
     // Canvas = the remaining content region. An InvisibleButton captures drag/scroll over exactly it.
     ImVec2 origin = ImGui::GetCursorScreenPos();
     ImVec2 size = ImGui::GetContentRegionAvail();
@@ -674,7 +719,8 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     const ImVec2 center(origin.x + size.x * 0.5f, origin.y + size.y * 0.5f);
 
     ImGui::InvisibleButton("##vmap_canvas", size,
-                           ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonMiddle);
+                           ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonMiddle |
+                           ImGuiButtonFlags_MouseButtonRight);
     const bool hovered = ImGui::IsItemHovered();
     ImGuiIO &io = ImGui::GetIO();
 
@@ -711,6 +757,17 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     {
         s_cam_x -= io.MouseDelta.x / (s_sx * s_zoom);
         s_cam_z -= io.MouseDelta.y / (s_sz * s_zoom);   // axis signs (s_sx/s_sz) keep drag correct on flip
+    }
+    // Right-click the canvas → drop a CUSTOM marker at that world XZ (our own player-marker system). Base
+    // ER only (custom worlds have their own coord space). Tagged with the current group so the list can say
+    // which map it's on. Auto-opens the list so the new marker is immediately visible/manageable.
+    if (hovered && active_world == 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+    {
+        float mwx, mwz;
+        s2w(io.MousePos, mwx, mwz);
+        s_custom.push_back({mwx, mwz, s_group, std::string("Marker ") + std::to_string(s_custom_seq++),
+                            IM_COL32(90, 200, 255, 255)});
+        s_show_custom = true;
     }
     // Zoom about the cursor: keep the world point under the mouse fixed across the zoom step.
     if (hovered && io.MouseWheel != 0.0f)
@@ -1143,6 +1200,24 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     dl->AddCircle(pp, 5.0f, IM_COL32(255, 255, 255, 235), 0, 1.5f);
                 }
             }
+        }
+    }
+
+    // Custom player-placed markers — drawn ON TOP of every icon (like the player dot): a colored pin
+    // (teardrop) + name, for the markers tagged to the displayed group. Right-click the canvas to drop one.
+    if (active_world == 0)
+    {
+        for (const CustomMarker &c : s_custom)
+        {
+            if (c.group != s_group) continue;
+            ImVec2 p = w2s(c.wx, c.wz);
+            if (p.x < origin.x || p.x > canvas_end.x || p.y < origin.y || p.y > canvas_end.y) continue;
+            const float r = 8.0f;
+            const ImVec2 head(p.x, p.y - r * 1.3f);
+            dl->AddTriangleFilled(ImVec2(p.x - r * 0.7f, p.y - r * 1.3f), ImVec2(p.x + r * 0.7f, p.y - r * 1.3f), p, c.color);
+            dl->AddCircleFilled(head, r * 0.7f, c.color);
+            dl->AddCircle(head, r * 0.7f, IM_COL32(255, 255, 255, 240), 0, 1.5f);
+            dl->AddText(ImVec2(p.x + 7.0f, p.y - r * 1.3f - 8.0f), IM_COL32(230, 240, 255, 255), c.name.c_str());
         }
     }
 

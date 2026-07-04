@@ -77,6 +77,7 @@ namespace goblin::overlay_api
     GOBLIN_RENDER_API bool category_visible(int c);
     GOBLIN_RENDER_API void set_category_visible(int c, bool v);
     GOBLIN_RENDER_API uint32_t visibility_generation();  // O(1) change-detect for the vmap marker index
+    GOBLIN_RENDER_API bool warp_to_world_xz(float wx, float wz);  // TP to a custom marker (intra-region)
     GOBLIN_RENDER_API const char *category_label(int c);
     GOBLIN_RENDER_API const char *section_label(int idx);
     GOBLIN_RENDER_API int category_section(int c);

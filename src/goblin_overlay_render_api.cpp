@@ -62,6 +62,18 @@ namespace goblin::overlay_api
     bool category_visible(int c) { return goblin::ui::category_visible(c); }
     void set_category_visible(int c, bool v) { goblin::ui::set_category_visible(c, v); }
     uint32_t visibility_generation() { return goblin::ui::visibility_generation(); }
+
+    // Teleport to an ABSOLUTE world XZ (unified marker frame) — same logic as the warp_xyz RPC:
+    // keep the current tile, offset the player's local pos by (target − currentRaw). Intra-region only
+    // (a far cross-map target may land in unstreamed void). Returns false if not in-world / write failed.
+    bool warp_to_world_xz(float wx, float wz)
+    {
+        float lx, ly, lz;
+        if (!goblin::get_player_world_pos(lx, ly, lz)) return false;
+        int area = 0; float cwx = 0.f, cwz = 0.f;
+        if (!goblin::get_player_raw_pos(area, cwx, cwz)) return false;
+        return goblin::write_player_local_pos(lx + (wx - cwx), ly, lz + (wz - cwz), /*set_y=*/false);
+    }
     const char *category_label(int c) { return goblin::ui::category_label(c); }
     const char *section_label(int idx) { return goblin::ui::section_label(idx); }
     int category_section(int c) { return goblin::ui::category_section(c); }
