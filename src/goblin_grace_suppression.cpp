@@ -1,6 +1,7 @@
 #include "goblin_inject.hpp"
 #include "goblin_config.hpp"
 #include "modutils.hpp"
+#include "re_signatures.hpp"   // AOB-first resolution of the 2 hooked FUNCs (was fixed RVAs — tier-S risk)
 
 #include <spdlog/spdlog.h>
 #include <windows.h>
@@ -123,7 +124,8 @@ void goblin::install_grace_suppression_hook()
     if (!goblin::config::graceSuppressNative) return;
     uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
     if (!er) return;
-    void *fn = reinterpret_cast<void *>(er + 0x88b7b0);   // FUN_14088b7b0 (RE e4b3f6a §1)
+    void *fn = goblin::sig::resolve_func_aob(goblin::sig::WARPPIN_BUILDER_FN, er, 0x88b7b0,
+                                             "WARPPIN_BUILDER");   // FUN_14088b7b0 (RE e4b3f6a §1)
     try
     {
         modutils::hook(fn, reinterpret_cast<void *>(&warp_pin_detour),
@@ -145,7 +147,8 @@ void goblin::install_grace_suppression_hook()
     if (kSetToHookEnabled)
     {
         g_warppin_vftable = reinterpret_cast<void *>(er + 0x2ad8228); // WorldMapWarpPinData::vftable
-        void *setto = reinterpret_cast<void *>(er + 0x87ae20);   // FUN_14087ae20 (vt[1] SetTo)
+        void *setto = goblin::sig::resolve_func_aob(goblin::sig::WARPPIN_SETTO_FN, er, 0x87ae20,
+                                                    "WARPPIN_SETTO");   // FUN_14087ae20 (vt[1] SetTo)
         try
         {
             modutils::hook(setto, reinterpret_cast<void *>(&warp_setto_detour),

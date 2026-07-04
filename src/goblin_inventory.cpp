@@ -155,6 +155,60 @@ __declspec(noinline) static bool write_bytes(void *p, const void *src, size_t n)
     __try { std::memcpy(p, src, n); return true; }
     __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
+
+// ── Root layout canary for the inventory chain ──────────────────────────────────────────────────
+// The GameDataMan+0x8 -> PlayerGameData+0x2B0 -> EquipGameData+0x158 -> EquipInventoryData chain and
+// its segment fields (+0x1C count1, +0x80 last, +0x50/+0x40 seg bases, node stride 0x18) are hardcoded
+// RE'd offsets with NO [SIG] coverage — a game patch that reshapes these structs would make strip/count
+// read the WRONG memory SILENTLY. This asserts the STRUCTURAL invariants of a valid EquipInventoryData
+// before the write path trusts them (trick 2, docs/re/fragile_primitives_audit.md). The per-node id
+// match in strip_goods (trick 1) already prevents an actual bad write; the canary's job is to turn a
+// silently-wrong layout into a LOUD log + a disabled strip instead of a mystery "stripped nothing".
+//   verified -> latched (layout is process-stable, so this is ~free after the first OK).
+//   conclusive violation (reads OK but invariants broken) -> log once + return false (strip SKIPS).
+//   inconclusive (not in-world / empty / torn read) -> permissive true (don't latch, don't cry wolf).
+bool verify_inventory_layout(void *egd)
+{
+    static std::atomic<bool> verified{false};
+    if (verified.load(std::memory_order_relaxed)) return true;
+    if (!egd) return true;  // absent — caller already gates on equip_game_data()
+    auto *inv = reinterpret_cast<uint8_t *>(egd) + 0x158;
+
+    uint32_t seg1 = 0;
+    int32_t last = -1;
+    uint64_t b1 = 0, b2 = 0;
+    if (!rpm(inv + 0x1C, seg1) || !rpm(inv + 0x80, last) || !rpm(inv + 0x50, b1) || !rpm(inv + 0x40, b2))
+        return true;                       // chain not resident yet — inconclusive
+    if (last < 0) return true;             // empty inventory — nothing to validate
+    const uint32_t span = static_cast<uint32_t>(last) + 1u;
+    if (span > 0x4000) return true;        // torn/garbage read — inconclusive, don't latch a false alarm
+
+    auto plausible = [](uint64_t p) { return p >= 0x10000 && (p & 0x7) == 0; };
+    bool ok = seg1 <= span                 // count-in-segment-1 can never exceed the total
+              && (seg1 == 0 || plausible(b1))
+              && (span <= seg1 || plausible(b2));   // seg2 only used when span > seg1
+    if (ok)                                // the LAST node must be readable at the derived stride
+    {
+        const uint32_t li = span - 1;
+        const uint64_t base = (li < seg1) ? b1 : b2;
+        const uint32_t idx = (li < seg1) ? li : li - seg1;
+        uint64_t probe = 0;
+        ok = rpm(reinterpret_cast<void *>(base + static_cast<uint64_t>(idx) * 0x18), probe);
+    }
+    if (ok)
+    {
+        verified.store(true, std::memory_order_relaxed);
+        spdlog::info("[INVLAYOUT] EquipInventoryData canary OK (seg1={} span={})", seg1, span);
+        return true;
+    }
+    static std::atomic<bool> warned{false};
+    if (!warned.exchange(true))
+        spdlog::error("[INVLAYOUT] EquipInventoryData canary FAILED — chain layout shifted "
+                      "(seg1={} span={} b1={:#x} b2={:#x}); inventory strip DISABLED to protect the save. "
+                      "Game patch? Re-RE the chain: docs/re/windows_goods_count_re_findings.md",
+                      seg1, span, b1, b2);
+    return false;
+}
 }  // namespace
 
 uint32_t goods_count(uint32_t item_id)
@@ -163,6 +217,7 @@ uint32_t goods_count(uint32_t item_id)
     // Layout + node fields: docs/re/windows_goods_count_re_findings.md.
     void *egd = equip_game_data();
     if (!egd) return 0;  // not in-world yet — caller gates on equip_game_data() to tell absent apart.
+    if (!verify_inventory_layout(egd)) return 0;  // root canary: bail on a shifted layout (logged once)
     auto *inv = reinterpret_cast<uint8_t *>(egd) + 0x158;
 
     uint32_t seg1 = 0;
@@ -199,6 +254,7 @@ std::vector<StripEntry> strip_goods(const std::vector<uint32_t> &ids)
     if (ids.empty()) return saved;
     void *egd = equip_game_data();
     if (!egd) return saved;  // not in-world
+    if (!verify_inventory_layout(egd)) return saved;  // root canary: never write into a shifted layout
     auto *inv = reinterpret_cast<uint8_t *>(egd) + 0x158;
 
     uint32_t seg1 = 0;

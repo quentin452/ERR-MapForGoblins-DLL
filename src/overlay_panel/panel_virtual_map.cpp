@@ -19,7 +19,8 @@
 #include "worldmap/maptile.hpp"        // maptile ART reader (endgame phase-1a slice 2/3)
 #include "goblin_worldmap_probe.hpp"   // live converter affine + map-space extent (slice 3 tile placement)
 #include "goblin_virtual_world.hpp"    // vworld registry — the active custom world's markers (slice C)
-#include "goblin_inject.hpp"           // goblin::world_map_open() — the game map-key trigger (slice D)
+#include "goblin_inject.hpp"           // goblin::world_map_open() + marker_group_from (slice D / A7)
+#include "goblin_major_regions.hpp"    // MAJOR_REGION_ANCHORS — coarse region name labels (A7 parity)
 
 #include <spdlog/spdlog.h>
 
@@ -51,6 +52,7 @@ namespace
     // slice C ties markers to a custom world). group = isDLC*2|isUG → 0/1/2/3.
     int s_group = 0;
     bool s_show_icons = true;      // draw real category icons (native/atlas) vs plain colour dots
+    bool s_show_labels = true;     // draw coarse region name labels (A7 parity — Limgrave, Caelid, …)
     uint64_t s_warp_pending = 0;   // grace rowId to warp to; serviced at the next frame's top (not mid-draw)
     int s_warp_offset = 0;          // added to the grace entity id before LuaWarp; 0 = entity id direct (ground truth; CT's -1000 was wrong)
     bool s_fit_requested = false;  // one-shot: on next draw, frame the selected group's markers
@@ -414,6 +416,8 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     ImGui::SameLine();
     ImGui::Checkbox(tr("Icons"), &s_show_icons);   // real category icons vs plain dots
     ImGui::SameLine();
+    ImGui::Checkbox(tr("Labels"), &s_show_labels); // coarse region name labels (A7)
+    ImGui::SameLine();
     ImGui::SetNextItemWidth(90.0f);                                // dev: tune the warp id offset live
     ImGui::DragInt(tr("warp off"), &s_warp_offset, 10.0f, -100000, 100000);  // double-click a grace to test
     // Load ER's real map ART tiles (WIP — see below). Needs the game map OPEN + you moving on it a
@@ -623,6 +627,59 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             { hoverBestD = d; hoverPrio = prio; hoverName = nameId; hoverCat = cat; hoverV = vname ? vname : ""; hoverRow = rowId; hoverDisc = discFlag; hoverWx = wx; hoverWz = wz; hoverArea = mp ? mp->raw_area : -1; }
         }
     };
+    // ── Region-hide gate precompute (A7 interactive region labels) ─────────────────────────────────
+    // Project each major-region anchor to WORLD space ONCE (9 anchors) — reused by BOTH the marker gate
+    // here and the region-label draw below. regValid[i] = projected; regGrp[i] = its marker group. The
+    // on/off flags are the shared map_renderer state (same flags the native chips use).
+    constexpr int kRegCap = 16;  // MAJOR_REGION_ANCHOR_COUNT is 9; cap defensively.
+    float regWx[kRegCap] = {}, regWz[kRegCap] = {};
+    int regGrp[kRegCap];
+    bool regValid[kRegCap] = {};
+    bool anyRegionOff = false;
+    const int regN = (int)goblin::generated::MAJOR_REGION_ANCHOR_COUNT;
+    for (int i = 0; i < regN && i < kRegCap; ++i)
+    {
+        regGrp[i] = -1;
+        const goblin::generated::MajorRegionAnchor &a = goblin::generated::MAJOR_REGION_ANCHORS[i];
+        int ga = 0;
+        float rwx = 0.f, rwz = 0.f;
+        if (!goblin::overlay_api::marker_world_pos(a.area, a.gx, a.gz, a.px, a.pz, ga, rwx, rwz,
+                                                   /*conv_underground=*/true))
+            continue;
+        regWx[i] = rwx;
+        regWz[i] = rwz;
+        regGrp[i] = goblin::marker_group_from(a.area, ga);
+        regValid[i] = true;
+        if (!goblin::worldmap::region_enabled(i))
+            anyRegionOff = true;
+    }
+    // Nearest same-group region anchor to a marker (world-space Voronoi assignment), or -1.
+    auto nearest_region_world = [&](int grp, float wx, float wz) -> int {
+        int best = -1;
+        float bd = 1e30f;
+        for (int i = 0; i < regN && i < kRegCap; ++i)
+        {
+            if (!regValid[i] || regGrp[i] != grp)
+                continue;
+            const float du = regWx[i] - wx, dv = regWz[i] - wz, d = du * du + dv * dv;
+            if (d < bd) { bd = d; best = i; }
+        }
+        return best;
+    };
+    // Categories EXEMPT from a region-hide — they stay visible even when the region is toggled off.
+    // Deliberately minimal + navigation-critical: only graces (fast-travel anchors). The player marker
+    // is a separate always-on draw (below), so it is exempt by construction. Everything else — loot,
+    // collectibles, landmarks, bosses, interactables — is the clutter the toggle exists to hide. To keep
+    // another family visible when a region is off, add its Category to this test.
+    auto region_hide_exempt = [&](int cat) -> bool { return cat == kGraceCat; };
+    // True when marker `m` must be hidden because its region is toggled off and it isn't exempt.
+    auto region_gated = [&](const goblin::worldmap::Marker &m) -> bool {
+        if (!anyRegionOff || region_hide_exempt(m.category))
+            return false;
+        const int ri = nearest_region_world(m.group, m.worldX, m.worldZ);
+        return ri >= 0 && !goblin::worldmap::region_enabled(ri);
+    };
+
     // Graces draw ON TOP of every other marker (parity with the native map, which draws the grace layer
     // last). Two passes: pass 1 = all non-grace markers, pass 2 = graces — so a grace effigy is never
     // hidden under a co-located loot/landmark glyph. (kGraceCat defined above for the hover priority.)
@@ -635,7 +692,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             {
                 if (!L) continue;
                 for (const goblin::worldmap::Marker &m : L->markers())
-                    if (m.group == s_group && ((m.category == kGraceCat) == graces))
+                    if (m.group == s_group && ((m.category == kGraceCat) == graces) && !region_gated(m))
                         plot(m.worldX, m.worldZ, m.color, m.category, m.name_id, nullptr, m.row_id, m.discover_flag, &m);
             }
         }
@@ -749,6 +806,52 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     dl->AddCircle(pp, 5.0f, IM_COL32(255, 255, 255, 235), 0, 1.5f);
                 }
             }
+        }
+    }
+
+    // Region name labels (A7 parity — the coarse major-region names Limgrave/Caelid/… the native map
+    // draws). Base ER only (custom worlds carry no ER regions) and only anchors on the displayed group
+    // (underground overlaps the overworld in XZ). Reuses the world-space projection precomputed above so
+    // the label rides the same pan/zoom as its region's markers. CLICKABLE, parity with the native chip:
+    // a click toggles that region off — which hides its CLUTTER markers (loot/landmarks/bosses) while
+    // graces + the player stay visible (see region_hide_exempt above). The on/off flag is the SHARED
+    // map_renderer state, so a toggle syncs with the native map and persists via config::regionToggles.
+    // Drawn last-but-one so names sit over the markers.
+    if (active_world == 0 && s_show_labels)
+    {
+        ImFont *font = ImGui::GetFont();
+        const float fontSize = ImGui::GetFontSize() * 1.4f;
+        const bool clicked = hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+        for (int i = 0; i < regN && i < kRegCap; ++i)
+        {
+            if (!regValid[i] || regGrp[i] != s_group)
+                continue;
+            const char *name = goblin::generated::MAJOR_REGION_ANCHORS[i].name;
+            ImVec2 p = w2s(regWx[i], regWz[i]);
+            if (p.x < origin.x - 64 || p.x > canvas_end.x + 64 ||
+                p.y < origin.y - 32 || p.y > canvas_end.y + 32)
+                continue;
+            ImVec2 ts = font->CalcTextSizeA(fontSize, FLT_MAX, 0.f, name);
+            ImVec2 tp(p.x - ts.x * 0.5f, p.y - ts.y * 0.5f);
+            const float pad = 5.f;
+            ImVec2 r0(tp.x - pad, tp.y - pad), r1(tp.x + ts.x + pad, tp.y + ts.y + pad);
+            const bool hot = io.MousePos.x >= r0.x && io.MousePos.x <= r1.x &&
+                             io.MousePos.y >= r0.y && io.MousePos.y <= r1.y;
+            if (hot && clicked)
+                goblin::worldmap::region_set_enabled(i, !goblin::worldmap::region_enabled(i));
+            const bool on = goblin::worldmap::region_enabled(i);
+            // Pill (warmer when hovered, reddish when off) + hover outline + text (gold on / dim off) +
+            // a strike-through when off — same visual language as the native draw_region_labels chip.
+            const ImU32 bg = on ? IM_COL32(30, 26, 18, hot ? 175 : 120)
+                                : IM_COL32(46, 22, 22, hot ? 175 : 120);
+            dl->AddRectFilled(r0, r1, bg, 4.f);
+            if (hot)
+                dl->AddRect(r0, r1, IM_COL32(238, 226, 188, 220), 4.f, 0, 1.5f);
+            const ImU32 col = on ? IM_COL32(238, 226, 188, 235) : IM_COL32(150, 140, 120, 160);
+            dl->AddText(font, fontSize, ImVec2(tp.x + 1.5f, tp.y + 1.5f), IM_COL32(0, 0, 0, 190), name);
+            dl->AddText(font, fontSize, tp, col, name);
+            if (!on)
+                dl->AddLine(ImVec2(tp.x, p.y), ImVec2(tp.x + ts.x, p.y), col, 2.0f);
         }
     }
 

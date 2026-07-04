@@ -235,6 +235,47 @@ def cmd_disasm(rpc, er_base, args):
         print("  no incoming stack-arg reads seen in this window -> likely <=4 args (register-only).")
     print("  Verify against the plan's sig `(rcx=obj, rdx=out-vec, r8d, xmm3)` before writing a detour.")
 
+    if args.aob:
+        _emit_aob(code, abs_addr, er_base)
+
+
+def _emit_aob(code, abs_addr, er_base, max_bytes=40, min_insns=6):
+    """Build a copy-paste AOB from a FUNC prologue: literal opcode bytes, with rip-relative
+    displacements and rel32 branch targets wildcarded (??) since those move per build/ASLR. A FUNC
+    target needs NO relative_offsets — a base match IS the function address. Stops at the first ret,
+    or once >=max_bytes over >=min_insns (long enough to be unique)."""
+    from capstone import Cs, CS_ARCH_X86, CS_MODE_64, CS_GRP_JUMP, CS_GRP_CALL
+    from capstone.x86 import X86_OP_MEM
+    md = Cs(CS_ARCH_X86, CS_MODE_64)
+    md.detail = True
+    toks, nbytes, ninsns, imm64 = [], 0, 0, False
+    for insn in md.disasm(code, abs_addr):
+        b = insn.bytes
+        enc = insn.encoding
+        wild = set()
+        rip_rel = any(op.type == X86_OP_MEM and op.mem.base and insn.reg_name(op.mem.base) == "rip"
+                      for op in insn.operands)
+        if rip_rel and enc.disp_size:
+            wild.update(range(enc.disp_offset, enc.disp_offset + enc.disp_size))
+        if (insn.group(CS_GRP_JUMP) or insn.group(CS_GRP_CALL)) and enc.imm_size:
+            wild.update(range(enc.imm_offset, enc.imm_offset + enc.imm_size))
+        if enc.imm_size == 8:  # movabs imm64: often an absolute address (ASLR) — flag, don't trust
+            imm64 = True
+        toks += ["??" if k in wild else f"{b[k]:02X}" for k in range(len(b))]
+        nbytes += len(b); ninsns += 1
+        if insn.mnemonic in ("ret", "int3") and ninsns > 2:
+            break
+        if nbytes >= max_bytes and ninsns >= min_insns:
+            break
+    literals = sum(1 for t in toks if t != "??")
+    print(f"\n{'='*60}\nAOB (er+0x{abs_addr - er_base:x}, FUNC — no relative_offsets)")
+    print(f"  \"{' '.join(toks)}\"")
+    print(f"  {len(toks)} bytes, {literals} literal / {len(toks) - literals} wildcard")
+    if imm64:
+        print("  !! a movabs imm64 is kept LITERAL — if it's an absolute address it will break the")
+        print("     AOB on another build; inspect the disasm and wildcard it by hand if so.")
+    print("  Next: paste into src/re_signatures.hpp, run the [SIG] health check for PASS + UNIQUE.")
+
 
 def _imm(op_str):
     m = re.search(r"0x[0-9a-fA-F]+|\d+", op_str.split(",", 1)[1])
@@ -290,6 +331,9 @@ def main():
     p = sub.add_parser("disasm", help="dump+disassemble a prologue and summarise its signature")
     p.add_argument("target", help="er+0x<rva>, a small 0x<rva>, or an absolute 0x<addr>")
     p.add_argument("--len", type=int, default=128, help="bytes to disassemble (<=256)")
+    p.add_argument("--aob", action="store_true",
+                   help="also emit a copy-paste AOB (rip-rel disps + rel32 branch targets wildcarded) "
+                        "for docs/re/rva_aob_hardening_backlog.md")
 
     args = ap.parse_args()
     with Rpc(args.port) as rpc:
