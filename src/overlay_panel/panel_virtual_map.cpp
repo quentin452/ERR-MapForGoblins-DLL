@@ -52,6 +52,7 @@ namespace
     int s_group = 0;
     bool s_show_icons = true;      // draw real category icons (native/atlas) vs plain colour dots
     uint64_t s_warp_pending = 0;   // grace rowId to warp to; serviced at the next frame's top (not mid-draw)
+    int s_warp_offset = -1000;      // added to the grace entity id before LuaWarp (CT default -1000; tune live)
     bool s_fit_requested = false;  // one-shot: on next draw, frame the selected group's markers
     bool s_focus_player = false;   // one-shot: on next draw, centre the camera on the player + their group
     int s_drawn = 0;               // marker count drawn last frame (toolbar readout)
@@ -102,7 +103,7 @@ void virtual_map_service_pending_warp()
 {
     if (!s_warp_pending) return;
     uint64_t gid = s_warp_pending; s_warp_pending = 0;
-    bool ok = goblin::overlay_api::warp_to_grace((int32_t)gid);
+    bool ok = goblin::overlay_api::warp_to_grace((int32_t)gid, s_warp_offset);
     s_tile_status = ok ? ("warped to grace " + std::to_string(gid))
                        : ("warp failed " + std::to_string(gid));
 }
@@ -412,6 +413,9 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     if (ImGui::SmallButton(tr("Player"))) s_focus_player = true;   // jump to the live player position
     ImGui::SameLine();
     ImGui::Checkbox(tr("Icons"), &s_show_icons);   // real category icons vs plain dots
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(90.0f);                                // dev: tune the warp id offset live
+    ImGui::DragInt(tr("warp off"), &s_warp_offset, 10.0f, -100000, 100000);  // double-click a grace to test
     // Load ER's real map ART tiles (WIP — see below). Needs the game map OPEN + you moving on it a
     // moment (so the projection resolves). Loads overworld coarse tiles around the marker area.
     ImGui::SameLine();

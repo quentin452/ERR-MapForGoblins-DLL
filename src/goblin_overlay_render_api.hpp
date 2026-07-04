@@ -117,7 +117,7 @@ namespace goblin::overlay_api
     GOBLIN_RENDER_API std::string virtual_map_load_lod(int dim, int lod, int cap);
     GOBLIN_RENDER_API std::string virtual_map_load_resident();  // harvest live resident tile rects (aligned)
     GOBLIN_RENDER_API int virtual_map_dump_markers(const char *path);  // export markers CSV (offline styling)
-    GOBLIN_RENDER_API bool warp_to_grace(int32_t graceId);  // fast-travel to a grace (vmap click-to-warp)
+    GOBLIN_RENDER_API bool warp_to_grace(int32_t graceId, int32_t offset = -1000);  // fast-travel to a grace (vmap click-to-warp); offset tunes the bonfire→warp-point delta
     GOBLIN_RENDER_API void virtual_map_set_view(float camX, float camZ, float zoom);  // dev/test framing
     GOBLIN_RENDER_API void virtual_map_set_flip(bool flipX, bool flipZ);  // dev orientation calib
     GOBLIN_RENDER_API int virtual_map_get_group();

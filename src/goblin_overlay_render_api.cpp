@@ -96,7 +96,7 @@ namespace goblin::overlay_api
     { return goblin::overlay::panel::virtual_map_load_lod(dim, lod, cap); }
     std::string virtual_map_load_resident() { return goblin::overlay::panel::virtual_map_load_resident(); }
     int virtual_map_dump_markers(const char *path) { return goblin::overlay::panel::dump_markers_csv(path); }
-    bool warp_to_grace(int32_t graceId) { return goblin::warp::to_grace(graceId); }
+    bool warp_to_grace(int32_t graceId, int32_t offset) { return goblin::warp::to_grace(graceId, offset); }
     void virtual_map_set_view(float camX, float camZ, float zoom)
     { goblin::overlay::panel::virtual_map_set_view(camX, camZ, zoom); }
     void virtual_map_set_flip(bool flipX, bool flipZ)
