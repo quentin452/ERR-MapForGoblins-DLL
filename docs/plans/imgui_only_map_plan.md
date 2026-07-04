@@ -57,7 +57,7 @@ from parity — Track A is real BUILD work, not just a checklist. This IS the go
 | A4 | All marker categories (graces/sites/bosses/loot/…) | ✅ reuses native draw (`draw_marker_glyph`) | no |
 | A5 | State-aware icons (discovered/collected/cleared/rune glow) | ✅ `563a00e` | no |
 | A6 | Marker tooltips (name + count) | ✅ | no |
-| A7 | Region name labels | ❌ **MISSING** — native `map_renderer.cpp:1770/2038`; vmap draws none | **yes** |
+| A7 | Region name labels | ✅ **DONE** — `panel_virtual_map.cpp` region-label block (`marker_world_pos`→`w2s`, group-gated, `Labels` toggle) | no |
 | A8 | Clustering / pile "×N" | ❌ **MISSING** — vmap plots every marker raw (`:589-594`), no piles/counts | **yes** (dense areas unreadable) |
 | A9 | Item search + "locate" pan | ❌ **MISSING** — F1 search targets the native map only; vmap ignores it | **yes** |
 | A10 | Fast-travel to grace (double-click) | ✅ but FREEZES — Track C0 | **yes** |
@@ -69,7 +69,11 @@ from parity — Track A is real BUILD work, not just a checklist. This IS the go
 
 **A-BUILD list (the gate) — ordered cheapest/most-critical first:**
 1. ~~**A11 player marker + heading**~~ ✅ DONE `69188c3`.
-2. **A7 region labels** (reuse the native label data; draw at w2s).
+2. ~~**A7 region labels**~~ ✅ DONE — `panel_virtual_map.cpp`: per-anchor `MAJOR_REGION_ANCHORS` →
+   `marker_world_pos`(conv_underground) → `w2s`, gated on `active_world==0 && group==s_group`, gold
+   text + shadow + pill (same aesthetic as native `draw_region_labels`), `Labels` checkbox toggle.
+   Non-interactive (the native click-to-hide chip is native-only). Rides the SAME proven marker
+   transform, so it co-locates with its region's markers by construction. Builds clean.
 3. **A8 clustering/piles** (reuse the spatial-grid clustering from map_renderer, or a vmap-local pass).
 4. **A9 item search/locate** (make the F1 search ring + pan target the vmap too).
 5. **A3 tiles underground/DLC + placement fix** (map_tile slice 3; the offset gap).

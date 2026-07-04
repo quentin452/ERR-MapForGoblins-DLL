@@ -25,6 +25,11 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **Virtual map region labels (A7 parity).** The mod-owned Virtual World Map now draws the coarse
+  major-region names (Limgrave, Caelid, …) on its canvas, projecting each `MAJOR_REGION_ANCHORS` anchor
+  through the same live `marker_world_pos`→`w2s` transform its markers use (so a label sits over its
+  region), gated to the displayed group + Base ER, with a `Labels` toggle. Closes A7 on the ImGui-only
+  map parity gate (`docs/plans/imgui_only_map_plan.md`).
 - **Stuck-load watchdog.** A companion to the freeze watchdog for a load that hangs instead of the
   whole game: a hung world-load keeps rendering the loading screen, so the freeze watchdog (which
   watches the render beat) never fires. The new watchdog watches the world-playable state directly and,

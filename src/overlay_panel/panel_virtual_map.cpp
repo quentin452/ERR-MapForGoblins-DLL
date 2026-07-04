@@ -19,7 +19,8 @@
 #include "worldmap/maptile.hpp"        // maptile ART reader (endgame phase-1a slice 2/3)
 #include "goblin_worldmap_probe.hpp"   // live converter affine + map-space extent (slice 3 tile placement)
 #include "goblin_virtual_world.hpp"    // vworld registry — the active custom world's markers (slice C)
-#include "goblin_inject.hpp"           // goblin::world_map_open() — the game map-key trigger (slice D)
+#include "goblin_inject.hpp"           // goblin::world_map_open() + marker_group_from (slice D / A7)
+#include "goblin_major_regions.hpp"    // MAJOR_REGION_ANCHORS — coarse region name labels (A7 parity)
 
 #include <spdlog/spdlog.h>
 
@@ -51,6 +52,7 @@ namespace
     // slice C ties markers to a custom world). group = isDLC*2|isUG → 0/1/2/3.
     int s_group = 0;
     bool s_show_icons = true;      // draw real category icons (native/atlas) vs plain colour dots
+    bool s_show_labels = true;     // draw coarse region name labels (A7 parity — Limgrave, Caelid, …)
     uint64_t s_warp_pending = 0;   // grace rowId to warp to; serviced at the next frame's top (not mid-draw)
     int s_warp_offset = 0;          // added to the grace entity id before LuaWarp; 0 = entity id direct (ground truth; CT's -1000 was wrong)
     bool s_fit_requested = false;  // one-shot: on next draw, frame the selected group's markers
@@ -414,6 +416,8 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     ImGui::SameLine();
     ImGui::Checkbox(tr("Icons"), &s_show_icons);   // real category icons vs plain dots
     ImGui::SameLine();
+    ImGui::Checkbox(tr("Labels"), &s_show_labels); // coarse region name labels (A7)
+    ImGui::SameLine();
     ImGui::SetNextItemWidth(90.0f);                                // dev: tune the warp id offset live
     ImGui::DragInt(tr("warp off"), &s_warp_offset, 10.0f, -100000, 100000);  // double-click a grace to test
     // Load ER's real map ART tiles (WIP — see below). Needs the game map OPEN + you moving on it a
@@ -749,6 +753,42 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     dl->AddCircle(pp, 5.0f, IM_COL32(255, 255, 255, 235), 0, 1.5f);
                 }
             }
+        }
+    }
+
+    // Region name labels (A7 parity — the coarse major-region names Limgrave/Caelid/… the native map
+    // draws). Base ER only (custom worlds carry no ER regions) and only anchors on the displayed group
+    // (underground overlaps the overworld in XZ). Each anchor projects to WORLD space via the same
+    // marker_world_pos the marker gate uses, then through w2s — so the label rides the same pan/zoom as
+    // its region's markers. Non-interactive here (the native map's click-to-hide chip is a native-only
+    // control); this is purely the label. Drawn last-but-one so names sit over the markers.
+    if (active_world == 0 && s_show_labels)
+    {
+        using namespace goblin::generated;
+        ImFont *font = ImGui::GetFont();
+        const float fontSize = ImGui::GetFontSize() * 1.4f;
+        const int n = (int)MAJOR_REGION_ANCHOR_COUNT;
+        for (int i = 0; i < n; ++i)
+        {
+            const MajorRegionAnchor &a = MAJOR_REGION_ANCHORS[i];
+            int ga = 0;
+            float wx = 0.f, wz = 0.f;
+            if (!goblin::overlay_api::marker_world_pos(a.area, a.gx, a.gz, a.px, a.pz, ga, wx, wz,
+                                                       /*conv_underground=*/true))
+                continue;
+            if (goblin::marker_group_from(a.area, ga) != s_group)
+                continue;
+            ImVec2 p = w2s(wx, wz);
+            if (p.x < origin.x - 64 || p.x > canvas_end.x + 64 ||
+                p.y < origin.y - 32 || p.y > canvas_end.y + 32)
+                continue;
+            ImVec2 ts = font->CalcTextSizeA(fontSize, FLT_MAX, 0.f, a.name);
+            ImVec2 tp(p.x - ts.x * 0.5f, p.y - ts.y * 0.5f);
+            const float pad = 5.f;
+            dl->AddRectFilled(ImVec2(tp.x - pad, tp.y - pad), ImVec2(tp.x + ts.x + pad, tp.y + ts.y + pad),
+                              IM_COL32(30, 26, 18, 120), 4.f);
+            dl->AddText(font, fontSize, ImVec2(tp.x + 1.5f, tp.y + 1.5f), IM_COL32(0, 0, 0, 190), a.name);
+            dl->AddText(font, fontSize, tp, IM_COL32(238, 226, 188, 235), a.name);
         }
     }
 
