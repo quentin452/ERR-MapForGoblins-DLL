@@ -5,13 +5,40 @@ sequencing plan. It doesn't restate the mechanism sub-plans — it orders them a
 that were missing: a hard **parity gate** and the **grace warp menu** feature.
 
 ## Locked decisions (user review 2026-07-04)
-- **Priority:** the proposed order below (C0 → A → B → C1 → D2 → C2/C3 → polish). Parity is the gate.
+- **THIS is the PRIORITY track (confirmed 2026-07-04).** The ImGui-only map (Track 1) comes before the
+  runtime-modding RE (Track 2 = dev-dimension/teleport, MSB-write, ESD, weapon arts). See the **Roadmap**
+  section below — the old track order (C0→A→B→C1→D2→C2/C3→polish) is now framed as milestones **M1→M5**.
 - **Grace menu home (Track B):** a **collapsible SIDEBAR on the vmap** (list + canvas in one surface).
 - **Relief base (Track D):** **D2 raycast heightfield** (mod-agnostic) as base; D1 ART optional overlay.
-- **Map key (Track C2): OPEN — user to verify first** whether ER ships custom controller/keybind
-  settings, because hardcoding `,`/`m` could break under a rebind. → pushes toward the
-  **native-map-edge reuse** (rebind/gamepad-safe, no hardcode); explicit key only a fallback. Do NOT
-  wire C2 until the user confirms ER's keybind behaviour.
+- **Map key (Track C2): RESOLVED 2026-07-04 — no hardcoded key needed.** The vmap already opens on
+  `goblin::world_map_open()` (the game's REAL menu state, `CSMenuMan+0xCD==7`), so it reacts to the game's
+  map actually opening — **remap- AND gamepad-agnostic for OPEN, for free** (whatever the user bound). The
+  `,`/`m` worry is moot. What DOES need ER's keybind system: gamepad **navigation** of the vmap + remap-aware
+  action triggers → `docs/re/windows_keybinding_config_re_prompt.md` (`CSPcKeyConfig = DAT_143d5deb8`
+  identified; gamepad-nav needs NO decode — feed the polled XInput into ImGui nav, see M1/M4).
+
+## ⭐ Roadmap (confirmed 2026-07-04) — Track 1 (this plan) is the PRIORITY
+
+Two independent tracks; the user confirmed **Track 1 first**:
+- **Track 1 = the ImGui-only map (THIS plan).** It BUNDLES the map ImGui work AND the RE that gates it — do
+  that RE *as the migration needs it*, not as a separate later phase (there is no "migrate, THEN RE": the
+  migration is gated on the cull + gamepad RE).
+- **Track 2 = runtime-modding RE** (dev-dimension/teleport, MSB-write, ESD/EzState, weapon-arts) — ORTHOGONAL,
+  the follow-on. Tracked in `docs/HANDOFF.md` + per-topic prompts; NOT worked until Track 1 ships.
+
+**Track 1 milestones — M3 is the SHIP line; M4/M5 are polish:**
+
+| M | Milestone | Maps to | RE it needs |
+|---|---|---|---|
+| M1 | **Cheap wins, zero new RE** | gamepad ImGui nav (feed the already-polled XInput `DAT_1430b92e0` into `ImGuiConfigFlags_NavEnableGamepad`); heightfield vertical-window widen + sea-tag | none |
+| M2 | **Content parity** | Track A rows + D2 heightfield (UNBLOCKED — present-thread cast works, `d3ca993`) + tiles; far-terrain OPTIONAL for full-map coverage | `far_terrain_heightmap_re_prompt.md` (optional) |
+| M3 | ✅ **USABLE — "our map shows"** | `world_map_open()` → vmap **cover opaque** (accept the native draw cost for now), mouse+kb | none (open is state-based → already remap/pad-agnostic) |
+| M4 | **Nav parity** | warp-on-click (done), close, region switch, **gamepad nav** | `windows_keybinding_config_re_prompt.md` (remap-aware triggers); gamepad-nav itself = M1, no decode |
+| M5 | **Cull native (perf)** | suppress the native DRAW — the Scaleform movie `02_120_worldmap.gfx` + the tile canvas — NOT just cover (cover ≠ cull → two maps drawn) | `worldmap_native_clip_b3_scaleform_re_findings.md` (movie + chain FOUND) → find a render/visible toggle; `CANVAS_SINGLETON` for the tile canvas |
+
+**Key ordering insight:** M3 (usable, cover-opaque) ships BEFORE the cull (M5) and gamepad (M4). Cull +
+gamepad are quality/perf upgrades, **not blockers** for "our map replaces theirs visually" — so Track 1
+reaches a shippable milestone early, then polishes. The **PARITY GATE** (Track A, below) still governs M2→M3.
 
 Sub-plans it sequences (already scoped):
 - `single_surface_ui_plan.md` — the native-map takeover mechanism + map-key bind + slices 0–3.
@@ -140,15 +167,20 @@ Original spec (a grace LIST menu, not just clicking dots on the canvas), so the 
   Grace warp from the vmap now lands exactly on the grace. **Implication for C1:** disabling the native
   map is NO LONGER coupled to "fix the freeze" (already fixed) — it's purely the UI-simplification /
   single-surface goal, so pick its mechanism on merits, not on the (defunct) menu-context hypothesis.
-- **C1:** disable the native map (single_surface slice 1). Expected side effect: the warp freeze
-  disappears (fires from gameplay state, like RPC).
-- **C2:** bind the open key. ER map key = **`,`** on AZERTY / **`m`** on QWERTY (same physical key).
-  Open the vmap on that key regardless of layout; native map suppressed. (The vmap already auto-opens
-  on the native-map edge — reuse that trigger so any rebind/gamepad works; the explicit key is the
-  fallback.)
+- **C1 (= M3 interim → M5 cull):** take over the native map. **M3 interim = cover opaque** (vmap over the
+  native map on `world_map_open()` — usable, but the native still draws → two maps). **M5 = actually CULL the
+  native DRAW** (cover ≠ cull): the native map is a **Scaleform movie `02_120_worldmap.gfx`** reachable via
+  `WorldMapDialog+0x140 → MovieImpl` (RTTI-resolved, `worldmap_native_clip_b3_scaleform_re_findings.md`) PLUS
+  a separate engine **tile canvas** (`CANVAS_SINGLETON` 0x47ef360). Suppress BOTH draws (a render/visible
+  toggle or a no-op of the render call) while **keeping the Dialog STATE open** → pause/input/close plumbing
+  stays free. Two RPM experiments de-risk it first: zero `MovieImpl+0xB0` (does the terrain vanish too, or is
+  it engine-tiles? → one suppress point or two) + probe for a visible flag on the movie/player.
+- **C2: RESOLVED (see Locked decisions)** — no hardcoded key. The vmap opens on `world_map_open()` (game menu
+  state) → remap/gamepad-agnostic for OPEN, for free. Gamepad NAV of the vmap = feed the polled XInput into
+  ImGui nav (M1, no RE); remap-aware action triggers = `windows_keybinding_config_re_prompt.md`.
 - **C3:** collapse surfaces — delete the native-map marker-draw path (`proto` branch), retire the
   native-pin suppression knobs, flip the minimap gate from `world_map_open()` to `virtual_map_open()`.
-- **GATE:** C2/C3 only after Track A is all-green.
+- **GATE:** C1-cull / C3 only after Track A (parity) is all-green.
 
 ---
 
@@ -163,12 +195,21 @@ Give the canvas a terrain backdrop under the markers. Two independent sources, b
   hillshade. Same world frame as markers (no transform). Sea = heuristic `y < seaLevelConst`. This is
   the TRUE mod-agnostic relief: sampled from whatever 3D world is loaded → correct for any mod.
   Constraint: only loaded regions hit; sample around the player + extend via grace-warp.
+  **UPDATE 2026-07-04: D2 UNBLOCKED** — the cast is an ALIGNMENT fix (vector4, `d3ca993`), runs reproducibly
+  on the **PRESENT thread** (no game-thread hook needed), sampler done (`f5323e6`), resolve-ctx-once + bench
+  (`95ecc56`). Full details: `heightfield_relief_plan.md`. Two known limits there: within-block misses = the
+  ±2000 vertical window (widen) + sea (filter 0x5e skips water → classify, don't fix); and loaded-region-only
+  is FUNDAMENTAL → the distant visible terrain (LOD, no collision) needs a **far-LOD heightmap** source:
+  `far_terrain_heightmap_re_prompt.md`. Near field = the cast; far field = that.
 - **Recommendation:** D2 is the strategic one (mod-agnostic, kills the Convergence trap); D1 is the
   quick pretty win for vanilla/ERR. Ship D2 as the base relief, D1 as an optional overlay.
 
 ---
 
-## Prioritization (proposed — REVIEW)
+## Prioritization (CONFIRMED 2026-07-04 — maps to Roadmap M1–M5 above)
+
+The detailed track order below is unchanged; the **Roadmap** section reframes it as milestones (M3 = the
+ship line, cover-opaque; M4/M5 = gamepad + native-cull polish). Track 1 is THE priority over Track 2.
 
 1. **C0** — read the warp-freeze stall dump (needs the user's next warp; already armed). Cheap, unblocks C.
 2. **Track A audit** — the parity gate. Read-only, fast, and it's the blocker for everything user-facing.
@@ -179,8 +220,9 @@ Give the canvas a terrain backdrop under the markers. Two independent sources, b
 7. D1 / A-tail items (underground+DLC tiles, dial) as polish.
 
 ## Review checkpoints (what the user signs off on)
-- [ ] Prioritization order above.
-- [ ] Track A rows — confirm the `?` audit results = the real go/no-go list.
-- [ ] Track B grace-menu HOME (vmap sidebar vs F1 tab vs canvas button).
-- [ ] Track C2 key binding (`,`/`m` layout handling) — confirm before wiring.
-- [ ] Track D base = D2 (raycast) vs D1 (ART) — confirm the mod-agnostic-first call.
+- [x] Prioritization / roadmap — **CONFIRMED 2026-07-04: Track 1 is THE priority, M1→M5.**
+- [ ] Track A rows — confirm the `?` audit results = the real go/no-go list. **(the M2→M3 gate)**
+- [x] Track B grace-menu HOME — **LOCKED: collapsible SIDEBAR on the vmap.**
+- [x] Track C2 key binding — **RESOLVED: no hardcoded key; opens on `world_map_open()` (state-based,
+  remap/pad-agnostic). Gamepad nav = M1; remap-aware triggers = keybinding RE prompt.**
+- [x] Track D base = D2 (raycast) — **CONFIRMED mod-agnostic-first; D2 unblocked. D1 ART = optional overlay.**
