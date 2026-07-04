@@ -584,13 +584,22 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             { hoverBestD = d; hoverName = nameId; hoverCat = cat; hoverV = vname ? vname : ""; hoverRow = rowId; hoverDisc = discFlag; }
         }
     };
+    // Graces draw ON TOP of every other marker (parity with the native map, which draws the grace layer
+    // last). Two passes: pass 1 = all non-grace markers, pass 2 = graces — so a grace effigy is never
+    // hidden under a co-located loot/landmark glyph.
+    constexpr int kGraceCat = static_cast<int>(goblin::generated::Category::WorldGraces);
     if (active_world == 0)
     {
-        for (auto *L : overlay_layers())
+        for (int pass = 0; pass < 2; ++pass)
         {
-            if (!L) continue;
-            for (const goblin::worldmap::Marker &m : L->markers())
-                if (m.group == s_group) plot(m.worldX, m.worldZ, m.color, m.category, m.name_id, nullptr, m.row_id, m.discover_flag, &m);
+            const bool graces = (pass == 1);
+            for (auto *L : overlay_layers())
+            {
+                if (!L) continue;
+                for (const goblin::worldmap::Marker &m : L->markers())
+                    if (m.group == s_group && ((m.category == kGraceCat) == graces))
+                        plot(m.worldX, m.worldZ, m.color, m.category, m.name_id, nullptr, m.row_id, m.discover_flag, &m);
+            }
         }
     }
     else
@@ -602,7 +611,6 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     }
     // Tooltip for the hovered marker (name via FMG + category label). A grace (has a warp rowId) also
     // offers double-click → fast-travel (the make-or-break map feature).
-    constexpr int kGraceCat = static_cast<int>(goblin::generated::Category::WorldGraces);
     const bool hoverGrace = (hoverCat == kGraceCat && hoverRow != 0);
     // ONLY discovered graces are warpable — the layer holds discovered AND undiscovered graces, and warping
     // to an undiscovered one hangs on an infinite loading screen. Discovered = its discovery event flag set.
