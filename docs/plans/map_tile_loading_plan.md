@@ -106,7 +106,10 @@ archive** → each entry is a TPF (maybe DCX'd) → `tpf_find_texture` → DDS �
    (a) **true tile→world projection** so tiles align to the marker world coords (today's placement is an
        approximate `col*256`; need col/row → map-space → world INVERSE of `FUN_140876140`, plus decode the
        `{suffix8}` sub-cell offset + the per-LOD scale — §1/§2 of
-       `windows_world_to_mapspace_projection_re_findings.md`);
+       `windows_world_to_mapspace_projection_re_findings.md`). **⚠ MANDATORY: read the converter LIVE**
+       (the `worldmap_probe` / `WorldMapViewModel` affine already used for markers) — do NOT hardcode the
+       overworld `7040/16512`/`scale 1` constants, or we re-bake the Convergence trap into our own map. See
+       `procedural_map_derivation_design.md`. Tiles + markers must share ONE live projection;
    (b) **stream visible-only + byte-range reads** — `extract_named` reads the whole 1.26 GB `.tpfbdt` per
        tile; use each entry's `dataOffset`+`compressedSize` to read only what's on-screen;
    (c) **SRV recycling** — `create_tex_from_dds_mem` has a hard 256 cap with no free list, so a full level
