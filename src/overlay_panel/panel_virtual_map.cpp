@@ -12,6 +12,7 @@
 
 #include "panel_internal.hpp"
 #include "goblin_i18n.hpp"
+#include "goblin_overlay_render_api.hpp"  // lookup_text_utf8 / category_label (marker tooltips)
 #include "worldmap/marker_layer.hpp"   // Marker / MarkerLayer (overlay_layers → markers to project)
 #include "worldmap/maptile.hpp"        // maptile ART reader (endgame phase-1a slice 2/3)
 #include "goblin_worldmap_probe.hpp"   // live converter affine + map-space extent (slice 3 tile placement)
@@ -536,7 +537,9 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         return r;
     };
     const float icoHalf = 8.0f;  // on-canvas icon size (px)
-    auto plot = [&](float wx, float wz, uint32_t col, int cat) {
+    // Hover tooltip: track the marker nearest the cursor (within a pixel radius) while drawing.
+    float hoverBestD = 1e18f; int hoverName = -1, hoverCat = -1; std::string hoverV;
+    auto plot = [&](float wx, float wz, uint32_t col, int cat, int nameId, const char *vname) {
         if (wx < minx) minx = wx;
         if (wx > maxx) maxx = wx;
         if (wz < minz) minz = wz;
@@ -550,6 +553,12 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         else
             dl->AddCircleFilled(ps, 3.0f, col ? col : IM_COL32(235, 130, 90, 255));
         drawn++;
+        if (hovered)
+        {
+            float dx = ps.x - io.MousePos.x, dy = ps.y - io.MousePos.y, d = dx * dx + dy * dy;
+            if (d < hoverBestD && d < icoHalf * icoHalf * 2.0f)
+            { hoverBestD = d; hoverName = nameId; hoverCat = cat; hoverV = vname ? vname : ""; }
+        }
     };
     if (active_world == 0)
     {
@@ -557,7 +566,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         {
             if (!L) continue;
             for (const goblin::worldmap::Marker &m : L->markers())
-                if (m.group == s_group) plot(m.worldX, m.worldZ, m.color, m.category);
+                if (m.group == s_group) plot(m.worldX, m.worldZ, m.color, m.category, m.name_id, nullptr);
         }
     }
     else
@@ -565,7 +574,22 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         goblin::vworld::World w;
         if (goblin::vworld::get_world(active_world, w))
             for (const goblin::vworld::Marker &m : w.markers)
-                plot(m.x + w.originX, m.z + w.originZ, m.color, m.category);  // C1: originX/Z default 0
+                plot(m.x + w.originX, m.z + w.originZ, m.color, m.category, -1, m.name.c_str());  // C1 identity
+    }
+    // Tooltip for the hovered marker (name via FMG + category label).
+    if (hoverBestD < 1e17f)
+    {
+        std::string nm = !hoverV.empty() ? hoverV
+                         : (hoverName > 0 ? goblin::overlay_api::lookup_text_utf8(hoverName) : std::string());
+        const char *clab = hoverCat >= 0 ? goblin::overlay_api::category_label(hoverCat) : nullptr;
+        if (!nm.empty() || clab)
+        {
+            ImGui::BeginTooltip();
+            if (!nm.empty()) ImGui::TextUnformatted(nm.c_str());
+            else ImGui::TextDisabled("(unnamed)");
+            if (clab) ImGui::TextDisabled("%s", clab);
+            ImGui::EndTooltip();
+        }
     }
     s_drawn = drawn;
     // Fit: frame the selected group's bbox (cam/zoom feed w2s next frame → 1-frame settle).
