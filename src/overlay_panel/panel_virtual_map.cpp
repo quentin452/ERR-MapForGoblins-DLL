@@ -21,6 +21,7 @@
 #include "goblin_virtual_world.hpp"    // vworld registry — the active custom world's markers (slice C)
 #include "goblin_inject.hpp"           // goblin::world_map_open() + marker_group_from (slice D / A7)
 #include "goblin_major_regions.hpp"    // MAJOR_REGION_ANCHORS — coarse region name labels (A7 parity)
+#include "goblin_bench.hpp"            // GOBLIN_BENCH_QUIET — profile the vmap draw at high marker counts
 
 #include <spdlog/spdlog.h>
 
@@ -386,6 +387,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         ImGui::End();
         return;
     }
+    GOBLIN_BENCH_QUIET("vmap.draw");   // whole-panel cost vs the vmap.markers sub-cost (bottleneck attribution)
 
     // Service a pending ER map-tile load (slice 2). Runs here on the render thread (create_tex_from_dds_mem
     // does its own submit_and_wait — must not run on the RPC thread). It's heavy but one-shot per request
@@ -701,6 +703,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     s_relief_hits = 0; s_relief_drawn = 0;
     if (s_show_relief)
     {
+        GOBLIN_BENCH_QUIET("vmap.relief");   // per-cell quad draw + snapshot copy
         // Centred hint near the top of the canvas, so "nothing shows" is never silent (the #1 confusion:
         // relief is Base-ER-only, or no sample has run yet, or a sample is in flight).
         auto relief_hint = [&](const char *msg) {
@@ -885,6 +888,10 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // hidden under a co-located loot/landmark glyph. (kGraceCat defined above for the hover priority.)
     if (active_world == 0)
     {
+        // vmap.markers = ~99% of the vmap frame cost (bench 2026-07-04): this O(n) loop draws EVERY marker
+        // of the open group individually (6837 base-overworld) with no clustering/viewport pre-cull, so
+        // present spikes ~5x when zoomed out to fit. A8 clustering is the fix (missing parity item).
+        GOBLIN_BENCH_QUIET("vmap.markers");
         for (int pass = 0; pass < 2; ++pass)
         {
             const bool graces = (pass == 1);
