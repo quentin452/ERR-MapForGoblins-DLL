@@ -11,6 +11,12 @@ then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
 ## ⇒ SESSION WRAP 2026-07-04 (later) — RE-tooling hardening + player teleport harness + dev-dimension direction
 
+**⭐ PRIORITY DECISION (confirmed 2026-07-04): Track 1 = the ImGui-only map** (`docs/plans/imgui_only_map_plan.md`,
+now phased **M1→M5**, M3 = usable/ship line) comes FIRST. **Track 2 = runtime-modding RE** (dev-dimension/
+teleport, MSB-write, ESD, weapon-arts — item 3 below) is the ORTHOGONAL follow-on, NOT worked until Track 1
+ships. The teleport harness (below) stays as a ready Track-2 asset + it doubles as the M2 heightfield
+warp-accumulate tool.
+
 All committed (local master ahead of origin). Three things landed + a strategic direction set.
 
 **1. RE-tooling hardening (patch-resilience).**
