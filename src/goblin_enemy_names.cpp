@@ -1,10 +1,7 @@
 // Mob NAMES on ELDEN RING's existing enemy health bar.
 //
-// The game draws the enemy HP bar for every locked/aggroed enemy but names only BOSSES and NAMED
-// NPCs (NpcParam.nameId>0 — invaders/quest NPCs like White Mask Varré, which it red-names natively);
-// this adds the name to the remaining UNNAMED bars only (generic enemies). Tier-1 named NPCs are
-// SKIPPED in get_enemy_bar_labels so we don't double the engine's own red name. We do NOT draw a bar
-// and do NOT project world->screen: the engine
+// The game draws the enemy HP bar for every locked/aggroed enemy but names only BOSSES; this adds
+// the name to non-boss bars. We do NOT draw a bar and do NOT project world->screen: the engine
 // already computed each on-screen HP bar and stored it in the CSFeMan HUD manager's per-frame
 // `entityHpBars[8]` array. We read that array, turn each entry's entity handle into its live ChrIns,
 // resolve the display name from the ACTIVE install's own regulation/msg files (no bake), and hand
@@ -255,11 +252,6 @@ int goblin::get_enemy_bar_labels(EnemyBarLabel *buf, int max)
     {
         const ResolvedName &rn = resolve_enemy_name(pr.e[i].npcParam, pr.e[i].model);
         if (rn.name.empty()) continue;  // true generic with no name in the active install → draw nothing
-        // Tier 1 = a NAMED NPC (NpcParam.nameId>0: invaders/quest NPCs/named minibosses, e.g. White Mask
-        // Varré). The ENGINE already draws the red name on those bars — our label would just double it (seen
-        // in-game: native red "Varré" + our white one). This feature only adds names to bars the game leaves
-        // UNNAMED, so skip tier 1. (enemy_display_name still resolves it for the map boss-marker supplement.)
-        if (rn.tier == 1) continue;
         // Draw at the raw bar position (it's smooth frame-to-frame — no extrapolation needed), clamped
         // to the on-screen band so the name stays put instead of riding the edge.
         buf[out].sx = clampf(pr.e[i].sx, kClampL, kClampR);
