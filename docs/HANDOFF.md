@@ -9,6 +9,52 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
+## ⇒ SESSION WRAP 2026-07-05 (Linux/Fable) — add_collision live, vmap projection/spiderfy/search, converter-residency
+
+All committed + pushed (origin/master == HEAD `23a83f5`). Big Linux session on top of the Windows RE.
+
+**Custom collision (Route D) — LIVE-PROVEN.** `goblin_add_collision.{hpp,cpp}` + staged `add_collision` RPC:
+cinfo(defaults + shape@+0x00 + pos@+0x30, STATIC) → `allocateBody FUN_1418aabf0` → `addBody FUN_1418a9ff0(0,0)`
+from the PRESENT thread (no deadlock), `hf_probe_present` oracle hit at the injected body's exact Y (Δfoot=40,
+persistent). `test_add_collision.py` 9/9. Findings `hknpworld_addbody_slot_re_findings.md` §7. **Remaining:**
+real `hknpBoxShape` build (`FUN_141916c30` + BuildCfg map — the probe BORROWS a live shape), walk-on confirm,
+tile-re-stream persistence, hit-normal readback (was 0,0,0).
+
+**AOB hardening (patch-resilience).** Last hot RVA + hknp FUNCs pinned: PHYSWORLD_SLOT (live FWA, primary
+unique) + CINFO_INIT/ALLOCATE_BODY/ADD_BODY prologues → [SIG] 48/48 clean. Geom setter slot 26 already
+self-heals. Backlog now: worldmap vtables/slots + icon-harvest set only.
+
+**Virtual World Map — big progress toward replacing the native map:**
+- **A9 item search DONE** — F1 result click locates onto the vmap (`virtual_map_locate`) AND the vmap has its
+  own `Items` search sidebar (token-match, dedup rows, click=centre). Works native-map-closed. RPCs `vmap
+  locate/items`.
+- **Fork 1** — cluster PILES now honour region-name toggles (region_gated excluded at QT build + region mask
+  in the rebuild key). Piles de-count hidden regions.
+- **Fork 2** — underground/DLC markers re-projected through the LIVE engine converter (`worldmap_probe::
+  project` → worldX=u+7040, worldZ=16512-v) instead of the baked fold that clumped them bottom-left (Nameless
+  Eternal City etc.). Verified group-1 spreads under Deeproot/Ainsel/Siofra. Residual: a few area-12 tiles
+  with no converter row still baked. NB the converter does NOT need the map open each time — `find_view_model`
+  caches the VM which persists past close (proven, see below).
+- **Fork 3 — spiderfy DONE** — native hover-fan ported to the vmap: piles (via `MarkerQuadtree::gather_pile`)
+  AND exact/near-coincident singles (bucketed by screen cell — the case zoom can't separate). Ring/spiral +
+  legs + dedup ×N + "+N" overflow. Fixes since: modal hover-absorb (no leak to icons under the fan), drops
+  collected/cleared members when `collectedGraying` (churn ↓, action-only fan). `config::clusterSpiderfy`
+  gate. Dev RPC `vmap spiderfy 1`.
+- **A3 tiles (UG/DLC) — BLOCKED on Windows RE.** Live recon showed `harvest_resident_tiles` walks the wrong
+  object — the tile tree is on the per-LOD DESCRIPTOR (`layer+0xd8`), NOT `layer+0x230` (outside the inline
+  0x110 layer). RE prompt written: `windows_worldmap_tile_resident_reach_re_prompt.md`. `vmap tile_recon`
+  correlation RPC ready for when harvest returns tiles.
+
+**Converter residency — VERIFIED SAFE for the M5 cull.** The recommended native-draw removal (D3D12
+`RSSetScissorRects` empty-clip, commit `2208332`) hides pixels but KEEPS the menu logic tick → VM stays live.
+Proven weaker-than-close: `proj` RPC + `test_converter_residency.py` (5/5) → project() identical map-closed
+(du=0.0). **Endgame data cleanup queued** (`imgui_only_map_plan` Track C): once the vmap owns the surface,
+DELETE the baked `LEGACY_CONV` + its nearest-fallback in `project_dungeon_row_to_overworld` (source of the
+area-12 mis-fold + DLC-UG residual), route all UG/DLC projection through the live converter.
+
+**Parity gate (Track A) now:** A1/A2*/A4/A5/A6/A7/A8/A9/A11/A13 ✅ + gamepad nav + grace search/warp. Open
+pure-Linux: A15 (legacy-dungeon sub-maps). A3 tiles = Windows RE. A12 (ERR dial) low-prio.
+
 ## ⇒ SESSION WRAP 2026-07-05 — custom-asset/collision RE + far-terrain relief plan (static Ghidra, Windows)
 
 RE-only session (Windows Ghidra `D:\ghidra_proj2\ER`), all committed, local master ahead of origin. Landed:
