@@ -30,6 +30,7 @@
 #include "goblin_heightfield.hpp"      // tick_present() — heightfield present-thread probe (D2.2)
 #include "goblin_w2s.hpp"              // draw_present() — 3D world-to-screen debug dot (present-thread)
 #include "goblin_r3d.hpp"              // mod-owned D3D12 3D backend — test cube into the swapchain
+#include "goblin_postfx.hpp"           // greybox job #2b — full-screen restyle of ER's final frame
 #include "goblin_custom_markers.hpp"   // death_marker::tick() — mirror the native GameDataMan bloodstain
 #include "goblin_map_data.hpp"         // generated::MAP_ENTRIES (graces for Phase 1)
 #include "worldmap/grace_layer.hpp"      // goblin::worldmap::GraceLayer
@@ -1977,9 +1978,17 @@ namespace
             barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
             barrier.Transition.pResource = frame.render_target;
             barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-            barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-            barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-            g_command_list->ResourceBarrier(1, &barrier);
+
+            // Greybox job #2b: restyle ER's final frame (copy backbuffer -> temp -> full-screen style pass).
+            // postfx::apply itself transitions PRESENT->...->RENDER_TARGET, so skip the plain barrier when on.
+            if (goblin::postfx::enabled())
+                goblin::postfx::apply(g_device, g_command_list, frame.render_target, frame.rtv_handle);
+            else
+            {
+                barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+                barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+                g_command_list->ResourceBarrier(1, &barrier);
+            }
 
             g_command_list->OMSetRenderTargets(1, &frame.rtv_handle, FALSE, nullptr);
             // Mod-owned 3D backend (goblin_r3d): draw our real 3D into the swapchain BEFORE ImGui, so ImGui

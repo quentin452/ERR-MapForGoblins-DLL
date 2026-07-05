@@ -271,6 +271,7 @@ set(GOBLIN_HOST_SOURCES
   src/goblin_heightfield.cpp
   src/goblin_w2s.cpp
   src/goblin_r3d.cpp
+  src/goblin_postfx.cpp
   src/dllmain.cpp)
 
 # Slice C: real two-target split when ON. Host does NOT link the render DLL (loaded at runtime

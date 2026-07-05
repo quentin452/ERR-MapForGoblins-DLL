@@ -27,6 +27,7 @@
 #include "goblin_heightfield.hpp"   // hf_probe cmd — terrain raycast heightfield (Track D2)
 #include "goblin_w2s.hpp"           // w2s_probe cmd — 3D world-to-screen camera calibration
 #include "goblin_r3d.hpp"           // r3d cmd — mod-owned D3D12 3D backend test cube
+#include "goblin_postfx.hpp"        // postfx cmd — greybox #2b full-screen restyle of ER's frame
 #include "goblin_custom_markers.hpp" // death_mark cmd — the DropSoul death marker
 #include "goblin_add_collision.hpp"  // add_collision cmd — Route D walkable box (recon phase)
 #include "goblin_field_probe.hpp"  // arm_raw — serialize find-what-accesses (Phase 2)
@@ -1288,6 +1289,30 @@ namespace goblin::debug_rpc
                 if (!ok) { std::snprintf(b, sizeof(b), "err proj: converter unresolved (map never opened?) or declined"); return std::string(b); }
                 std::snprintf(b, sizeof(b), "ok proj area=%d grid=(%d,%d) -> u=%.2f v=%.2f page=%d", area, gx, gz, u, v, page);
                 return std::string(b);
+            }
+            // postfx — greybox job #2b: restyle ER's final frame via a full-screen post-process pass in the
+            // present hook (no ER-shader RE). `postfx 0|1|toggle`, `postfx mode <1..4>` (1 grayscale, 2
+            // posterize, 3 edge-outline, 4 edge+desat), `postfx strength <f>`.
+            if (cmd == "postfx")
+            {
+                std::string a = next_token(rest);
+                if (a == "mode")
+                {
+                    try { goblin::postfx::set_mode(std::stoi(next_token(rest))); } catch (...) { return "err usage: postfx mode <1..4>"; }
+                    return "ok postfx mode set";
+                }
+                if (a == "strength")
+                {
+                    try { goblin::postfx::set_strength(std::stof(next_token(rest))); } catch (...) { return "err usage: postfx strength <f>"; }
+                    return "ok postfx strength set";
+                }
+                bool on = goblin::postfx::enabled();
+                if (a == "1" || a == "on") on = true;
+                else if (a == "0" || a == "off") on = false;
+                else if (a == "toggle" || a.empty()) on = !on;
+                else return "err usage: postfx 0|1|toggle | mode <1..4> | strength <f>";
+                goblin::postfx::set_enabled(on);
+                return std::string("ok postfx ") + (on ? "on (restyle ER frame)" : "off");
             }
             // r3d — mod-owned D3D12 3D backend test (virtual_world_3d_backend_plan.md step 1). Toggles a
             // spinning greybox wireframe cube drawn into the swapchain by OUR pipeline. `r3d 1|0|toggle`.
