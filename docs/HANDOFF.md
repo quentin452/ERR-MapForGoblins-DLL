@@ -414,6 +414,13 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   `active_world` half** — auto-set the active world from PlayerDim + re-key the relief/item-search/player-dot
   gates off "engine-backed" (not `active_world==0`) for when a WALKABLE custom world exists. Detail:
   `docs/plans/virtual_world_multi_world_design.md` Decision 2.
+- **★ Virtual-world 3D backend — STEP 1 DONE + LIVE-VERIFIED 2026-07-05 (`42039da`).** The mod-owned D3D12 3D
+  backend works: our own pipeline (root sig + runtime HLSL + cube VB/IB + root-constant MVP) draws a spinning
+  greybox wireframe cube INTO ER's swapchain via the present hook + device/queue/command-list the overlay already
+  holds. `goblin_r3d.{hpp,cpp}`, RPC `r3d 0|1|toggle` (off by default). Screenshots confirm perspective 3D
+  composited over ER's frame, clean toggle, no crash. **NEXT (step 2): drive the MVP from the player pos+yaw (own
+  camera, case 2) so the box sits in the world as you move — needs NO ER view-proj / w2s3d.** Then proc-mesh tier
+  1 + the objects TOML + realizer (see the plan's Sequencing).
 - **★ Virtual-world 3D backend + procedural objects — DESIGN 2026-07-05 (`docs/plans/virtual_world_3d_backend_plan.md`).**
   User insight: the greybox/virtual worlds (vision #4 job #1) need NOT be pure-ImGui-2D — a **mod-owned D3D12 3D
   backend** (reusing the device/queue/Present hook we already hold) rendering **procedural** geometry wins twice:

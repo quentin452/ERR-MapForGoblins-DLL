@@ -139,8 +139,13 @@ The TOML realizer should **log every field / primitive it can't yet honor** → 
 writes itself live in-game as you author worlds (matches the "dev dimension walking skeleton" idea).
 
 ## Sequencing
-1. Backend B skeleton: draw ONE hardcoded greybox box in the swapchain via the mod's D3D12 (proves the backend).
-2. Own-camera (case 2) from player pos+yaw → box sits in the world as you move (no w2s3d).
+1. **✅ DONE 2026-07-05 (`42039da`, live-verified).** Backend B skeleton: our own D3D12 pipeline (root sig +
+   runtime-compiled HLSL + cube VB/IB + root-constant MVP) draws a spinning greybox WIREFRAME cube into ER's
+   swapchain via the present hook. RPC `r3d 0|1|toggle` (off by default). `goblin_r3d.{hpp,cpp}`. Wireframe +
+   no-cull + no-depth for the first proof; RTV `R8G8B8A8_UNORM` matches the swapchain; recorded before ImGui
+   (which re-binds state after). Screenshots: cube renders in perspective composited over ER's frame, toggles
+   clean, no crash.
+2. Own-camera (case 2) from player pos+yaw → box sits in the world as you move (no w2s3d). **← NEXT**
 3. Proc-mesh tier 1 (primitives) + the objects TOML + realizer. Then CSG (tier 2) = most greybox unlocked.
 4. Collision+render unified from one `size`; walk-on via `add_collision`.
 5. Later: generators (tier 3), inline (4), custom (5); and case-1 overlay once the w2s3d rebase lands.
