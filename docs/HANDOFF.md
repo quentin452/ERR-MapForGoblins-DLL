@@ -9,6 +9,33 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
+## ⇒ SESSION WRAP 2026-07-05 (late-3, Linux/Opus) — off-map "bottom-left" root causes + fixes
+
+User spotted a recurring symptom: **every off-map marker renders bottom-left**. Diagnosed (via the new
+`vmap find` + `proj`) as TWO independent projection-failures that both collapse to ~origin, and fixed the
+big one. All committed, in-game verified, local master ahead of origin.
+
+- **★ Fix 1 DONE (`ac802b6`) — Leyndell Ashen Capital / Elden Throne fold gap.** Map areas 19/34/35 (Ashen
+  Capital, Elden Throne) are DST dead-ends in `WorldMapLegacyConvParam` (no outgoing row) → `legacy_fold`
+  returned unmatched → markers stayed at raw grid(0,0) = bottom-left (Elden Beast, Fractured Marika, Stakes
+  of Marika, Summoning Pools, Hallowed Avatar). Fix: `goblin_legacy_fold.cpp` now builds a reverse index
+  (dst_area→rows) and lifts a dead-end area into its parent block (11,5,0) via the row's inverse, selecting
+  the parent's EXACT block so the terminal-preferring lookup routes it straight to the overworld (11→60) —
+  a naive lift ping-ponged 19→11→19 (net-zero) and got worse (snapped to (0,0)); the exact-block select
+  fixes it. Live: Elden Beast w(0,0)→w(11751,12505)=Leyndell; `vmap offmap` 20→15. The engine converter
+  already knew this (`proj 19 0 0` == `proj 11 5 0`); affine confirmed **worldX=u+7040, worldZ=16512−v**.
+- **★ Fix 2 NOT DONE — Night's Cavalry armor enemy-join mis-anchor.** The 4 armor lots (1048550710-713)
+  resolve to area60 grid(12,13) = off-map-west, while the 13 Night's Cavalry BOSSES are placed correctly
+  (the Duo at grid(48,55) = Mountaintops = where the armor drops). So it's an enemy-join failure: the armor
+  lots don't join to the Duo boss entity and fall to a degenerate low-grid anchor. This is the residual
+  `from_fallback` class (`vmap offmap` still flags 15 margin: Night's Cavalry set + area45/-1 quest NPCs).
+  NEXT: trace why lots 1048550710-713 mis-anchor (loot_disk enemy join) → co-locate them with the Duo boss.
+- **Item search Royal vs Ashen Capital DONE (`ac802b6`) — but graces untagged.** State-gated LOOT items now
+  split into per-state rows tagged `[+] Royal Capital`/`[x] Ashen Capital` (reachability read live via
+  `read_event_flag`, generalises to charm-break/seal-tree). **Follow-up:** graces bypass `push_marker` so
+  they don't carry `secondary_flag`/`hide_when_flag` → grace rows are untagged; wire the story flags into
+  `grace_layer` (call `secondary_story_flag`/`hide_when_story_flag`) to tag Ashen vs Royal graces too.
+
 ## ⇒ SESSION WRAP 2026-07-05 (late-2, Linux/Opus) — A15 CLOSED as parity + on-canvas icons already shipped
 
 Scoping/bookkeeping pass, no runtime work. Two parity rows reconciled against the live code:
