@@ -209,6 +209,21 @@ and draw a diamond / line / box-wireframe / level-grid with the modder's chosen 
   waypoints, no behaviour, no wall). Combat ACTORS = real engine `ChrIns` (native spawn → real AI/anim/
   combat). Same rule: real content → engine; our virtual STRUCTURE → ImGui; ImGui enemies only as dummies
   until the combat primitives land.
+- **SCOPE BOUNDARY (user Q 2026-07-05): ImGui greybox draws OUR world's objects — it does NOT replace ER's
+  own meshes.** Two very different asks: (a) draw OUR custom-world objects (walls/platforms/dummies) as ImGui
+  — few, cheap, feasible; (b) replace ER's ENTIRE mesh rendering (every FLVER/asset/enemy/weapon/SFX/terrain)
+  with ImGui — **NOT feasible, not "2-3 moves"; it is re-implementing a renderer as a 2D overlay.** (b) would
+  need: SUPPRESS every real D3D12 draw (per-draw-call hook, breaks the game), MIRROR the whole live scene
+  graph (thousands of ChrIns/AEG/bullets/bone-attached weapons, read each transform + draw a proxy every
+  frame), read live HAVOK SKELETON poses to animate the proxies, and cope with ImGui having NO depth buffer
+  (no occlusion → visual mush) and no 3D batching (perf death). The count of ER "primitives" (weapons, arts,
+  …) is NOT even the blocker — suppress-real-render + mirror-the-scene + skeletal-anim is.
+  **Key: in OUR virtual world the player keeps their REAL engine character — real weapons, real weapon arts,
+  real animation, all engine-driven.** Greybox draws only the WORLD (structure + dummies); we NEVER
+  re-implement ER's kit, so "how many ER primitives" is out of scope for the greybox. (A greybox VIEW of the
+  REAL world, if ever wanted, is the game's OWN debug/wireframe render — a FromSoft flag — not ImGui.) The
+  AEG-vs-ImGui split above is exactly the scoping that AVOIDS this wall: real content keeps the engine
+  renderer, ImGui only ever draws our own greybox objects.
 - **Quadtree reuse (user Q):** the vmap `MarkerQuadtree` is a 2D XZ index for MAP-viewport cull+cluster; 3D
   objects cull by camera FRUSTUM + distance + behind-camera reject, a different axis. Reuse it only as a
   COARSE broad-phase (XZ-near-camera query → skip projecting far objects), then per-candidate do the 3D
