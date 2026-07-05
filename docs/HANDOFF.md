@@ -9,6 +9,35 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
+## ⇒ SESSION WRAP 2026-07-06 (Linux/Opus) — enemy-name source SOLVED (=ERR Scaleform HUD) + font accents fixed; native-name plan queued
+
+Long debug of the "enemy name drawn twice" report. Landed fixes + a scoped plan; local master ahead of origin.
+
+- **The "second mod" = ERR's Scaleform HUD, not a DLL.** Full mod audit (`err_offline.me3` load list + strings)
+  + a mods-off isolation test (disabled all `dll/offline/` natives, kept ERR internals → name persisted)
+  PROVED the stable red NPC name is drawn by ERR's field-HUD movie **`mod/menu/01_000_fe.gfx`** — symbols
+  `EnemyTag1..7`/`M0EnemyTag0` (= our 8 `entityHpBars`) + `EnemyTag_ColorText` (the name field). ERR names
+  only NPCs (nameId>0); generics stay blank. Ours (ImGui) was the white duplicate. `01_000_fe.gfx` is
+  uncompressed (`GFX\x0b`) → strings-readable.
+- **✅ Font accents FIXED (`d23b779`).** "Varre" vs ERR's "Varré": our ImGui default font (ProggyClean, added
+  with full 0x20-0xFF range) SHADOWED the merged DejaVu at 0x00A0-0x00FF (ImGui merge = first font wins) and
+  ProggyClean has no real accented glyph → 'é' blank. (œ U+0153 worked only because it's outside the overlap.)
+  Restricted ProggyClean to ASCII (0x20-0x7E) via a custom GlyphRanges on AddFontDefault → DejaVu owns every
+  accent. Fixes accents overlay-wide (item/region/enemy names, all langs). Host-side → needs a game restart.
+- **Enemy-name encoding is fine** — `wide_to_utf8` uses `WideCharToMultiByte(CP_UTF8)` (proper UTF-8). It was
+  purely the font atlas.
+- **The tier-1 skip (`803f887`) was reverted by the user (`c33bfe3`)** — do NOT re-add it blindly. The chosen
+  direction supersedes it (below).
+- **★ CHOSEN DIRECTION (user, 2026-07-06): go NATIVE — RE the GFx HUD, inject the enemy-name tag for ALL
+  entities (mobs/NPCs/sheep), then DELETE our ImGui enemy-name path.** Scoped in
+  `docs/plans/native_enemy_names_scaleform_plan.md`. **★ RE-GATE FIRST (mod-agnostic prime directive):** does
+  vanilla's `EnemyTag_ColorText` DISPLAY when fed a name (→ native OK, delete ImGui) or is it HIDDEN for
+  non-boss (→ shipping a gfx replacement = mod-specific/HUD-conflict = keep ImGui, instead fix its stability
+  via per-frame w2s + drop the `kClampL/R/T/B` clamp). Next RE = the name-feed hook near CSFeMan+entityHpBars;
+  write `docs/re/windows_enemy_name_hud_feed_re_findings.md`. Game was DOWN this session (no live probe).
+- **Also queued (independent):** ImGui enemy-name STABILITY fix (per-frame w2s + drop clamp) — the fallback if
+  the native path isn't mod-agnostic, and a quick win regardless.
+
 ## ⇒ SESSION WRAP 2026-07-05 (late-4, Linux/Opus) — PRIORITY: revive overlay hot-reload (split drifted) + boss/grace bugs queued
 
 User wants to STOP the ~3-4min game-reboot per fix and revive the overlay hot-reload dev loop. Investigated
