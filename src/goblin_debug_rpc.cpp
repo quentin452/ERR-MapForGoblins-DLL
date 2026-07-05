@@ -511,6 +511,10 @@ namespace goblin::debug_rpc
                 // outline cells that overlay markers exactly. Confirms the placement calibration. Map must be open.
                 if (arg == "tiles_resident")
                     return "ok vmap tiles_resident " + goblin::overlay_api::virtual_map_load_resident();
+                // vmap tile_recon — A3: correlate live resident tile rects vs the archive name-grid to solve
+                // archive-name↔runtime-cell (deferred texture-fetch). Read-only; needs the ER map open+moved.
+                if (arg == "tile_recon")
+                    return "ok vmap tile_recon " + goblin::overlay_api::virtual_map_tile_recon();
                 // vmap flip <none|x|z|xz> — orientation calibration: toggle world→screen axis signs live
                 // (default none = minimap +X/-Z north-up). Try until it matches the native map.
                 if (arg == "flip")

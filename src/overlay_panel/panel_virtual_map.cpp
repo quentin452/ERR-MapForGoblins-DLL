@@ -33,6 +33,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -245,6 +246,89 @@ std::string virtual_map_load_resident()
     s_open = true;
     char st[96];
     std::snprintf(st, sizeof(st), "resident: %d tile cells (position-only, outlines)", n);
+    return (s_tile_status = st);
+}
+
+// A3 recon: correlate the LIVE resident tile grid (authoritative rects) with the 71_MapTile archive
+// name-grid. Decides whether archive-name↔runtime-cell is a clean formula (⇒ textured placement is a
+// quick fix) or needs the deferred texture-fetch RE. Logs [TILERECON]; read-only. Map must be open+moved.
+std::string virtual_map_tile_recon()
+{
+    std::vector<goblin::worldmap_probe::ResidentTileRect> rt;
+    int n = goblin::worldmap_probe::harvest_resident_tiles(rt);
+    if (n == 0)
+        return (s_tile_status = "recon: no resident tiles (open the ER map + MOVE it, then retry)");
+
+    // Per-dim resident grid extent + rect extent (the authoritative runtime grid).
+    struct Ext { int minGX = 1 << 30, maxGX = -(1 << 30), minGZ = 1 << 30, maxGZ = -(1 << 30), count = 0;
+                 float u0 = 1e30f, u1 = -1e30f, v0 = 1e30f, v1 = -1e30f; };
+    std::map<int, Ext> byDim;
+    for (const auto &t : rt)
+    {
+        Ext &e = byDim[t.dim];
+        e.minGX = (std::min)(e.minGX, t.gridX); e.maxGX = (std::max)(e.maxGX, t.gridX);
+        e.minGZ = (std::min)(e.minGZ, t.gridZ); e.maxGZ = (std::max)(e.maxGZ, t.gridZ);
+        e.u0 = (std::min)(e.u0, t.u0); e.u1 = (std::max)(e.u1, t.u1);
+        e.v0 = (std::min)(e.v0, t.v0); e.v1 = (std::max)(e.v1, t.v1);
+        ++e.count;
+    }
+    spdlog::info("[TILERECON] === {} resident tiles, {} distinct dim(s) ===", n, (int)byDim.size());
+    for (const auto &[dim, e] : byDim)
+        spdlog::info("[TILERECON] resident dim={} count={} gridX[{}..{}] gridZ[{}..{}] mapRect u[{:.0f}..{:.0f}] v[{:.0f}..{:.0f}]",
+                     dim, e.count, e.minGX, e.maxGX, e.minGZ, e.maxGZ, e.u0, e.u1, e.v0, e.v1);
+    // A few raw resident tiles (id→rect ground truth) for offline correlation.
+    for (int i = 0; i < (int)rt.size() && i < 12; ++i)
+        spdlog::info("[TILERECON] resident[{}] dim={} gx={} gz={} rect=({:.0f},{:.0f},{:.0f},{:.0f})",
+                     i, rt[i].dim, rt[i].gridX, rt[i].gridZ, rt[i].u0, rt[i].v0, rt[i].u1, rt[i].v1);
+
+    // Archive name-grid per LOD for each resident dim (archive prefix M{dim:%02d}).
+    std::vector<goblin::worldmap::maptile::Entry> entries;
+    std::vector<uint8_t> bdt;
+    if (!goblin::worldmap::maptile::load_archive("menu/71_MapTile", entries, bdt))
+        return (s_tile_status = "recon: maptile archive unavailable (resident logged though)");
+    auto decode_suffix = [](uint32_t suffix, int &subX, int &subY) {
+        uint32_t m = suffix >> 3;   // low 3 bits reserved (suffix = 8*morton)
+        subX = subY = 0;
+        for (int i = 0; i < 8; ++i) { subX |= ((m >> (2 * i)) & 1u) << i; subY |= ((m >> (2 * i + 1)) & 1u) << i; }
+    };
+    for (const auto &[dim, e] : byDim)
+    {
+        (void)e;
+        for (int lod = 0; lod <= 4; ++lod)
+        {
+            char prefix[16]; std::snprintf(prefix, sizeof(prefix), "M%02d_L%d_", dim, lod);
+            int cnt = 0, minNX = 1 << 30, maxNX = -(1 << 30), minNZ = 1 << 30, maxNZ = -(1 << 30);
+            int minCol = 1 << 30, maxCol = -(1 << 30), minRow = 1 << 30, maxRow = -(1 << 30);
+            std::string samples;
+            for (const auto &en : entries)
+            {
+                size_t p = en.name.find(prefix);
+                if (p == std::string::npos) continue;
+                size_t c0 = p + std::strlen(prefix);
+                size_t c1 = en.name.find('_', c0);
+                size_t r1 = (c1 == std::string::npos) ? std::string::npos : en.name.find('_', c1 + 1);
+                size_t s1 = (r1 == std::string::npos) ? std::string::npos : en.name.find('.', r1 + 1);
+                if (c1 == std::string::npos || r1 == std::string::npos || s1 == std::string::npos) continue;
+                long col = std::strtol(en.name.substr(c0, c1 - c0).c_str(), nullptr, 10);
+                long row = std::strtol(en.name.substr(c1 + 1, r1 - c1 - 1).c_str(), nullptr, 10);
+                uint32_t suf = (uint32_t)std::strtoul(en.name.substr(r1 + 1, s1 - r1 - 1).c_str(), nullptr, 16);
+                int sx, sz; decode_suffix(suf, sx, sz);
+                int nx = (int)col * 64 + sx, nz = (int)row * 64 + sz;
+                minNX = (std::min)(minNX, nx); maxNX = (std::max)(maxNX, nx);
+                minNZ = (std::min)(minNZ, nz); maxNZ = (std::max)(maxNZ, nz);
+                minCol = (std::min)(minCol, (int)col); maxCol = (std::max)(maxCol, (int)col);
+                minRow = (std::min)(minRow, (int)row); maxRow = (std::max)(maxRow, (int)row);
+                if (cnt < 6) samples += " " + en.name.substr(c0 - 4, s1 - (c0 - 4)) +
+                                        "(nx" + std::to_string(nx) + ",nz" + std::to_string(nz) + ")";
+                ++cnt;
+            }
+            if (cnt == 0) continue;
+            spdlog::info("[TILERECON] archive {} count={} col[{}..{}] row[{}..{}] nx[{}..{}] nz[{}..{}] samples:{}",
+                         prefix, cnt, minCol, maxCol, minRow, maxRow, minNX, maxNX, minNZ, maxNZ, samples);
+        }
+    }
+    char st[128];
+    std::snprintf(st, sizeof(st), "recon: %d resident, %d dim(s) — see [TILERECON] log", n, (int)byDim.size());
     return (s_tile_status = st);
 }
 

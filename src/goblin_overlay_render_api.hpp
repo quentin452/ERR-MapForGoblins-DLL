@@ -119,6 +119,11 @@ namespace goblin::overlay_api
     // Load a whole dimension+LOD via the live converter affine (slice 3). Returns a status string.
     GOBLIN_RENDER_API std::string virtual_map_load_lod(int dim, int lod, int cap);
     GOBLIN_RENDER_API std::string virtual_map_load_resident();  // harvest live resident tile rects (aligned)
+    // A3 recon (2026-07-05): correlate the LIVE resident WorldMapTile grid (authoritative rects) with the
+    // 71_MapTile ARCHIVE name-grid, to solve archive-name↔runtime-cell (the deferred texture-fetch piece).
+    // Logs [TILERECON] lines (each resident {dim,gridX,gridZ,rect} + per-dim/LOD archive name-grid extents +
+    // sample decoded (nx,nz)); returns a one-line summary. Read-only; needs the ER map OPEN + moved.
+    GOBLIN_RENDER_API std::string virtual_map_tile_recon();
     GOBLIN_RENDER_API int virtual_map_dump_markers(const char *path);  // export markers CSV (offline styling)
     GOBLIN_RENDER_API bool warp_to_grace(int32_t graceId, int32_t offset = 0);  // fast-travel to a grace (vmap click-to-warp); offset=0 = bonfireEntityId direct (ground truth)
     GOBLIN_RENDER_API void virtual_map_set_view(float camX, float camZ, float zoom);  // dev/test framing
