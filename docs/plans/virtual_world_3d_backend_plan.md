@@ -145,7 +145,12 @@ writes itself live in-game as you author worlds (matches the "dev dimension walk
    no-cull + no-depth for the first proof; RTV `R8G8B8A8_UNORM` matches the swapchain; recorded before ImGui
    (which re-binds state after). Screenshots: cube renders in perspective composited over ER's frame, toggles
    clean, no crash.
-2. Own-camera (case 2) from player pos+yaw → box sits in the world as you move (no w2s3d). **← NEXT**
+2. **✅ DONE 2026-07-05 (`28eabb3`, live-verified).** World-anchored cube via the **ER camera** (w2s3d
+   `get_camera`: render-local VIEW + rebase origin + fovy) — the cube sits at the player's WORLD pos and stays
+   anchored as the camera moves (this is **case 1**, and it also CONFIRMS w2s3d end-to-end with a 3D cube, far
+   stronger than the debug dot). NB this used the REAL ER camera (not a mod-owned camera) — which is better: it
+   aligns with what ER renders. A mod-owned camera (true case 2, empty dev-dimension) is a later variant if
+   ever needed; case 1 alignment is the more useful capability and it's proven.
 3. Proc-mesh tier 1 (primitives) + the objects TOML + realizer. Then CSG (tier 2) = most greybox unlocked.
 4. Collision+render unified from one `size`; walk-on via `add_collision`.
 5. Later: generators (tier 3), inline (4), custom (5); and case-1 overlay once the w2s3d rebase lands.

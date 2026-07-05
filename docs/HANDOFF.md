@@ -434,13 +434,16 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   insufficient** — start from #2b. (#2a debug-flag scan `windows_debug_render_flag_re_prompt.md` still the
   free-if-it-exists option.) Follow-ups: TOML-drive the mode/strength/colour; tune edge strength; maybe a
   depth-aware pass later (needs ER's depth target). Note: this restyles the WHOLE frame globally, not per-object.
-- **★ Virtual-world 3D backend — STEP 1 DONE + LIVE-VERIFIED 2026-07-05 (`42039da`).** The mod-owned D3D12 3D
-  backend works: our own pipeline (root sig + runtime HLSL + cube VB/IB + root-constant MVP) draws a spinning
-  greybox wireframe cube INTO ER's swapchain via the present hook + device/queue/command-list the overlay already
-  holds. `goblin_r3d.{hpp,cpp}`, RPC `r3d 0|1|toggle` (off by default). Screenshots confirm perspective 3D
-  composited over ER's frame, clean toggle, no crash. **NEXT (step 2): drive the MVP from the player pos+yaw (own
-  camera, case 2) so the box sits in the world as you move — needs NO ER view-proj / w2s3d.** Then proc-mesh tier
-  1 + the objects TOML + realizer (see the plan's Sequencing).
+- **★ Virtual-world 3D backend — STEPS 1+2 DONE + LIVE-VERIFIED 2026-07-05 (`42039da`, `28eabb3`).** The mod-owned
+  D3D12 3D backend works (`goblin_r3d.{hpp,cpp}`, RPC `r3d 0|1|toggle`, off by default): our own pipeline draws a
+  greybox wireframe cube INTO ER's swapchain via the present hook + device/queue the overlay already holds.
+  **Step 2 = WORLD-ANCHORED via the ER camera:** w2s exposes `get_camera` (render-local VIEW@GameRend+0xF0 + the
+  per-frame rebase origin + fovy); r3d builds `Model·T(-origin)·View·ProjNegZ` (ProjNegZ reproduces w2s's conv2
+  -vz pinhole exactly). The cube sits at the player's WORLD pos + stays anchored as the camera moves — **case 1
+  proven, and this CONFIRMS w2s3d end-to-end** (the agent's find_origin/VIEW/conv2/fovy; a 3D cube >> the dot,
+  which had been "pending one run"). **NEXT: the proc-mesh library** (primitives → CSG → generators, no mesh file)
+  + the objects TOML `[[object]]` realizer (manifest slice 3) — that's the convergence of r3d + w2s3d + the
+  manifest into modder-authored 3D greybox worlds.
 - **★ Virtual-world 3D backend + procedural objects — DESIGN 2026-07-05 (`docs/plans/virtual_world_3d_backend_plan.md`).**
   User insight: the greybox/virtual worlds (vision #4 job #1) need NOT be pure-ImGui-2D — a **mod-owned D3D12 3D
   backend** (reusing the device/queue/Present hook we already hold) rendering **procedural** geometry wins twice:
