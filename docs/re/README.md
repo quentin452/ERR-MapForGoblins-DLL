@@ -1,6 +1,6 @@
 # RE coverage map — what of ELDEN RING is reverse-engineered, and what isn't
 
-Index + honest coverage map for `docs/re/`. **171 RE docs** live here. Two kinds:
+Index + honest coverage map for `docs/re/`. **172 RE docs** live here. Two kinds:
 - `*_re_findings.md` / `*_RESOLVED.md` — a SOLVED structure/function (the answer).
 - `*_re_prompt.md` / `*_analysis.md` — an OPEN or historical RE task handed to Ghidra/CE.
 
