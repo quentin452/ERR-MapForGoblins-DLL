@@ -1543,6 +1543,95 @@ void note_map_viewport(float x, float y, float w, float h, bool map_open)
                     x, y, w, h);
 }
 
+// ── native-map viewport diagnostic + a DISPROVEN cull experiment ───────────────────────────────
+// The native world map is the Scaleform movie 02_120_worldmap.gfx; its clip rect lives at MovieImpl+0xB0
+// (int L,T,W,H, virtual 1920x1080), reached WorldMapDialog+0x140 -> *(+0x00) (RE:
+// worldmap_native_clip_b3_scaleform_re_findings.md, READ there for OUR marker clip). movieclip_read() is a
+// useful live map-viewport readout. The HIDE experiment (force +0xB0 to 0 each present, hoping the movie
+// stops rasterizing) is DISPROVEN: the write holds but the map still renders — +0xB0 is DESCRIPTIVE, not a
+// render gate (proven live 2026-07-05, findings §4d; the D3D12 scissor lever is also dead, §4c). Kept as
+// reusable scaffolding (resolve + per-frame maintain) for a future movie visible/enable-flag hunt.
+static std::atomic<bool> g_movie_hide{false};
+static int  g_movie_saved[4] = {0, 0, 0, 0};
+static bool g_movie_saved_ok = false;
+
+// Live MovieImpl from the published cursor (map must be OPEN). 0 if unresolved.
+// Chain (worldmap_native_clip_b3_scaleform_re_findings.md): WorldMapDialog+0x140 -> movieHandle*,
+// movieHandle+0x00 -> MovieImpl*, then MovieImpl+0xA8 = {BufW,BufH} (==1920,1080), +0xB0 = clip{L,T,W,H}.
+// VALIDATE the buffer dims before returning so a wrong object can never be written to (returns 0 instead
+// = "unresolved" — safer than corrupting whatever movieHandle+0xB0 happens to be).
+static uintptr_t resolve_movie_impl()
+{
+    uintptr_t a = g_active_cursor.load(std::memory_order_relaxed);
+    if (!a) return 0;
+    static uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!base) return 0;
+    uint64_t vt = 0;
+    if (!seh_read8(reinterpret_cast<void *>(a), &vt) || vt != base + CURSOR_VTABLE_RVA) return 0;
+    const uintptr_t dialog = a - CURSOR_OFF_IN_MENU;  // cursor sits at WorldMapDialog+0x2DB0
+    uint64_t handle = 0, movie = 0;
+    if (!seh_read8(reinterpret_cast<void *>(dialog + 0x140), &handle) || !handle || !plausible_ptr(handle))
+        return 0;
+    if (!seh_read8(reinterpret_cast<void *>(handle + 0x00), &movie) || !movie || !plausible_ptr(movie))
+        return 0;
+    int bw = 0, bh = 0;  // sanity: +0xA8 buffer dims must look like a UI canvas (else wrong object)
+    if (!seh_read_i32(reinterpret_cast<void *>(movie + 0xA8), &bw) ||
+        !seh_read_i32(reinterpret_cast<void *>(movie + 0xAC), &bh))
+        return 0;
+    if (bw < 640 || bw > 7680 || bh < 480 || bh > 4320) return 0;
+    return static_cast<uintptr_t>(movie);
+}
+
+bool movieclip_read(int outLTWH[4], int outBufWH[2])
+{
+    const uintptr_t movie = resolve_movie_impl();
+    if (!movie) return false;
+    for (int i = 0; i < 4; ++i)
+        if (!seh_read_i32(reinterpret_cast<void *>(movie + 0xB0 + i * 4), &outLTWH[i])) return false;
+    if (outBufWH)
+    {
+        seh_read_i32(reinterpret_cast<void *>(movie + 0xA8), &outBufWH[0]);
+        seh_read_i32(reinterpret_cast<void *>(movie + 0xAC), &outBufWH[1]);
+    }
+    return true;
+}
+
+void movieclip_set_hide(bool on) { g_movie_hide.store(on, std::memory_order_relaxed); }
+bool movieclip_hiding() { return g_movie_hide.load(std::memory_order_relaxed); }
+
+// Per-frame maintenance (call from the present loop). Hiding + resolvable: save the original rect once,
+// then force the clip to (0,0,0,0) every frame (engine may rewrite it). Not hiding but a rect was saved:
+// restore it once. Cheap when idle (no resolve unless hiding or a pending restore). Returns true if it
+// wrote a zero this frame.
+bool movieclip_maintain()
+{
+    if (g_movie_hide.load(std::memory_order_relaxed))
+    {
+        const uintptr_t movie = resolve_movie_impl();
+        if (!movie) { g_movie_saved_ok = false; return false; }  // map closed: next open re-saves fresh
+        if (!g_movie_saved_ok)
+        {
+            bool ok = true;
+            for (int i = 0; i < 4; ++i)
+                ok &= seh_read_i32(reinterpret_cast<void *>(movie + 0xB0 + i * 4), &g_movie_saved[i]);
+            g_movie_saved_ok = ok;
+        }
+        bool wrote = true;
+        for (int i = 0; i < 4; ++i)
+            wrote &= seh_write_i32(reinterpret_cast<void *>(movie + 0xB0 + i * 4), 0);
+        return wrote;
+    }
+    if (g_movie_saved_ok)
+    {
+        const uintptr_t movie = resolve_movie_impl();
+        if (movie)
+            for (int i = 0; i < 4; ++i)
+                seh_write_i32(reinterpret_cast<void *>(movie + 0xB0 + i * 4), g_movie_saved[i]);
+        g_movie_saved_ok = false;
+    }
+    return false;
+}
+
 bool set_view_center(float mU, float mV, float minZoom)
 {
     // Reset the diagnostic snapshot for this call (the F1 "Locate debug" overlay reads it).

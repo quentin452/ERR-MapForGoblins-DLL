@@ -1647,6 +1647,9 @@ namespace
             recenter_cursor_to_window();
         s_prev_map_open = map_open_now;
         g_scissor_map_open.store(map_open_now, std::memory_order_relaxed); // for the B2 scissor detour
+        // M5 native-map cull (GFx MovieImpl clip write). Cheap when disarmed (no resolve unless armed or
+        // a pending restore); forces the native map movie's clip to 0 each frame while armed + map open.
+        goblin::worldmap_probe::movieclip_maintain();
 
         // Mid-session resolution fix + diagnostic. Run every frame (the fix self-skips
         // when the dims already match) because NOT all resolution changes fire

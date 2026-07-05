@@ -1261,6 +1261,32 @@ namespace goblin::debug_rpc
                 std::snprintf(b, sizeof(b), "ok proj area=%d grid=(%d,%d) -> u=%.2f v=%.2f page=%d", area, gx, gz, u, v, page);
                 return std::string(b);
             }
+            // movieclip — native-map viewport diagnostic + a DISPROVEN cull experiment. `read` reports the
+            // live Scaleform map clip rect + buffer size (a useful live map-viewport readout). `hide`/`show`
+            // arm/disarm a per-frame zero-write of MovieImpl+0xB0 — but that clip is DESCRIPTIVE, not a render
+            // gate: zeroing it does NOT hide the map (proven live 2026-07-05, screenshots). Kept as reusable
+            // scaffolding for a future movie visible/enable-flag hunt. See §4c/§4d of
+            // windows_native_map_render_toggle_re_findings.md (the D3D12 scissor path is also dead).
+            if (cmd == "movieclip")
+            {
+                std::string sub = next_token(rest);
+                if (sub == "hide") { goblin::worldmap_probe::movieclip_set_hide(true);
+                    return "ok movieclip hide (writes clip=0 each frame — INERT: does not cull, see findings §4d)"; }
+                if (sub == "show") { goblin::worldmap_probe::movieclip_set_hide(false);
+                    return "ok movieclip show (restoring original clip)"; }
+                if (sub == "read" || sub.empty())
+                {
+                    int r[4] = {0,0,0,0}, bw[2] = {0,0};
+                    if (!goblin::worldmap_probe::movieclip_read(r, bw))
+                        return "err movieclip: MovieImpl unresolved (map open? in-world?)";
+                    char b[160];
+                    std::snprintf(b, sizeof(b),
+                        "ok movieclip clip=(L=%d,T=%d,W=%d,H=%d) buf=(%d,%d) armed=%d",
+                        r[0], r[1], r[2], r[3], bw[0], bw[1], goblin::worldmap_probe::movieclip_hiding()?1:0);
+                    return std::string(b);
+                }
+                return "err usage: movieclip read|hide|show";
+            }
             // mfg_build — FRESHNESS GUARD. Returns the compile time of THIS RPC translation unit
             // (goblin_debug_rpc.cpp). Adding/changing ANY verb edits this file → its __TIME__ advances,
             // so a stale DLL is detectable: `ping` answers even from an OLD DLL (the listener lives), but
