@@ -15,6 +15,7 @@
 #include "goblin_overlay_render_api.hpp"  // lookup_text_utf8 / category_label / warp_to_grace
 #include "goblin_map_data.hpp"            // generated::Category::WorldGraces (click-to-warp)
 #include "worldmap/marker_layer.hpp"   // Marker / MarkerLayer (overlay_layers → markers to project)
+#include "worldmap/map_entry_layer.hpp" // far_relief_snapshot/step/built_group (relief draw, post split resync)
 #include "worldmap/map_renderer.hpp"   // draw_marker_glyph — reuse the native state-aware per-marker draw
 #include "goblin_config.hpp"           // config::clusterSpiderfy — hover fan-out gate (spiderfy)
 #include "worldmap/maptile.hpp"        // maptile ART reader (endgame phase-1a slice 2/3)
@@ -701,7 +702,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // called unconditionally, independent of the F1 panel).
     {
         static bool s_prev_map = false, s_from_map = false;
-        const bool map_now = goblin::world_map_open();
+        const bool map_now = goblin::overlay_api::world_map_open();
         if (map_now && !s_prev_map && goblin::vworld::active() != 0) { s_open = true; s_from_map = true; }
         else if (!map_now && s_prev_map && s_from_map) { s_open = false; s_from_map = false; }
         s_prev_map = map_now;
@@ -1357,14 +1358,14 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             // Relief is shown and whenever the group (dimension) changes — so the 3 maps (overworld /
             // underground / DLC) each get their own relief with no manual RPC. Host-side, ~ms; latched by
             // built-group so it runs once per switch (a transient "parse not ready" leaves the latch → retries).
-            if (goblin::overlay_api::far_relief_built_group() != s_group)
+            if (goblin::worldmap::far_relief_built_group() != s_group)
                 goblin::overlay_api::far_relief_build(s_group, 128);
             // D-far -1 v0: the MSB Y-cloud relief. Drawn UNDER the near raycast (below) so the exact near
             // samples overdraw the cloud estimate where both exist. Cooler tint so cloud vs raycast read apart.
             {
                 static std::vector<goblin::heightfield::Cell> s_far;
-                goblin::overlay_api::far_relief_snapshot(s_far);
-                const float fcell = goblin::overlay_api::far_relief_step();
+                goblin::worldmap::far_relief_snapshot(s_far);
+                const float fcell = goblin::worldmap::far_relief_step();
                 if (fcell > 0.f && !s_far.empty())
                 {
                     const float h = fcell * 0.5f;
@@ -2155,5 +2156,127 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     dl->PopClipRect();
 
     ImGui::End();
+}
+
+// ── vmap RPC command dispatch (render-side) ───────────────────────────────────────────────────────
+// The host's `vmap <sub> [args]` RPC verb forwards its whole argument string here so the WHOLE vmap
+// dispatch lives with the panel code it drives — one loader export (MFG_VmapCommand) instead of ~18,
+// and a NEW vmap verb never re-breaks the hot-reload split. Moved verbatim from goblin_debug_rpc.cpp
+// (2026-07-05 split resync); calls the local panel functions directly (same module).
+static std::string vmap_next_token(std::string &s)
+{
+    size_t b = s.find_first_not_of(" \t");
+    if (b == std::string::npos) { s.clear(); return {}; }
+    size_t e = s.find_first_of(" \t", b);
+    std::string tok = s.substr(b, e == std::string::npos ? std::string::npos : e - b);
+    s = (e == std::string::npos) ? std::string{} : s.substr(e + 1);
+    return tok;
+}
+std::string vmap_rpc_command(std::string rest)
+{
+    std::string arg = vmap_next_token(rest);
+    if (arg == "fit") { virtual_map_open() = true; virtual_map_request_fit(); return "ok vmap fit"; }
+    if (arg == "group")
+    {
+        int g = 0;
+        try { g = std::stoi(vmap_next_token(rest)); } catch (...) { return "err usage: vmap group <0-3>"; }
+        virtual_map_set_group(g);
+        return "ok vmap group=" + std::to_string(virtual_map_group());
+    }
+    if (arg == "tile")
+    {
+        std::string needle = vmap_next_token(rest);
+        if (needle.empty()) return "err usage: vmap tile <needle> [wx0 wz0 wx1 wz1]";
+        float r[4] = {0, 0, 0, 0};
+        for (int i = 0; i < 4; ++i)
+        {
+            std::string t = vmap_next_token(rest);
+            if (t.empty()) break;
+            try { r[i] = std::stof(t); } catch (...) {}
+        }
+        virtual_map_request_tile(needle.c_str(), r[0], r[1], r[2], r[3]);
+        return "ok vmap tile requested " + needle;
+    }
+    if (arg == "tiles_clear") { virtual_map_clear_tiles(); return "ok vmap tiles_clear"; }
+    if (arg == "tiles_resident") return "ok vmap tiles_resident " + virtual_map_load_resident();
+    if (arg == "tile_recon") return "ok vmap tile_recon " + virtual_map_tile_recon();
+    if (arg == "items")
+    {
+        std::string q = rest;
+        if (!q.empty() && q[0] == ' ') q.erase(0, 1);
+        virtual_map_item_search(q.c_str());
+        return "ok vmap items query=\"" + q + "\"";
+    }
+    if (arg == "spiderfy")
+    {
+        bool on = (vmap_next_token(rest) != "0");
+        virtual_map_force_spiderfy(on);
+        return std::string("ok vmap spiderfy ") + (on ? "1" : "0");
+    }
+    if (arg == "offmap") return virtual_map_offmap_probe();
+    if (arg == "find")
+    {
+        std::string q = rest;
+        size_t b = q.find_first_not_of(" \t");
+        size_t e = q.find_last_not_of(" \t");
+        q = (b == std::string::npos) ? std::string{} : q.substr(b, e - b + 1);
+        if (q.empty()) return "err usage: vmap find <name|name_id>";
+        return virtual_map_find(q);
+    }
+    if (arg == "relief")
+    {
+        bool on = (vmap_next_token(rest) != "0");
+        virtual_map_set_relief(on);
+        return std::string("ok vmap relief ") + (on ? "1" : "0");
+    }
+    if (arg == "locate")
+    {
+        std::string ns = vmap_next_token(rest), gs = vmap_next_token(rest);
+        int32_t nid = 0; int grp = 0;
+        try { nid = (int32_t)std::stol(ns, nullptr, 0); } catch (...) { return "err usage: vmap locate <name_id> [group]"; }
+        if (!gs.empty()) { try { grp = std::stoi(gs); } catch (...) {} }
+        int found = virtual_map_locate(nid, grp);
+        char b[96];
+        std::snprintf(b, sizeof(b), "ok vmap locate name_id=%d group=%d -> %d instance(s)%s",
+                      nid, grp, found, found ? " (centred)" : " (no such marker)");
+        return std::string(b);
+    }
+    if (arg == "flip")
+    {
+        std::string m = vmap_next_token(rest);
+        bool fx = (m == "x" || m == "xz"), fz = (m == "z" || m == "xz");
+        virtual_map_set_flip(fx, fz);
+        return "ok vmap flip x=" + std::to_string(fx) + " z=" + std::to_string(fz);
+    }
+    if (arg == "dump_markers")
+    {
+        std::string p = vmap_next_token(rest);
+        if (p.empty()) return "err usage: vmap dump_markers <path.csv>";
+        int n = dump_markers_csv(p.c_str());
+        return n >= 0 ? "ok vmap dump_markers " + std::to_string(n) + " -> " + p
+                      : "err dump_markers: file open failed";
+    }
+    if (arg == "view")
+    {
+        std::string xs = vmap_next_token(rest), zs = vmap_next_token(rest), zm = vmap_next_token(rest);
+        float cx = 0, cz = 0, z = 0;
+        try { cx = std::stof(xs); cz = std::stof(zs); if (!zm.empty()) z = std::stof(zm); }
+        catch (...) { return "err usage: vmap view <camX> <camZ> <zoom>"; }
+        virtual_map_set_view(cx, cz, z);
+        return "ok vmap view";
+    }
+    if (arg == "tiles_lod")
+    {
+        std::string ds = vmap_next_token(rest), ls = vmap_next_token(rest), cs = vmap_next_token(rest);
+        int dim = 0, lod = 3, cap = 240;
+        try { dim = std::stoi(ds); lod = std::stoi(ls); } catch (...) { return "err usage: vmap tiles_lod <dim> <lod> [cap]"; }
+        if (!cs.empty()) { try { cap = std::stoi(cs); } catch (...) {} }
+        return "ok vmap tiles_lod " + virtual_map_load_lod(dim, lod, cap);
+    }
+    if (arg == "0") virtual_map_open() = false;
+    else if (arg == "1") virtual_map_open() = true;
+    else if (arg == "toggle" || arg.empty()) virtual_map_open() = !virtual_map_open();
+    else return "err vmap takes 0|1|toggle | fit | group <0-3> | tile <needle> [rect] | tiles_lod <dim> <lod> [cap] | tiles_clear";
+    return "ok vmap=" + std::to_string(virtual_map_open() ? 1 : 0);
 }
 } // namespace goblin::overlay::panel

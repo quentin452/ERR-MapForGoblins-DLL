@@ -105,31 +105,8 @@ namespace goblin::overlay_api
     bool read_event_flag(uint32_t id) { return goblin::ui::read_event_flag(id); }
     void request_cluster_replan() { goblin::ui::request_cluster_replan(); }
     void rebuild_markers() { goblin::overlay_render_loader::call_rebuild_markers(); }
-    void virtual_map_set_open(bool open) { goblin::overlay::panel::virtual_map_open() = open; }
-    bool virtual_map_is_open() { return goblin::overlay::panel::virtual_map_open(); }
-    void f1_request_tab(int idx) { goblin::overlay::request_f1_tab(idx); }
-    void virtual_map_fit() { goblin::overlay::panel::virtual_map_request_fit(); }
-    void virtual_map_set_group(int g) { goblin::overlay::panel::virtual_map_set_group(g); }
-    void virtual_map_request_tile(const char *needle, float wx0, float wz0, float wx1, float wz1)
-    { goblin::overlay::panel::virtual_map_request_tile(needle, wx0, wz0, wx1, wz1); }
-    void virtual_map_clear_tiles() { goblin::overlay::panel::virtual_map_clear_tiles(); }
-    std::string virtual_map_load_lod(int dim, int lod, int cap)
-    { return goblin::overlay::panel::virtual_map_load_lod(dim, lod, cap); }
-    std::string virtual_map_load_resident() { return goblin::overlay::panel::virtual_map_load_resident(); }
-    std::string virtual_map_tile_recon() { return goblin::overlay::panel::virtual_map_tile_recon(); }
-    int virtual_map_locate(int32_t name_id, int group) { return goblin::overlay::panel::virtual_map_locate(name_id, group); }
-    std::string virtual_map_offmap_probe() { return goblin::overlay::panel::virtual_map_offmap_probe(); }
-    std::string virtual_map_find(const std::string &query) { return goblin::overlay::panel::virtual_map_find(query); }
-    void virtual_map_item_search(const char *query) { goblin::overlay::panel::virtual_map_item_search(query); }
-    void virtual_map_force_spiderfy(bool on) { goblin::overlay::panel::virtual_map_force_spiderfy(on); }
-    void virtual_map_set_relief(bool on) { goblin::overlay::panel::virtual_map_set_relief(on); }
-    int virtual_map_dump_markers(const char *path) { return goblin::overlay::panel::dump_markers_csv(path); }
+    void f1_request_tab(int idx) { goblin::overlay_render_loader::call_request_f1_tab(idx); }
     bool warp_to_grace(int32_t graceId, int32_t offset) { return goblin::warp::to_grace(graceId, offset); }
-    void virtual_map_set_view(float camX, float camZ, float zoom)
-    { goblin::overlay::panel::virtual_map_set_view(camX, camZ, zoom); }
-    void virtual_map_set_flip(bool flipX, bool flipZ)
-    { goblin::overlay::panel::virtual_map_set_flip(flipX, flipZ); }
-    int virtual_map_get_group() { return goblin::overlay::panel::virtual_map_group(); }
     bool param_set_field(const char *param, uint64_t row, const char *field, double value)
     {
         if (!param || !field) return false;
@@ -227,10 +204,7 @@ namespace goblin::overlay_api
     float heightfield_cell_step() { return goblin::heightfield::snapshot_step(); }
     void heightfield_request_sample(float extent, int res) { goblin::heightfield::request_sample(extent, res); }
     bool heightfield_sampling() { return goblin::heightfield::sampling(); }
-    size_t far_relief_snapshot(std::vector<goblin::heightfield::Cell> &out) { return goblin::worldmap::far_relief_snapshot(out); }
-    float far_relief_step() { return goblin::worldmap::far_relief_step(); }
     void far_relief_build(int group, int cellSize) { goblin::overlay_render_loader::call_build_far_relief(group, cellSize); }
-    int far_relief_built_group() { return goblin::worldmap::far_relief_built_group(); }
     void set_grace_from_candidate(size_t index) { goblin::set_grace_from_candidate(index); }
     const std::vector<goblin::LiveGrace> &live_graces() { return goblin::live_graces(); }
     bool marker_world_pos(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz,

@@ -3932,7 +3932,11 @@ const std::vector<MerchantItem> &merchant_search_items() { return g_merchant_ite
 // calls refresh_overlay_census() from the watcher thread — both host-side, so (like the 3 draw
 // functions) these need stable-name extern "C" exports resolved via GetProcAddress, not ordinary
 // dllimport. See goblin_overlay_render_loader.{hpp,cpp} for the host-side call sites.
-namespace goblin::overlay::panel { void virtual_map_service_pending_warp(); }  // panel_virtual_map.cpp (render)
+namespace goblin::overlay::panel {
+    void virtual_map_service_pending_warp();            // panel_virtual_map.cpp (render)
+    std::string vmap_rpc_command(std::string rest);     // the whole `vmap <sub>` RPC dispatch (render)
+}
+namespace goblin::overlay { void request_f1_tab(int idx); }  // goblin_overlay_render.cpp (render)
 extern "C"
 {
     __declspec(dllexport) void MFG_PrebuildMarkers() { goblin::worldmap::prebuild_markers(); }
@@ -3957,5 +3961,11 @@ extern "C"
         std::string s = goblin::worldmap::far_relief_probe();
         if (out && cap > 0) { std::snprintf(out, (size_t)cap, "%s", s.c_str()); }
     }
+    __declspec(dllexport) void MFG_VmapCommand(const char *rest, char *out, int cap)
+    {
+        std::string s = goblin::overlay::panel::vmap_rpc_command(rest ? rest : "");
+        if (out && cap > 0) { std::snprintf(out, (size_t)cap, "%s", s.c_str()); }
+    }
+    __declspec(dllexport) void MFG_RequestF1Tab(int idx) { goblin::overlay::request_f1_tab(idx); }
 }
 #endif

@@ -80,7 +80,9 @@ namespace goblin::overlay
 
     // Force-select an F1 tab by index (0=Markers,1=Search,2=Quests,3=Display,4=Dev) on the next draw
     // (one-shot, ImGui SetSelected). For scripted verification so tests drive tabs by name, not pixels.
-    GOBLIN_RENDER_API void request_f1_tab(int idx);
+    // Render-defined; the host reaches it via the loader (call_request_f1_tab / MFG_RequestF1Tab), NOT the
+    // host export table — so it is a plain decl, not GOBLIN_RENDER_API.
+    void request_f1_tab(int idx);
 
     // Slice B wrapper surface: mechanical forwards to host implementations that stay in
     // goblin_overlay.cpp because they operate on host-owned g_device/g_command_queue/g_srv_heap/

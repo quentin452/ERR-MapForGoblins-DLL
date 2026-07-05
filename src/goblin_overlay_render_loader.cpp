@@ -14,7 +14,10 @@
 #else
 #include "worldmap/map_entry_layer.hpp"  // prebuild_markers, refresh_overlay_census, rebuild_markers, far_relief (same binary)
 #include "worldmap/map_renderer.hpp"     // inworld_hovered (same binary)
-namespace goblin::overlay::panel { void virtual_map_service_pending_warp(); }  // panel_virtual_map.cpp (same binary)
+namespace goblin::overlay::panel {
+    void virtual_map_service_pending_warp();
+    std::string vmap_rpc_command(std::string rest);
+}  // panel_virtual_map.cpp (same binary)
 #endif
 
 #if defined(GOBLIN_OVERLAY_HOTRELOAD_BUILD)
@@ -61,6 +64,8 @@ namespace goblin::overlay_render_loader
         using ServicePendingWarpFn = void (*)();
         using BuildFarReliefFn = void (*)(int, int, char *, int);
         using FarReliefProbeFn = void (*)(char *, int);
+        using VmapCommandFn = void (*)(const char *, char *, int);
+        using RequestF1TabFn = void (*)(int);
 
         struct RenderExports
         {
@@ -78,6 +83,8 @@ namespace goblin::overlay_render_loader
             ServicePendingWarpFn service_pending_warp = nullptr;
             BuildFarReliefFn build_far_relief = nullptr;
             FarReliefProbeFn far_relief_probe = nullptr;
+            VmapCommandFn vmap_command = nullptr;
+            RequestF1TabFn request_f1_tab = nullptr;
         };
 
         RenderExports g_cur;             // the live render module; swapped under g_lock exclusive
@@ -167,9 +174,12 @@ namespace goblin::overlay_render_loader
                 reinterpret_cast<ServicePendingWarpFn>(GetProcAddress(m, "MFG_ServicePendingWarp"));
             e.build_far_relief = reinterpret_cast<BuildFarReliefFn>(GetProcAddress(m, "MFG_BuildFarRelief"));
             e.far_relief_probe = reinterpret_cast<FarReliefProbeFn>(GetProcAddress(m, "MFG_FarReliefProbe"));
+            e.vmap_command = reinterpret_cast<VmapCommandFn>(GetProcAddress(m, "MFG_VmapCommand"));
+            e.request_f1_tab = reinterpret_cast<RequestF1TabFn>(GetProcAddress(m, "MFG_RequestF1Tab"));
             if (!e.draw_panel || !e.draw_worldmap_markers || !e.draw_minimap_hud || !e.prebuild_markers ||
                 !e.inworld_hovered || !e.refresh_overlay_census || !e.render_idle || !e.init_logging ||
-                !e.rebuild_markers || !e.service_pending_warp || !e.build_far_relief || !e.far_relief_probe)
+                !e.rebuild_markers || !e.service_pending_warp || !e.build_far_relief || !e.far_relief_probe ||
+                !e.vmap_command || !e.request_f1_tab)
             {
                 spdlog::error("[HOTRELOAD] GetProcAddress failed for one or more render exports in {}", utf8(dest));
                 FreeLibrary(m);
@@ -392,6 +402,18 @@ namespace goblin::overlay_render_loader
         if (g_cur.far_relief_probe) g_cur.far_relief_probe(b, (int)sizeof(b));
         return b;
     }
+    std::string call_vmap_command(const std::string &rest)
+    {
+        SharedGuard g;
+        char b[512] = {};
+        if (g_cur.vmap_command) g_cur.vmap_command(rest.c_str(), b, (int)sizeof(b));
+        return b;
+    }
+    void call_request_f1_tab(int idx)
+    {
+        SharedGuard g;
+        if (g_cur.request_f1_tab) g_cur.request_f1_tab(idx);
+    }
 #else
     // Default single-DLL build: direct calls, no indirection, nothing to load or reload.
     bool load() { return true; }
@@ -414,5 +436,7 @@ namespace goblin::overlay_render_loader
     void call_service_pending_warp() { goblin::overlay::panel::virtual_map_service_pending_warp(); }
     std::string call_build_far_relief(int group, int cellSize) { return goblin::worldmap::build_far_relief(group, cellSize); }
     std::string call_far_relief_probe() { return goblin::worldmap::far_relief_probe(); }
+    std::string call_vmap_command(const std::string &rest) { return goblin::overlay::panel::vmap_rpc_command(rest); }
+    void call_request_f1_tab(int idx) { goblin::overlay::request_f1_tab(idx); }
 #endif
 }

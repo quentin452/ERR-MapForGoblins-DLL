@@ -228,10 +228,10 @@ void draw_item_search(const OverlayFrameCtx &ctx, Filter &f)
         const bool map_open = goblin::overlay_api::get_live_view(lv);
         // A9: item search also locates onto the mod's Virtual World Map. When the vmap is the open
         // surface (native map closed), a result click centres the vmap instead of driving the native pan.
-        const bool vmap_open = goblin::overlay_api::virtual_map_is_open();
+        const bool vmap_open = virtual_map_open();
         const bool locate_ready = map_open || vmap_open;
         const int open_grp = map_open ? ((lv.openDlc ? 2 : 0) | (lv.underground ? 1 : 0))
-                                       : (vmap_open ? goblin::overlay_api::virtual_map_get_group() : 0);
+                                       : (vmap_open ? virtual_map_group() : 0);
 
         // Count line is about LOCATABLE marker hits only; skip it when there are none (the
         // list below still shows the "Sold by merchants" info rows, if any).
@@ -337,7 +337,7 @@ void draw_item_search(const OverlayFrameCtx &ctx, Filter &f)
                     // Virtual World Map: centre the vmap on the hit (A9). Independent of the native
                     // pan — works when the vmap is the open surface with the ER map closed.
                     if (vmap_open)
-                        goblin::overlay_api::virtual_map_locate(h.name_id, h.group);
+                        virtual_map_locate(h.name_id, h.group);
                 }
                 if (locked) ImGui::EndDisabled();
                 if (map_open && !locked && off_page && ImGui::IsItemHovered())

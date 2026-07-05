@@ -224,7 +224,7 @@ namespace goblin
     // Invalidate the shared LotReader cache so the next lot resolve re-reads the live ItemLotParam
     // tables. Call after a live param_clone adds an ItemLotParam row (World Editor lot-clone), else the
     // cached reader (which snapshots param_header->param_table) never sees the new lot. rebuild_markers.
-    void reset_lot_reader();
+    GOBLIN_RENDER_API void reset_lot_reader();   // called by render's rebuild_markers → host-exported for the split
 
     // Resolve a lot-backed marker's IDENTITY (offset-encoded name/icon key) from the LIVE
     // ItemLotParam row (slot-1 item id @+0x00 + category @+0x20), so the marker shows the

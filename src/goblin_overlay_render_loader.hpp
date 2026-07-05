@@ -54,4 +54,6 @@ namespace goblin::overlay_render_loader
     void call_service_pending_warp();
     std::string call_build_far_relief(int group, int cellSize);
     std::string call_far_relief_probe();
+    std::string call_vmap_command(const std::string &rest);
+    void call_request_f1_tab(int idx);
 }

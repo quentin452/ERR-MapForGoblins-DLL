@@ -35,6 +35,8 @@
 #include <unordered_map>
 #include <vector>
 
+namespace goblin::overlay::panel { bool &virtual_map_open(); }  // panel_virtual_map.cpp — minimap hide gate
+
 namespace goblin::worldmap
 {
 namespace
@@ -2536,7 +2538,7 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
     // Hide the minimap while a full map is open (it's a gameplay HUD): the native ER map OR our own
     // Virtual World Map. Before this the vmap opened (native map closed) with the minimap still drawn →
     // both showed at once. v1 = hard hide; a minimap→vmap expand animation is a later polish.
-    if (goblin::overlay_api::world_map_open() || goblin::overlay_api::virtual_map_is_open())
+    if (goblin::overlay_api::world_map_open() || goblin::overlay::panel::virtual_map_open())
         return;
     // Live player position (read during gameplay, map closed). The player pos is the
     // WorldMapPointParam frame on EVERY page now (RE windows_player_pos_RESOLVED), so the
