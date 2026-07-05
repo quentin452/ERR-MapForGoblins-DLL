@@ -157,6 +157,11 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
   restyles the engine's OWN render, systems untouched? Binary GO/NO-GO strings/RTTI/globals scan (hours). GO =
   nearly-free greybox restyle; NO-GO routes to job #2(b) post-process or (c) D3D12 PSO override. Blocks nothing;
   retires the "restyle the real ER render" roadmap question. NOT the ImGui-mirror path (#3, the wall).
+  **Static recon DONE → `windows_debug_render_flag_re_findings.md`: QUALIFIED GO.** Debug-draw infra is LIVE in
+  retail (`CSDbgDispStep`+`CSDbgMenuStep` per-frame steps via `FUN_140ded060`; `CSHkDebugDisp`=`hkDebugDisplayHandler`
+  the Havok collision draw, no VDB version-lock). **Collision wireframe = GO-likely** (gate `DAT_143d85b18` for
+  the disp step + the Havok debug-display enable off `CSPhysWorld+0x08`); **whole-scene restyle = NO simple flag**
+  (route to SceneDrawParam recon or #2b/#2c). Exact flag value→effect = the live `dbgrender_probe` acceptance.
 - **In-game pause** (`windows_ingame_pause_re_prompt.md`), **gamepad input device**
   (`windows_gamepad_input_device_re_prompt.md`), **silent deadlock freeze** (unsolved; watchdog shipped).
 - **Keybinding config (read the user's LIVE kb+pad binds) — OPEN, `windows_keybinding_config_re_prompt.md`.**
