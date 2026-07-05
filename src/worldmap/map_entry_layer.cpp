@@ -3667,24 +3667,34 @@ std::string build_far_relief(int group, int cellSize)
         return false;
     };
 
-    // Bucket collectible Y into cells in the UNIFIED marker frame. Overworld = gx*256+posX (direct);
+    // Bucket ALL placement Y into cells in the UNIFIED marker frame. Overworld = gx*256+posX (direct);
     // UG/DLC projected the SAME way markers build (marker_world_pos, conv_underground=true → legacy fold
     // into overworld map-space). No live converter needed → builds without opening the native map. NB the
     // vmap re-projects UG/DLC markers through the live VM converter at draw, so on those dimensions the
     // cloud can sit slightly off the drawn markers (fold vs converter) — fine for a v0 eval; overworld is exact.
     std::unordered_map<uint64_t, std::vector<float>> byCell;
-    for (const DiskCollectible &c : g_parsed.collectibles)
-    {
-        if (!in_group(c.area)) continue;
+    size_t nColl = 0, nTreas = 0, nEnemy = 0, nReg = 0, nObj = 0, nGrace = 0;
+    auto add = [&](uint8_t area, uint8_t gx, uint8_t gz, float px, float pz, float py) -> bool {
+        if (!in_group(area)) return false;
         float wx, wz; int oa = 0;
-        if (group == 0) { wx = c.gx * 256.f + c.posX; wz = c.gz * 256.f + c.posZ; }
-        else if (!goblin::overlay_api::marker_world_pos(c.area, c.gx, c.gz, c.posX, c.posZ, oa, wx, wz, true))
-            continue;
+        if (group == 0) { wx = gx * 256.f + px; wz = gz * 256.f + pz; }
+        else if (!goblin::overlay_api::marker_world_pos(area, gx, gz, px, pz, oa, wx, wz, true)) return false;
         const int cx = (int)std::floor(wx / cs), cz = (int)std::floor(wz / cs);
-        byCell[((uint64_t)(uint32_t)cx << 32) | (uint32_t)cz].push_back(c.posY);
-    }
+        byCell[((uint64_t)(uint32_t)cx << 32) | (uint32_t)cz].push_back(py);
+        return true;
+    };
+    // Sources (all already parsed / live, all with a block-local Y). The per-cell median below is robust to
+    // the minority that isn't ground-resting (e.g. flying enemies) — a dedicated flying/type filter is the
+    // §6 followup. Graces are the most reliable anchors (rest ON the ground, live from BonfireWarpParam).
+    for (const DiskCollectible &c : g_parsed.collectibles) if (add(c.area, c.gx, c.gz, c.posX, c.posZ, c.posY)) ++nColl;
+    for (const DiskTreasure   &t : g_parsed.treasures)    if (add(t.area, t.gx, t.gz, t.posX, t.posZ, t.posY)) ++nTreas;
+    for (const DiskEnemy      &e : g_parsed.enemies)      if (add(e.area, e.gx, e.gz, e.posX, e.posZ, e.posY)) ++nEnemy;
+    for (const DiskRegion     &r : g_parsed.regions)      if (add(r.area, r.gx, r.gz, r.posX, r.posZ, r.posY)) ++nReg;
+    for (const DiskObjAct     &o : g_parsed.objacts)      if (add(o.area, o.gx, o.gz, o.posX, o.posZ, o.posY)) ++nObj;
+    for (const goblin::LiveGrace &g : goblin::overlay_api::live_graces())
+        if (add(g.areaNo, g.gridXNo, g.gridZNo, g.posX, g.posZ, g.posY)) ++nGrace;
     if (byCell.empty())
-    { g_far_group = group; return "err far_relief: 0 collectible placements for this group"; }  // definitive → latch
+    { g_far_group = group; return "err far_relief: 0 placements for this group"; }  // definitive → latch
 
     // Per-cell robust height = median.
     std::unordered_map<uint64_t, float> medY;
@@ -3720,11 +3730,15 @@ std::string build_far_relief(int group, int cellSize)
     g_far_cell = cs;
     g_far_group = group;   // success → latch (so the auto-build doesn't re-run every frame)
 
-    char out[192];
-    std::snprintf(out, sizeof(out), "ok far_relief: group %d, %zu cells @%dpx, Y[%.0f..%.0f] (toggle Relief on the vmap)",
-                  group, g_far_relief.size(), cellSize, gmin, gmax);
-    spdlog::info("[FARRELIEF] built cloud field: group {}, {} cells @ {}u, Y[{:.1f}..{:.1f}]",
-                 group, g_far_relief.size(), cs, gmin, gmax);
+    const size_t nTot = nColl + nTreas + nEnemy + nReg + nObj + nGrace;
+    char out[256];
+    std::snprintf(out, sizeof(out),
+                  "ok far_relief: group %d, %zu cells @%dpx from %zu samples "
+                  "(coll %zu treas %zu enemy %zu reg %zu obj %zu grace %zu), Y[%.0f..%.0f]",
+                  group, g_far_relief.size(), cellSize, nTot, nColl, nTreas, nEnemy, nReg, nObj, nGrace, gmin, gmax);
+    spdlog::info("[FARRELIEF] built group {}: {} cells @ {}u from {} samples "
+                 "(coll {} treas {} enemy {} reg {} obj {} grace {}), Y[{:.1f}..{:.1f}]",
+                 group, g_far_relief.size(), cs, nTot, nColl, nTreas, nEnemy, nReg, nObj, nGrace, gmin, gmax);
     return out;
 }
 
