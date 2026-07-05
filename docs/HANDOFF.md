@@ -436,8 +436,12 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   - **✅ SLICE B DONE 2026-07-04 — markers on the canvas.** The selected group's live markers project onto
     the canvas as colored dots (by `m.color`), with a group selector (Combo) + `Fit`-to-markers + a marker
     count readout. Live-verified: base-overworld = 6837 markers forming the recognizable Lands Between
-    silhouette; `vmap group <0-3>` / `vmap fit` RPCs drive it. On-canvas ICONS (vs dots) = a follow-up (needs
-    a draw-list icon helper: resolve tex+uv like the census, `dl->AddImage`). **NOTE:** the vmap currently
+    silhouette; `vmap group <0-3>` / `vmap fit` RPCs drive it. **On-canvas ICONS = DONE (`563a00e`, stale note
+    corrected 2026-07-05):** singles draw the native state-aware glyph via `draw_marker_glyph` (reusing the native
+    per-marker draw — grace discovered/undiscovered, collected-dim, cleared, rune-glow, badge) with a
+    `resolve_category_icon` atlas fallback for custom-world markers and a plain circle as the mod-agnostic last
+    resort; piles draw a disc + `×N`; spiderfy fans out icons. `s_show_icons` default on (F1/vmap "Icons"
+    checkbox). **NOTE:** the vmap currently
     draws INSIDE `draw_panel` so it needs F1 open — slice D must decouple it (draw independent of g_show) for
     the M-open path.
   - **✅ SLICE C1 DONE 2026-07-04 — the WORLD model + registry.** `src/goblin_virtual_world.{hpp,cpp}`:
