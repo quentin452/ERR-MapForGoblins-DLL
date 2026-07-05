@@ -399,9 +399,13 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   because custom worlds are marker-only so the player is always in real ER — but once a walkable custom world
   exists (reserved mapId), `active_world != 0` while the player is physically in it, so those gates must key
   off "engine-backed / owns ER-frame data" and PlayerDim (`get_player_dimension_area`, already RE'd) should
-  auto-set the active world. Standalone nice-to-have even before that: auto-follow `s_group` to PlayerDim so
-  the vmap page switches to UG/DLC when the player crosses dimensions (only the one-shot "focus player" does
-  it now). Both RE'd, just wiring. Detail: `docs/plans/virtual_world_multi_world_design.md` Decision 2.
+  auto-set the active world. **✅ The `s_group` auto-follow HALF is DONE 2026-07-05** (`Follow` toggle, default
+  on: edge-triggered page switch to the player's dimension on a crossing; manual pick sticks between crossings;
+  camera untouched. Live-verified: manual `vmap group 1` holds with Follow ON while the player is in OW = the
+  edge-detect doesn't over-fire; the real OW→UG switch is user-verifiable by entering a cave). **REMAINING = the
+  `active_world` half** — auto-set the active world from PlayerDim + re-key the relief/item-search/player-dot
+  gates off "engine-backed" (not `active_world==0`) for when a WALKABLE custom world exists. Detail:
+  `docs/plans/virtual_world_multi_world_design.md` Decision 2.
 - **Sidecar save BACKUPS (defense-in-depth) — followup, not started (2026-07-05).** The strip/reinject
   bracket writes into live inventory right before ER serializes, and ER re-checksums the save itself — so
   a wrong-layout write that somehow got past `verify_inventory_layout()` would be saved as a VALID file

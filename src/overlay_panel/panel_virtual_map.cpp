@@ -106,6 +106,8 @@ namespace
     int s_warp_offset = 0;          // added to the grace entity id before LuaWarp; 0 = entity id direct (ground truth; CT's -1000 was wrong)
     bool s_fit_requested = false;  // one-shot: on next draw, frame the selected group's markers
     bool s_focus_player = false;   // one-shot: on next draw, centre the camera on the player + their group
+    bool s_follow_player_dim = true;  // auto-switch the vmap PAGE to the player's dimension on a crossing (base ER)
+    int  s_player_group_prev = -1;    // last observed player dimension group (edge-detect the crossing)
     // Item-search LOCATE highlight (bugs: search only centred, no visual; and with markers toggled off a
     // locate showed nothing). virtual_map_locate() fills s_locate_pts (world XZ of every match on the page)
     // + arms s_locate_arm; the draw stamps s_locate_until and pulses a ring at each, ON TOP and INDEPENDENT
@@ -674,6 +676,9 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // today) so it recentres even from another active world, then focus. Not hardcoded 0 → future-proof.
     if (ImGui::SmallButton(tr("Player"))) { goblin::vworld::set_active(goblin::vworld::player_world()); s_focus_player = true; }
     ImGui::SameLine();
+    ImGui::Checkbox(tr("Follow"), &s_follow_player_dim);   // auto-switch page to the player's dimension on a crossing
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("auto-switch the map page to the player's dimension (OW/underground/DLC) when they cross"));
+    ImGui::SameLine();
     ImGui::Checkbox(tr("Icons"), &s_show_icons);   // real category icons vs plain dots
     ImGui::SameLine();
     ImGui::Checkbox(tr("Labels"), &s_show_labels); // coarse region name labels (A7)
@@ -1077,6 +1082,29 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             s_cam_x = pwx; s_cam_z = pwz; s_group = pgroup;
             if (s_zoom < 0.12f) s_zoom = 0.12f;   // ensure a useful close-in view, don't zoom back out
             s_focus_player = false;               // consumed (only clears once we actually had a position)
+            s_player_group_prev = pgroup;         // seed the follow edge-detector so the open doesn't re-switch
+        }
+    }
+
+    // Auto-follow the player's DIMENSION: when the player crosses OW<->underground<->DLC, switch the vmap
+    // PAGE (group) to match. Edge-triggered on a real dimension change so a manual group pick between
+    // crossings sticks (and toggle "Follow" off to browse other pages freely). Camera is left alone — this
+    // switches the page, not the view (unlike the one-shot "Player" recenter). Base ER only. Reuses the
+    // already-RE'd pgroup from get_player_map_pos (the player dot reads it every frame too).
+    if (s_follow_player_dim && active_world == 0 && !s_focus_player)
+    {
+        int fa = 0, fg = 0; float fwx = 0.f, fwz = 0.f;
+        if (goblin::overlay_api::get_player_map_pos(fa, fwx, fwz, nullptr, nullptr, &fg))
+        {
+            if (fg != s_player_group_prev)   // player crossed a dimension boundary this frame
+            {
+                if (s_player_group_prev != -1 && fg != s_group)
+                {
+                    s_group = fg;            // switch the page to the player's new dimension
+                    spdlog::info("[VMAP] follow: player crossed to group {} -> switch page", fg);
+                }
+                s_player_group_prev = fg;    // record (also seeds on first sight without switching)
+            }
         }
     }
 
