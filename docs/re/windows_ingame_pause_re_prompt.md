@@ -90,3 +90,31 @@ pause via a **single conditional-jump flip**, not a data-field write or clock ha
   startup PASS/FAIL pattern to slot the new signature into.
 - `src/goblin_overlay.cpp` `hk_present` — where the existing hotkey-poll idiom lives; wire the pause
   toggle here, not a new spawned thread.
+
+## ⇒ LIVE-CONFIRMED BUG (2026-07-06) — resume latency ∝ pause duration → the current branch is the WRONG gate
+
+The branch-flip pause SHIPPED (`src/goblin_pause.cpp`, AOB resolves, world visibly freezes). But
+user-tested in-game: **the longer the game is paused, the larger the hitch on RESUME** before play
+returns. That is the signature of an accumulating clock: the flipped branch gates the world STEP
+but NOT the world CLOCK, so real wall-time keeps accruing while paused, and on un-flip the game
+drains the whole backlog (fixed-timestep catch-up, or one huge `dt`). This also confirms the RE
+prompt's open worry #2 — our branch likely gates only PART of the update (a per-`ChrIns`/subsystem
+advance), not a central world-tick, so time/physics never actually stopped.
+
+**⇒ SHARPENED GOAL — stop patching the raw step branch; use the gate that also stops the CLOCK:**
+1. **PREFERRED = ER's own freeze flag (Option 2, never tried).** Opening the map/menu offline pauses
+   the world with ZERO resume lag — because the ENGINE stops its own clock. Find that flag/state
+   (the menu/cutscene/`isPaused` field ER's `CSMenuMan`/session tick reads — anchor off
+   `CSSessionManager` Imp `er+0x2b9a0c8` / the loading-screen state machine in
+   `windows_loading_screen_state_re_findings.md`, or the CSFD4Time/timestep singleton). Toggle THAT.
+   Resume is then the engine's own instant unfreeze — no accumulator to drain.
+2. **FALLBACK = zero the timestep while paused.** Find the global frame-`dt`/time-scale (CSFD4Time
+   or the game-speed multiplier used by slow-mo/cutscenes); set 0 on pause, 1 on resume. dt=0 each
+   frame → nothing accumulates → instant resume. (Watch for div-by-0 consumers, per the QPC note.)
+3. If neither is quickly reachable, at minimum find ER's frame-time LAST-timestamp and RESET it on
+   the resume edge so the first post-resume frame sees a normal dt instead of the whole pause span.
+
+Deliver the confirmed address/flag + house-style AOB into `src/re_signatures.hpp`; then rework
+`goblin::pause::set_paused` to toggle it (keep the branch flip only if it proves to be the clock gate
+after all). Interim for users until fixed: prefer SHORT pauses / turn off "Pause automatically while
+panel open" (the auto-pause-on-F1 makes every long panel session incur the resume hitch).

@@ -37,6 +37,17 @@ Long debug of the "enemy name drawn twice" report. Landed fixes + a scoped plan;
   write `docs/re/windows_enemy_name_hud_feed_re_findings.md`. Game was DOWN this session (no live probe).
 - **Also queued (independent):** ImGui enemy-name STABILITY fix (per-frame w2s + drop clamp) — the fallback if
   the native path isn't mod-agnostic, and a quick win regardless.
+- **★ PAUSE resume-latency BUG (live-confirmed 2026-07-06) — RE-gated.** The branch-flip pause
+  (`goblin_pause.cpp`) hitches on RESUME proportionally to how long it was paused → the flipped branch gates
+  the world STEP but not the CLOCK, so wall-time accrues while paused and the game drains the backlog on
+  resume (confirms it's a partial/per-subsystem gate, not a central world-tick). Fix = use ER's OWN freeze
+  (native map-open pauses with zero resume lag: stop the engine's clock) or zero the timestep while paused.
+  Sharpened in `docs/re/windows_ingame_pause_re_prompt.md` (new "LIVE-CONFIRMED BUG" section, Option 2). For
+  the Windows RE agent. Interim: short pauses / keep "pause on open" off (already the default).
+- **★ Track A M1 + gamepad landed this session (see `imgui_only_map_plan.md`):** heightfield cast-window
+  widen + sea-tag plumbing (`52c9fa4`); vmap gamepad canvas control — stick pan/zoom + virtual-cursor reticle
+  (`4933ea2`, render-side/hot-reloadable). Font accent fix (`d23b779`). Gamepad OPEN findings queued in M4:
+  need an on-screen keyboard for item-search + wire the reticle into hover/click/place.
 
 ## ⇒ SESSION WRAP 2026-07-05 (late-4, Linux/Opus) — PRIORITY: revive overlay hot-reload (split drifted) + boss/grace bugs queued
 
