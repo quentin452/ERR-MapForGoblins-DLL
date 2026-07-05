@@ -1309,6 +1309,56 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         s_cam_z += wz_before - wz_after;
     }
 
+    // ── Gamepad canvas control (M4 nav-parity). LEFT stick pans, TRIGGERS (L2/R2) zoom, RIGHT stick drives
+    // a visible virtual cursor (reticle) so the player sees what they aim at with the pad. Reads ImGui's
+    // gamepad analog keys (fed by ImGui_ImplWin32_UpdateGamepads). RIGHT stick + triggers deliberately DON'T
+    // collide with ImGui nav, which uses the LEFT stick / dpad for sidebar widget focus. A latch keeps the
+    // reticle shown only while the pad is actually driving (a real mouse move exits pad-mode).
+    static ImVec2 s_pad_cursor(0, 0);
+    static bool s_pad_mode = false, s_pad_cursor_init = false;
+    {
+        auto an = [&io](ImGuiKey k) { return io.KeysData[k - ImGuiKey_KeysData_OFFSET].AnalogValue; };
+        auto ax = [&](ImGuiKey neg, ImGuiKey pos) {
+            float v = an(pos) - an(neg);
+            return (v > 0.18f || v < -0.18f) ? v : 0.0f;   // deadzone
+        };
+        const float lsx = ax(ImGuiKey_GamepadLStickLeft, ImGuiKey_GamepadLStickRight);
+        const float lsy = ax(ImGuiKey_GamepadLStickUp,   ImGuiKey_GamepadLStickDown);
+        const float rsx = ax(ImGuiKey_GamepadRStickLeft, ImGuiKey_GamepadRStickRight);
+        const float rsy = ax(ImGuiKey_GamepadRStickUp,   ImGuiKey_GamepadRStickDown);
+        float zoomAx = an(ImGuiKey_GamepadR2) - an(ImGuiKey_GamepadL2);
+        if (zoomAx < 0.12f && zoomAx > -0.12f) zoomAx = 0.0f;
+
+        if (lsx || lsy || rsx || rsy || zoomAx) s_pad_mode = true;
+        if (io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f) s_pad_mode = false;   // real mouse → exit pad-mode
+        if (!s_pad_cursor_init) { s_pad_cursor = center; s_pad_cursor_init = true; }
+
+        if (s_pad_mode)
+        {
+            const float dt = io.DeltaTime > 0.0f ? io.DeltaTime : (1.0f / 60.0f);
+            const float span = canvas_end.x - origin.x;
+            // RIGHT stick → move the virtual cursor (≈ full-canvas sweep in ~1.1s), clamp on-canvas.
+            s_pad_cursor.x += rsx * (0.9f * span) * dt;
+            s_pad_cursor.y += rsy * (0.9f * span) * dt;
+            s_pad_cursor.x = s_pad_cursor.x < origin.x ? origin.x : (s_pad_cursor.x > canvas_end.x ? canvas_end.x : s_pad_cursor.x);
+            s_pad_cursor.y = s_pad_cursor.y < origin.y ? origin.y : (s_pad_cursor.y > canvas_end.y ? canvas_end.y : s_pad_cursor.y);
+            // LEFT stick → pan (push-to-pan; world units, zoom-aware; axis signs match the mouse-drag path).
+            s_cam_x += lsx * (0.6f * span) * dt / (s_sx * s_zoom);
+            s_cam_z += lsy * (0.6f * span) * dt / (s_sz * s_zoom);
+            // TRIGGERS → zoom about the reticle (keep the world point under it fixed). R2 in, L2 out.
+            if (zoomAx != 0.0f)
+            {
+                float wxb, wzb; s2w(s_pad_cursor, wxb, wzb);
+                s_zoom *= std::pow(1.9f, zoomAx * dt);
+                if (s_zoom < kZoomMin) s_zoom = kZoomMin;
+                if (s_zoom > kZoomMax) s_zoom = kZoomMax;
+                float wxa, wza; s2w(s_pad_cursor, wxa, wza);
+                s_cam_x += wxb - wxa;
+                s_cam_z += wzb - wza;
+            }
+        }
+    }
+
     ImDrawList *dl = ImGui::GetWindowDrawList();
     dl->PushClipRect(origin, canvas_end, true);
     dl->AddRectFilled(origin, canvas_end, IM_COL32(18, 20, 26, 255));  // dark canvas backdrop
@@ -2168,6 +2218,25 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     char legend[64];
     std::snprintf(legend, sizeof(legend), "%s: %.0f u", tr("grid"), step);
     dl->AddText(ImVec2(origin.x + 6, canvas_end.y - 18), IM_COL32(150, 158, 172, 255), legend);
+
+    // Gamepad virtual cursor (M4) — a reticle drawn ON TOP so the player sees what the RIGHT stick is
+    // aiming at. Shown only in pad-mode (hidden once a real mouse move takes over). Dark halo for contrast.
+    if (s_pad_mode && s_pad_cursor_init)
+    {
+        const ImVec2 c = s_pad_cursor;
+        const float r = 10.0f * uiScale, g = 3.0f * uiScale;
+        dl->AddCircle(c, r, IM_COL32(0, 0, 0, 170), 0, 4.0f * uiScale);
+        dl->AddCircle(c, r, IM_COL32(255, 255, 255, 235), 0, 2.0f * uiScale);
+        for (int s = 0; s < 4; ++s)
+        {
+            ImVec2 a = s == 0 ? ImVec2(c.x - r - 4 * uiScale, c.y) : s == 1 ? ImVec2(c.x + g, c.y)
+                     : s == 2 ? ImVec2(c.x, c.y - r - 4 * uiScale) : ImVec2(c.x, c.y + g);
+            ImVec2 b = s == 0 ? ImVec2(c.x - g, c.y) : s == 1 ? ImVec2(c.x + r + 4 * uiScale, c.y)
+                     : s == 2 ? ImVec2(c.x, c.y - g) : ImVec2(c.x, c.y + r + 4 * uiScale);
+            dl->AddLine(a, b, IM_COL32(255, 255, 255, 235), 2.0f * uiScale);
+        }
+        dl->AddCircleFilled(c, 1.6f * uiScale, IM_COL32(255, 80, 80, 255));
+    }
 
     // TODO(slice B): project the mod's markers for the virtual world's group here (w2s per marker + the
     // marker icon draw), then (slice C) tag markers to a synthetic group / bundle-backed custom world.
