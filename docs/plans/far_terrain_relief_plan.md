@@ -145,9 +145,17 @@ log baked-vs-rederived-vs-authored so staleness is never silent.
   overworld. Also confirms coverage is content-biased: **266 of ~1681 overworld tiles (~16%)** carry samples
   → dense at POIs, holes in empty terrain (the honest limitation for the USER GATE). `far_relief_probe` is the
   reusable oracle (also cross-checks D-far 0 later).
-- **First brick = D-far -1** (MSB Y-cloud v0) — FREE, no Havok, no new parse, ships visible relief. Then the
-  **USER GATE** decides whether the collision bake (D-far 0) is even needed. **The heavy Havok path is gated
-  behind v0 turning out insufficient** — likely we stop at v0 for a good while.
+- **✅ D-far -1 v0 BUILT 2026-07-05 (commit) — renders a recognizable Lands Between relief.**
+  `build_far_relief(cell)` (map_entry_layer.cpp) buckets overworld collectible posY into a per-cell median
+  grid → `heightfield::Cell[]` (gradient normals) → the existing vmap hillshade (cooler tint vs the near
+  raycast). RPC `far_relief [cell]` builds it; `vmap relief [0|1]` toggles. In-game: 937 cells @128u,
+  Y[-0.4..1967], silhouette matches (Limgrave/Caelid/Liurnia/Altus/Mountaintops). Coverage content-biased
+  (dense at POIs, holes in empty terrain) — the honest limitation the USER GATE weighs. **NEXT: the filtered
+  cloud (layer-separate / outlier-reject / type-weight — §6 steps 1-4 are NOT yet applied, v0 is raw median)
+  + the native-art A/B diff (converter must be up: open the ER map & pan once, then `vmap tiles_lod 0 3 200`
+  + toggle `vmap relief`).**
+- Then the **USER GATE** decides whether the collision bake (D-far 0) is even needed. **The heavy Havok path
+  is gated behind v0 turning out insufficient** — likely we stop at v0 for a good while.
 - v0 build detail: source = `g_parsed.collectibles` (+ enemies/treasures) in `map_entry_layer.cpp` — the
   clutter is skipped for markers at the `!aeg_is_gather → continue` (~L579), so tee off `{worldX,worldZ,posY}`
   for ALL placements (incl. pots/jars) from the cache BEFORE that filter, or in a dedicated pass over
