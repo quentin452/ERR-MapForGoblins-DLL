@@ -17,4 +17,11 @@ namespace goblin::r3d
 
     void set_enabled(bool on);   // RPC `r3d 0|1|toggle`
     bool enabled();
+
+    // Debug-render tool: draw a world-anchored wireframe box at an arbitrary WORLD position (visualise an
+    // invisible mesh / entity / loot at its real coords). Boxes render via the live ER camera (get_camera),
+    // so they sit in the world. With no boxes added, r3d draws the default cube at the player.
+    void add_box(float x, float y, float z, float size);  // RPC `r3d box <x> <y> <z> [size]`
+    void clear_boxes();                                   // RPC `r3d clear`
+    int box_count();
 }

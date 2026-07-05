@@ -3,6 +3,8 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <vector>
+#include <mutex>
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -26,6 +28,10 @@ namespace
     D3D12_VERTEX_BUFFER_VIEW g_vbv{};
     D3D12_INDEX_BUFFER_VIEW g_ibv{};
     uint32_t g_frame = 0;   // spin counter (Date/time-free)
+
+    struct DbgBox { float x, y, z, size; };
+    std::vector<DbgBox> g_boxes;   // debug boxes at world positions (invisible-thing visualiser)
+    std::mutex g_boxmtx;
 
     struct Vtx { float px, py, pz, cr, cg, cb; };
 
@@ -213,6 +219,22 @@ namespace goblin::r3d
     void set_enabled(bool on) { g_enabled = on; }
     bool enabled() { return g_enabled; }
 
+    void add_box(float x, float y, float z, float size)
+    {
+        std::lock_guard<std::mutex> lk(g_boxmtx);
+        g_boxes.push_back({x, y, z, size > 0.f ? size : 1.0f});
+    }
+    void clear_boxes()
+    {
+        std::lock_guard<std::mutex> lk(g_boxmtx);
+        g_boxes.clear();
+    }
+    int box_count()
+    {
+        std::lock_guard<std::mutex> lk(g_boxmtx);
+        return (int)g_boxes.size();
+    }
+
     void draw_test_cube(ID3D12Device *dev, ID3D12GraphicsCommandList *cl, float vpW, float vpH)
     {
         if (!g_enabled || !dev || !cl) return;
@@ -220,41 +242,45 @@ namespace goblin::r3d
         if (!g_ok) return;
         if (!(vpW > 0 && vpH > 0)) return;
 
-        // STEP 2: world-anchored — place the cube at the player's WORLD pos using ER's live camera (via w2s),
-        // so it sits in the world + stays put as the camera moves (case 1, reuses the w2s3d RE). Fall back to
-        // the hardcoded spin (step 1) when the camera can't resolve (menu / not in-world).
-        M4 mvp;
-        float view16[16], origin[3], fovy = 0.7505f, px, py, pz;
-        if (goblin::w2s::get_camera(view16, origin, fovy, vpW, vpH) &&
-            goblin::get_player_world_pos(px, py, pz))
-        {
-            M4 V;
-            for (int i = 0; i < 16; ++i) V.m[i] = view16[i];
-            M4 model = mul(scale(1.5f), translate(px, py, pz));            // cube at the player, ~1.5u
-            M4 torg = translate(-origin[0], -origin[1], -origin[2]);       // rebase world -> render-local
-            M4 proj = perspNegZ(fovy, vpW / vpH);                          // ER's conv2 (-vz) perspective
-            mvp = mul(mul(mul(model, torg), V), proj);   // v * Model * T(-origin) * View * Proj
-            g_frame++;
-        }
-        else
-        {
-            const float a = (float)(g_frame++) * 0.02f;
-            M4 model = mul(rotX(a * 0.6f), rotY(a));                 // spin
-            M4 view = translate(0.f, 0.f, 3.5f);                    // push the box in front of the camera at origin
-            M4 proj = perspLH(1.0472f /*60deg*/, vpW / vpH, 0.1f, 100.f);
-            mvp = mul(mul(model, view), proj);                      // row-vector: v * Model * View * Proj
-        }
-
+        // Shared pipeline state (once per frame); per-box MVP is a root constant.
         D3D12_VIEWPORT vp{0, 0, vpW, vpH, 0.f, 1.f};
         D3D12_RECT sc{0, 0, (LONG)vpW, (LONG)vpH};
         cl->RSSetViewports(1, &vp);
         cl->RSSetScissorRects(1, &sc);
         cl->SetGraphicsRootSignature(g_root);
         cl->SetPipelineState(g_pso);
-        cl->SetGraphicsRoot32BitConstants(0, 16, mvp.m, 0);
         cl->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         cl->IASetVertexBuffers(0, 1, &g_vbv);
         cl->IASetIndexBuffer(&g_ibv);
-        cl->DrawIndexedInstanced(36, 1, 0, 0, 0);
+
+        // World-anchored via the live ER camera (get_camera). Draw every debug box; with no boxes, draw the
+        // default cube at the player (a quick "is r3d alive" check). Fall back to a hardcoded spin off-camera.
+        float view16[16], origin[3], fovy = 0.7505f, px, py, pz;
+        bool haveCam = goblin::w2s::get_camera(view16, origin, fovy, vpW, vpH);
+        std::vector<DbgBox> boxes;
+        { std::lock_guard<std::mutex> lk(g_boxmtx); boxes = g_boxes; }
+
+        if (haveCam)
+        {
+            M4 V;
+            for (int i = 0; i < 16; ++i) V.m[i] = view16[i];
+            M4 vpm = mul(mul(translate(-origin[0], -origin[1], -origin[2]), V), perspNegZ(fovy, vpW / vpH));
+            if (boxes.empty() && goblin::get_player_world_pos(px, py, pz))
+                boxes.push_back({px, py, pz, 1.5f});   // default: a cube on the player
+            for (const DbgBox &b : boxes)
+            {
+                M4 mvp = mul(mul(scale(b.size), translate(b.x, b.y, b.z)), vpm);  // world->clip for this box
+                cl->SetGraphicsRoot32BitConstants(0, 16, mvp.m, 0);
+                cl->DrawIndexedInstanced(36, 1, 0, 0, 0);
+            }
+        }
+        else
+        {
+            const float a = (float)(g_frame++) * 0.02f;
+            M4 mvp = mul(mul(mul(rotX(a * 0.6f), rotY(a)), translate(0.f, 0.f, 3.5f)),
+                         perspLH(1.0472f, vpW / vpH, 0.1f, 100.f));
+            cl->SetGraphicsRoot32BitConstants(0, 16, mvp.m, 0);
+            cl->DrawIndexedInstanced(36, 1, 0, 0, 0);
+        }
     }
 }

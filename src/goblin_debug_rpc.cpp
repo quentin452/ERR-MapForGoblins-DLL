@@ -1361,13 +1361,25 @@ namespace goblin::debug_rpc
             if (cmd == "r3d")
             {
                 std::string a = next_token(rest);
+                if (a == "box")   // r3d box <x> <y> <z> [size] — debug box at a WORLD position
+                {
+                    try {
+                        float x = std::stof(next_token(rest)), y = std::stof(next_token(rest)), z = std::stof(next_token(rest));
+                        std::string ss = next_token(rest); float sz = ss.empty() ? 1.0f : std::stof(ss);
+                        goblin::r3d::add_box(x, y, z, sz);
+                        goblin::r3d::set_enabled(true);
+                    } catch (...) { return "err usage: r3d box <x> <y> <z> [size]"; }
+                    char b[64]; std::snprintf(b, sizeof(b), "ok r3d box added (%d total)", goblin::r3d::box_count());
+                    return std::string(b);
+                }
+                if (a == "clear") { goblin::r3d::clear_boxes(); return "ok r3d boxes cleared"; }
                 bool on = goblin::r3d::enabled();
                 if (a == "1" || a == "on") on = true;
                 else if (a == "0" || a == "off") on = false;
                 else if (a == "toggle" || a.empty()) on = !on;
-                else return "err usage: r3d 0|1|toggle";
+                else return "err usage: r3d 0|1|toggle | box <x> <y> <z> [size] | clear";
                 goblin::r3d::set_enabled(on);
-                return std::string("ok r3d ") + (on ? "on (greybox test cube)" : "off");
+                return std::string("ok r3d ") + (on ? "on" : "off");
             }
             // movieclip — native-map viewport diagnostic + a DISPROVEN cull experiment. `read` reports the
             // live Scaleform map clip rect + buffer size (a useful live map-viewport readout). `hide`/`show`
