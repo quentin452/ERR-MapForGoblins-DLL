@@ -29,6 +29,7 @@
 #include "goblin_r3d.hpp"           // r3d cmd — mod-owned D3D12 3D backend test cube
 #include "goblin_postfx.hpp"        // postfx cmd — greybox #2b full-screen restyle of ER's frame
 #include "goblin_mod.hpp"           // mod cmd — the mod.toml manifest (status/reload)
+#include "goblin_dbgrender.hpp"     // dbgrender_probe cmd — greybox #2a debug-draw gate probe
 #include "goblin_custom_markers.hpp" // death_mark cmd — the DropSoul death marker
 #include "goblin_add_collision.hpp"  // add_collision cmd — Route D walkable box (recon phase)
 #include "goblin_field_probe.hpp"  // arm_raw — serialize find-what-accesses (Phase 2)
@@ -1290,6 +1291,22 @@ namespace goblin::debug_rpc
                 if (!ok) { std::snprintf(b, sizeof(b), "err proj: converter unresolved (map never opened?) or declined"); return std::string(b); }
                 std::snprintf(b, sizeof(b), "ok proj area=%d grid=(%d,%d) -> u=%.2f v=%.2f page=%d", area, gx, gz, u, v, page);
                 return std::string(b);
+            }
+            // dbgrender_probe — greybox #2a: probe ER's debug-draw gate DAT_143d85b18 (er+0x3d85b18).
+            // `read` (classifies flag vs pointer), `set <hex>` (SEH write). See
+            // windows_debug_render_flag_re_findings.md. Pair with `screenshot` to see if debug primitives draw.
+            if (cmd == "dbgrender_probe" || cmd == "dbgrender")
+            {
+                std::string a = next_token(rest);
+                if (a == "set")
+                {
+                    std::string vs = next_token(rest);
+                    uint64_t v = 0;
+                    try { v = std::stoull(vs, nullptr, 0); } catch (...) { return "err usage: dbgrender_probe set <value|0xhex>"; }
+                    return goblin::dbgrender::probe_write(v) ? "ok dbgrender wrote" : "err dbgrender write failed";
+                }
+                if (a == "read" || a.empty()) return goblin::dbgrender::probe_read();
+                return "err usage: dbgrender_probe read|set <val>";
             }
             // mod — the mod.toml manifest (mod_manifest_system_plan.md). `mod status` = what loaded;
             // `mod reload` = re-parse + re-apply the mod folder's mod.toml (dev: edit + reload live).

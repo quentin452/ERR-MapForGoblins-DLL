@@ -51,6 +51,24 @@ managers **`CSWorldSceneDrawParamManager` / `CSFD4SceneDrawParam` / `CSFD4ModelD
 er+0x3ceb810 / 0x3cf3fc8 / 0x3cf2ba8) — a follow-up if the collision path isn't enough. Otherwise job #2 routes
 to **(b) post-process shader** or **(c) D3D12 PSO `FILL_WIREFRAME` override**, as the prompt anticipated.
 
+## ⛔ LIVE PROBE 2026-07-05 (Linux/Proton) — `DAT_143d85b18` is NOT the enable (it's a live context pointer)
+Built + ran `dbgrender_probe` (RPC, `goblin_dbgrender.{hpp,cpp}`). **`DAT_143d85b18` @ er+0x3d85b18 reads
+`0x…3d85c50` = a POINTER** (into the module, ≈0x138 past itself → `er+0x3d85c50`, a resident debug-context
+global). So the `CSDbgDispStep` gate `if (DAT_143d85b18 != 0)` is **ALREADY satisfied every frame** — the step
+already takes its work path — yet **no debug primitives are visible**. ⇒ `DAT_143d85b18` is a resident context
+pointer, **not a bool enable**; the "probe it first" candidate is disproven as THE toggle. (The probe correctly
+REFUSED to write 1 — that would have clobbered a live pointer → deref crash.)
+
+**⇒ The real enable is DEEPER, not this gate.** Next candidates (need more RE, no cheap single-flip):
+1. **Inside the work path `LAB_140791b47`** — a per-draw-type sub-flag (what actually turns on each primitive).
+2. **The Havok COLLISION path (the stronger GO):** `CSHkDebugDisp`/`hkDebugDisplayHandler` — the enable is the
+   hknpWorld's "debug display enabled" + per-shape flags, reachable from `CSPhysWorld+0x08` (we hold that via
+   `goblin_add_collision.cpp`: `*inst → +0x98 CSPhysWorld → +0x08 hknpWorld`). Offset of the debug-display bool
+   NOT yet pinned → the actionable next RE. A bounded live scan of the hknpWorld/handler region for a bool that,
+   when set, makes collision hulls draw (with the add_collision box as the oracle) is the Linux-doable path;
+   pinning it statically (Windows) is safer.
+3. The retained **`CSDbgMenuStep`** (dev menu) — enabling it may expose the draw toggles as menu entries.
+
 ## Verdict
 - **Collision wireframe / in-game collision view → GO-likely** via the retained `CSHkDebugDisp`
   (`hkDebugDisplayHandler`) enable + `CSDbgDispStep`'s `DAT_143d85b18` gate. In-engine, no VDB version lock,
