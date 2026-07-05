@@ -57,7 +57,9 @@ optional `windows_havok_vdb_standup_re_prompt.md`. The two tracks are independen
 **Followups queued (see Open items):** relief §6 filters (v0 = raw median, no outlier-reject) + the USER GATE
 (evaluate v0 in-game → Havok bake or stop); extend `vmap offmap` to catch UG/DLC (0,0) via `vmap_proj`;
 `active_world`/`s_group`/PlayerDim reconciliation for walkable worlds; a cheap "does ER have a debug-render
-wireframe flag?" scan (for greybox-job #2).
+wireframe flag?" scan (for greybox-job #2 — **RE prompt now WRITTEN 2026-07-05:
+`docs/re/windows_debug_render_flag_re_prompt.md`**, an independent Windows GO/NO-GO scan; #2a only, NOT the
+ImGui-mirror #3 wall).
 
 ## ⇒ SESSION WRAP 2026-07-05 (Linux/Fable) — add_collision live, vmap projection/spiderfy/search, converter-residency
 

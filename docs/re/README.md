@@ -143,6 +143,11 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
   (`havok_vdb_presence_findings.md`); could give a free 3D collision render via the official client, but is
   gated on a version-matched client (~2018 Havok). SECONDARY — the ESP hknp-wireframe path avoids the version
   lock. Settle the client GO/NO-GO first.
+- **Debug-render / wireframe flag (greybox job #2a — CHEAP scan) — `windows_debug_render_flag_re_prompt.md`.**
+  Does retail ER expose a leftover debug-render flag (wireframe / untextured / flat / collision-draw) that
+  restyles the engine's OWN render, systems untouched? Binary GO/NO-GO strings/RTTI/globals scan (hours). GO =
+  nearly-free greybox restyle; NO-GO routes to job #2(b) post-process or (c) D3D12 PSO override. Blocks nothing;
+  retires the "restyle the real ER render" roadmap question. NOT the ImGui-mirror path (#3, the wall).
 - **In-game pause** (`windows_ingame_pause_re_prompt.md`), **gamepad input device**
   (`windows_gamepad_input_device_re_prompt.md`), **silent deadlock freeze** (unsolved; watchdog shipped).
 - **Keybinding config (read the user's LIVE kb+pad binds) — OPEN, `windows_keybinding_config_re_prompt.md`.**
