@@ -83,9 +83,16 @@ User wants to STOP the ~3-4min game-reboot per fix and revive the overlay hot-re
     `worldmap::far_relief_snapshot`, + re-build to flush the next wave — errorlimit capped display at 20);
     (6) build BOTH, iterate to clean link, deploy both DLLs, boot once, validate `reload_overlay` (gen++,
     no crash). Keep the DEFAULT build green at every commit.
-- **Boss dedup bug (task #16, user-reported):** bosses of the same NAME collapse to one/first. Demi-Human
-  Chief should be x2 Coastal Cave + x1 Demi-Human Forest Ruins (3); Erdtree Avatar should be 7 (1 UG + 6 OW)
-  but ~4 show. Check `build_live_bosses` (`map_entry_layer.cpp`) + any name/entity dedup dropping duplicates.
+- **Boss "dedup" (task #16) — NOT A BUG, diagnosed 2026-07-05.** We faithfully render EVERY
+  `WorldMapPointParam` boss row (`build_live_bosses`, `textId2==5100`) — no dedup drops instances. `[BOSSDIAG]`
+  live dump proved `WorldMapPointParam` has EXACTLY 4 "Erdtree Avatar" rows (all BUILT, zero skipped) + 1
+  GROUPED "Demi-Human Chief**s**" row. The native ER map is itself selective (marks 4 of the 7 Avatars) and
+  groups the Chiefs into one icon — we match it. Showing all boss INSTANCES (7 Avatars, un-grouped Chiefs)
+  would be a FEATURE: source bosses from enemy placements (the loot enemy-join already resolves them — e.g.
+  it found 13 Night's Cavalry entities) + dedup + name-resolve. NOT needed for native parity. (Also re-proved
+  the hot-reload loop here: added `[BOSSDIAG]` to `map_entry_layer.cpp`, hot-swapped render `gen0→gen1` live,
+  read the log, removed it — no reboot. Persistent-game harness caveat: the keepalive loop exited when
+  foreground `mfg rpc` calls raced its `ping` — gate the keepalive on real liveness, don't break on one ping.)
 - **Grace story-flags — VERIFY FIRST (task #17):** before gating grace markers Royal/Ashen, confirm vanilla
   ER actually DELETES old-state graces on the story flip. If `live_graces` (BonfireWarpParam) is already
   state-correct (removed graces absent), gating would double-gate = wrong. Check whether the live source
