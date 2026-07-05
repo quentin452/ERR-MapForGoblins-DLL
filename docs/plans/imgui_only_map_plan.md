@@ -86,7 +86,7 @@ from parity — Track A is real BUILD work, not just a checklist. This IS the go
 | A6 | Marker tooltips (name + count) | ✅ | no |
 | A7 | Region name labels | ✅ **DONE** — `panel_virtual_map.cpp` region-label block (`marker_world_pos`→`w2s`, group-gated, `Labels` toggle) | no |
 | A8 | Clustering / pile "×N" | ✅ **DONE (`177c73c`)** — quadtree LOD clustering + viewport cull (`marker_quadtree.hpp`); zoomed-out draws "×N" piles, not 6837 raw. Also fixed the perf bottleneck (vmap.markers 4.08→0.51 ms, ~8×) | no |
-| A9 | Item search + "locate" pan | ❌ **MISSING** — F1 search targets the native map only; vmap ignores it | **yes** |
+| A9 | Item search + "locate" pan | ✅ **DONE 2026-07-05** — TWO paths: (1) the F1 item-search result click also locates onto the vmap (`virtual_map_locate`: centroid of the hit markers + switch page); (2) the vmap has its OWN **Item search sidebar** (`Items` toolbar toggle) — token-match over placed markers, deduped rows per (name, page) with counts, click = centre the canvas on it. So item search works fully ON the vmap, native map closed. Screenshot-verified ("grace" → 16 rows: Grace Mimic ×6, Iris of Grace ×2 DLC, …). RPCs `vmap locate` / `vmap items`. Ring-on-vmap = follow-up. | no |
 | A10 | Fast-travel to grace (double-click) | ✅ but FREEZES — Track C0 | **yes** |
 | A11 | Player position marker + heading | ✅ **DONE `69188c3`** — dot/heading-arrow on the vmap (base ER + matching group), minimap yaw convention through the vmap axis signs | no |
 | A12 | ERR day/night dial (ERR-only) | ❌ MISSING — native-map overlay only (`map_renderer.cpp:1170`) | ERR-only, low prio |

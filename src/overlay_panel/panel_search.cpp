@@ -226,13 +226,18 @@ void draw_item_search(const OverlayFrameCtx &ctx, Filter &f)
         // can't leave a locate dangling forever.
         goblin::worldmap_probe::LiveView lv{};
         const bool map_open = goblin::overlay_api::get_live_view(lv);
-        const int open_grp = map_open ? ((lv.openDlc ? 2 : 0) | (lv.underground ? 1 : 0)) : 0;
+        // A9: item search also locates onto the mod's Virtual World Map. When the vmap is the open
+        // surface (native map closed), a result click centres the vmap instead of driving the native pan.
+        const bool vmap_open = goblin::overlay_api::virtual_map_is_open();
+        const bool locate_ready = map_open || vmap_open;
+        const int open_grp = map_open ? ((lv.openDlc ? 2 : 0) | (lv.underground ? 1 : 0))
+                                       : (vmap_open ? goblin::overlay_api::virtual_map_get_group() : 0);
 
         // Count line is about LOCATABLE marker hits only; skip it when there are none (the
         // list below still shows the "Sold by merchants" info rows, if any).
         if (s_hits.empty())
             ; // no locatable markers — the child renders shop rows / "no match" itself
-        else if (map_open)
+        else if (locate_ready)
             ImGui::TextDisabled(s_hits.size() == 1
                                     ? tr("%zu match (ringed on map; click = pan map onto it)")
                                     : tr("%zu matches (ringed on map; click = pan map onto it)"),
@@ -271,7 +276,7 @@ void draw_item_search(const OverlayFrameCtx &ctx, Filter &f)
         static std::vector<uint32_t> s_dlc_grace_flags, s_ug_grace_flags;
         static bool s_grace_flags_built = false;
         static int s_visit_tick = 0;
-        if (map_open && (++s_visit_tick % 30 == 0))
+        if (locate_ready && (++s_visit_tick % 30 == 0))
         {
             // Only fires during an active search (map open, 1 tick in 30). The first run
             // also builds the flag lists (one ~8477-marker pass); steady-state is just a
@@ -300,31 +305,39 @@ void draw_item_search(const OverlayFrameCtx &ctx, Filter &f)
         }
         if (ImGui::BeginChild("##itemhits", ImVec2(0, 150), true))
         {
-            if (!map_open) ImGui::BeginDisabled();
+            if (!locate_ready) ImGui::BeginDisabled();
             for (size_t i = 0; i < s_hits.size(); i++)
             {
                 const Hit &h = s_hits[i];
                 const bool off_page = (h.group & 3) != (open_grp & 3);
                 // Locked = this row's page is a region the player hasn't visited (no grace).
-                const bool locked = map_open && (((h.group & 2) && !s_dlc_seen) ||
-                                                 ((h.group & 1) && !s_ug_seen));
+                const bool locked = locate_ready && (((h.group & 2) && !s_dlc_seen) ||
+                                                     ((h.group & 1) && !s_ug_seen));
                 char row[200];
                 std::snprintf(row, sizeof(row), "%s  (x%d) - %s%s%s##h%zu", h.label.c_str(),
                               h.count, page_label(h.group),
                               h.quest ? tr(" [quest]") : "",
                               locked ? tr(" [undiscovered]") : "", i);
                 if (locked) ImGui::BeginDisabled();
-                if (ImGui::Selectable(row) && map_open)
+                if (ImGui::Selectable(row) && locate_ready)
                 {
-                    s_pending_locate = h.name_id;  // click → pan the map onto it
-                    s_locate_label = h.label;      // remembered for the pending banner
-                    s_locate_group = h.group;      // this row's page
-                    ctx.nav_frames->store(90, std::memory_order_relaxed);  // wake the map so
-                                      // the switch+pan apply with the F1 panel still open
-                    // Cross-page: switch to this row's page+layer (overworld<->DLC +
-                    // surface<->UG), marshalled onto the game thread, then the locate pans.
-                    if (off_page)
-                        goblin::overlay_api::request_switch_to_page(h.group);
+                    // Native ER map: drive the engine pan (cross-page switch + cursor ease).
+                    if (map_open)
+                    {
+                        s_pending_locate = h.name_id;  // click → pan the map onto it
+                        s_locate_label = h.label;      // remembered for the pending banner
+                        s_locate_group = h.group;      // this row's page
+                        ctx.nav_frames->store(90, std::memory_order_relaxed);  // wake the map so
+                                          // the switch+pan apply with the F1 panel still open
+                        // Cross-page: switch to this row's page+layer (overworld<->DLC +
+                        // surface<->UG), marshalled onto the game thread, then the locate pans.
+                        if (off_page)
+                            goblin::overlay_api::request_switch_to_page(h.group);
+                    }
+                    // Virtual World Map: centre the vmap on the hit (A9). Independent of the native
+                    // pan — works when the vmap is the open surface with the ER map closed.
+                    if (vmap_open)
+                        goblin::overlay_api::virtual_map_locate(h.name_id, h.group);
                 }
                 if (locked) ImGui::EndDisabled();
                 if (map_open && !locked && off_page && ImGui::IsItemHovered())
@@ -334,7 +347,7 @@ void draw_item_search(const OverlayFrameCtx &ctx, Filter &f)
                     ImGui::SetTooltip(tr("On the %s map — you haven't discovered it yet."),
                                       page_label(h.group));
             }
-            if (!map_open) ImGui::EndDisabled();
+            if (!locate_ready) ImGui::EndDisabled();
 
             // Merchant-sold matches — info rows (no ring/locate; no world position). Enabled
             // regardless of map_open since they don't pan. Gated items note the unlock.
