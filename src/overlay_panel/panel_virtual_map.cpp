@@ -106,6 +106,14 @@ namespace
     int s_warp_offset = 0;          // added to the grace entity id before LuaWarp; 0 = entity id direct (ground truth; CT's -1000 was wrong)
     bool s_fit_requested = false;  // one-shot: on next draw, frame the selected group's markers
     bool s_focus_player = false;   // one-shot: on next draw, centre the camera on the player + their group
+    // Item-search LOCATE highlight (bugs: search only centred, no visual; and with markers toggled off a
+    // locate showed nothing). virtual_map_locate() fills s_locate_pts (world XZ of every match on the page)
+    // + arms s_locate_arm; the draw stamps s_locate_until and pulses a ring at each, ON TOP and INDEPENDENT
+    // of the marker-visibility gate — so the hit is visible even when all markers are hidden. Parity with
+    // the native map's search ring.
+    std::vector<ImVec2> s_locate_pts;   // (worldX, worldZ) of the last locate's matches
+    bool s_locate_arm = false;          // set by locate; consumed in draw (GetTime() is frame-safe there)
+    double s_locate_until = 0.0;        // ImGui::GetTime() expiry of the pulse (0 = inactive)
     int s_drawn = 0;               // marker count drawn last frame (toolbar readout)
     int s_relief_hits = 0, s_relief_drawn = 0; // D2.3 debug: hit cells fetched / quads actually drawn
     const char *const kGroupNames[4] = {"Base overworld", "Base underground", "DLC overworld",
@@ -191,6 +199,7 @@ int virtual_map_locate(int32_t name_id, int group)
 {
     const int pg = group & 3;
     float sx = 0.0f, sz = 0.0f; int n = 0;
+    s_locate_pts.clear();
     for (auto *L : overlay_layers())
     {
         if (!L) continue;
@@ -198,12 +207,14 @@ int virtual_map_locate(int32_t name_id, int group)
         {
             if (m.name_id != name_id || (m.group & 3) != pg) continue;
             sx += m.worldX; sz += m.worldZ; ++n;
+            s_locate_pts.push_back(ImVec2(m.worldX, m.worldZ));  // pulse a ring at each (drawn regardless of toggles)
         }
     }
-    if (n == 0) return 0;
+    if (n == 0) { s_locate_pts.clear(); return 0; }
     s_cam_x = sx / n; s_cam_z = sz / n;
     s_group = pg;
     if (s_zoom < 0.25f) s_zoom = 0.25f;   // frame the hit if the view was zoomed far out
+    s_locate_arm = true;                  // draw stamps the pulse-timer this frame
     s_open = true;
     return n;
 }
@@ -1158,7 +1169,14 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         if (!r.tried) { r.tried = true; r.ok = s_show_icons && cat >= 0 && resolve_category_icon(ctx, cat, r.tex, r.uv0, r.uv1); }
         return r;
     };
-    const float icoHalf = 8.0f * uiScale;  // on-canvas icon size (px, resolution-scaled)
+    // On-canvas icon size (px, resolution-scaled). GROWS with zoom so pins aren't microscopic when zoomed
+    // in — and, since the spiderfy fan geometry (spacing/baseR/keepR) is all sized off icoHalf, the hover
+    // fan grows with it (fixes "spiderfy far too small at high zoom"). Bounded: 1× at the overview default
+    // (s_zoom≈0.05–0.15), ramping via sqrt to ~2.2× when zoomed right in (s_zoom→kZoomMax).
+    float zoomIco = std::sqrt(s_zoom / 0.15f);
+    if (zoomIco < 1.0f) zoomIco = 1.0f;
+    if (zoomIco > 2.2f) zoomIco = 2.2f;
+    const float icoHalf = 8.0f * uiScale * zoomIco;
     const bool nativeIcons = *goblin::overlay_api::cfg_nativeItemIcons_ptr();
     constexpr int kGraceCat = static_cast<int>(goblin::generated::Category::WorldGraces);
     // Hover tooltip: track the marker nearest the cursor (within a pixel radius) while drawing.
@@ -1641,6 +1659,31 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     }
     // Player position marker + heading arrow (A11 parity — the native minimap has this; the vmap must
     // too before it can replace the native map). Base ER only, and only when the player's group matches
+    // Item-search LOCATE highlight — a pulsing ring at every match on the page, drawn ON TOP of all markers
+    // and INDEPENDENT of the visibility gate, so a search hit is visible even with markers toggled off (and
+    // gives the "found it" feedback the plain re-centre lacked). Only for Base-ER (locate is Base-ER-only).
+    if (active_world == 0 && !s_locate_pts.empty())
+    {
+        const double now = ImGui::GetTime();
+        if (s_locate_arm) { s_locate_until = now + 6.0; s_locate_arm = false; }  // 6 s of pulse per locate
+        if (now < s_locate_until)
+        {
+            const float pulse = 0.5f + 0.5f * std::sin((float)now * 6.0f);       // 0..1 breathe
+            const float fade = (float)((std::min)(1.0, (s_locate_until - now) / 1.0));  // fade the last second
+            const int a = (int)(220.0f * fade);
+            for (const ImVec2 &wp : s_locate_pts)
+            {
+                ImVec2 ps = w2s(wp.x, wp.y);
+                if (ps.x < origin.x || ps.x > canvas_end.x || ps.y < origin.y || ps.y > canvas_end.y) continue;
+                const float r = (13.0f + pulse * 10.0f) * uiScale;
+                dl->AddCircle(ps, r, IM_COL32(255, 220, 90, a), 0, 2.5f * uiScale);
+                dl->AddCircle(ps, r + 3.0f * uiScale, IM_COL32(255, 220, 90, a / 2), 0, 1.5f * uiScale);
+            }
+        }
+        else
+            s_locate_pts.clear();   // expired → stop drawing
+    }
+
     // the displayed group (underground overlaps the overworld in XZ, so a cross-group dot would mislead).
     if (active_world == 0)
     {
