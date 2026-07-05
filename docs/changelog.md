@@ -25,6 +25,11 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **Custom collision bodies (dev, Route D walkable greybox).** The DLL can now inject a STATIC Havok
+  collision body into the live world (`add_collision` RPC, staged: resolve → cinfo dump → `go`), proven
+  end-to-end with the heightfield raycast oracle (down-ray hits the new body's top; persists in the
+  broadphase). First "our own asset" brick for custom 3D worlds — art-less walkable/blocking geometry.
+  Shape is borrowed from a live body until the `hknpBoxShape` builder lands (half-extents recorded).
 - **Death marker (bloodstain).** The map + minimap now show where you died — mirrors the game's own
   persistent bloodstain (native `MENU_MAP_DropSoul` icon), so it survives a restart and clears itself when
   you collect the runes, exactly like the base game. Overworld deaths for now (underground/legacy TBD).
@@ -129,6 +134,10 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   the map" game-state flag (`CSMenuMan+0x104`). Gated by the `clip_game_ui` setting.
 
 ### Changed
+- **Patch-resilience: PhysWorld + hknp body pipeline now AOB-pinned.** The last un-hardened hot RVA
+  (the CS::PhysWorld singleton slot used by the terrain raycast + collision injection) and the three
+  hknp body functions (cinfo init / allocateBody / addBody) resolve AOB-first with the RVA as a
+  cross-checked fallback — a game patch no longer silently breaks them ([SIG] boot check: 48/48 clean).
 - **Settings declutter.** Marker-rendering preferences and the minimap block moved out of the
   catch-all `[Debug]` ini section into their own `[Markers]` and `[Minimap]` sections; existing inis
   migrate their tuned values automatically (keys relocate on next launch, nothing reset). Several

@@ -207,6 +207,23 @@ namespace goblin::sig
     inline constexpr const char *GEOM_REQ_MGR_BACKUP =
         "48 8B 0D ?? ?? ?? ?? 48 85 C9 74 14 83 CB 02 89 5C 24 20 48";
 
+    // CS::PhysWorld FD4Singleton static slot (was fixed RVA 0x3d76060 — heightfield raycast +
+    // add_collision Route D). Two INDEPENDENT game load sites captured live via `mem_fwa <slot> 8 r`
+    // (2026-07-05, backlog's FWA recipe): reader er+0x1b2444 (`sub rsp,28; cmp byte[rcx],0; je;
+    // mov rcx,[rip+disp]; test rcx,rcx; jnz; lea rcx,[str]; call` — the FD4 null-check idiom) and
+    // reader er+0xc66fdd (the 24-bit id sentinel check `and eax,0xFFFFFF; cmp eax,0xFFFFFF; je`
+    // before the load). relative_offsets {{16,20}} / {{20,24}} lift the rip-disp → &instance slot.
+    // NB the BACKUP matches 2 sites image-wide (the sentinel idiom repeats; a same-shape reader of
+    // another singleton) so it is NOT in the all_signatures health table — it is a last-resort
+    // fallback used only when the primary misses, and physworld_slot() cross-checks it against the
+    // RVA (warns on disagreement). The unique PRIMARY carries the drift detection.
+    inline constexpr const char *PHYSWORLD_SLOT =
+        "48 83 EC 28 80 39 00 0F 84 ?? ?? ?? ?? 48 8B 0D ?? ?? ?? ?? 48 85 C9 75 ?? "
+        "48 8D 0D ?? ?? ?? ?? E8";
+    inline constexpr const char *PHYSWORLD_SLOT_BACKUP =
+        "83 EC 28 8B C1 25 FF FF FF 00 3D FF FF FF 00 74 ?? 48 8B 05 ?? ?? ?? ?? 48 85 C0 75 ?? "
+        "48 8D 0D ?? ?? ?? ?? E8";
+
     // WorldChrMan finder (player map-pos path).
     inline constexpr const char *WCM_FINDER = "48 8B FA 0F 11 41 70 48 8B 05";
     // Player-MapId singleton load site (was 0x3d691d8). relative_offsets {{3,7}}.
@@ -358,6 +375,21 @@ namespace goblin::sig
         "48 8B C4 48 89 50 10 56 57 41 56 48 81 EC A0 00 00 00 48 C7 44 24 28 FE FF FF FF "
         "48 89 58 08 48 89 68 18 48 8B F2 4C 8B F1 33 FF 89 7C 24 20 0F B6 51 0C 48 8B CE "
         "E8 ?? ?? ?? ?? 4C 8D 05 ?? ?? ?? ??";
+    // ── add_collision Route D FUNCs (hknp body pipeline) — AOBs from a LIVE hf_hook_scout disasm
+    // --aob dump 2026-07-05 (docs/re/add_collision_linux_impl_brief.md §3). Loop live-proven the same
+    // day (alloc→add→broadphase→hf_probe hit at the body top).
+    // FUN_141911210: hknpBodyCinfo init (defaults). RVA 0x1911210.
+    inline constexpr const char *CINFO_INIT_FN =
+        "48 89 5C 24 08 57 48 83 EC 20 33 FF 48 8B D9 48 89 39 48 89 79 18 48 89 79 78 "
+        "48 89 B9 80 00 00 00 48 89 B9 98 00 00 00";
+    // FUN_1418aabf0: hknpBodyManager::allocateBody(bodyMgr, &outId, &cinfo). RVA 0x18aabf0.
+    inline constexpr const char *ALLOCATE_BODY_FN =
+        "40 55 53 56 57 41 56 48 8D AC 24 00 FF FF FF 48 81 EC 00 02 00 00 "
+        "48 83 B9 20 0A 00 00 00 49 8B F0 4C 8B F2 48 8B F9 74 ??";
+    // FUN_1418a9ff0: addBody(bodyMgr, ids, count, addMode, actMode) — 5th arg on stack. RVA 0x18a9ff0.
+    inline constexpr const char *ADD_BODY_FN =
+        "45 85 C0 0F 8E ?? ?? ?? ?? 48 8B C4 44 89 40 18 48 89 50 10 55 53 56 41 54 41 57 "
+        "48 8D 68 A8 48 81 EC 30 01 00 00 4C 89 68 D0";
     // FUN_1406dbd40: CSWorldGeomIns::SetWorldMatrix — the geom transform setter, called via vtable slot 26
     // (vtable[0xd0]). A slot INDEX can't be AOB'd, so we AOB the TARGET function and verify/self-heal the
     // slot at runtime (goblin_geom_move.cpp resolve_setter). RVA 0x6dbd40. Tier S-1, fragile_primitives_audit.md.
@@ -396,6 +428,9 @@ namespace goblin::sig
             {"WORLD_GEOM_MAN_SLOT", WORLD_GEOM_MAN_SLOT},
             {"GEOM_REQ_MGR", GEOM_REQ_MGR},
             {"GEOM_REQ_MGR_BACKUP", GEOM_REQ_MGR_BACKUP},
+            {"PHYSWORLD_SLOT", PHYSWORLD_SLOT},
+            // PHYSWORLD_SLOT_BACKUP deliberately absent: known 2-match (see its comment) — a MULTI
+            // here would cry wolf every boot; the unique primary above carries drift detection.
             {"WCM_FINDER", WCM_FINDER},
             {"PLAYER_MAPID_SLOT", PLAYER_MAPID_SLOT},
             {"MARKER_CHAIN_SLOT", MARKER_CHAIN_SLOT},
@@ -418,6 +453,9 @@ namespace goblin::sig
             {"WARPPIN_BUILDER_FN", WARPPIN_BUILDER_FN},
             {"WARPPIN_SETTO_FN", WARPPIN_SETTO_FN},
             {"SET_WORLD_MATRIX_FN", SET_WORLD_MATRIX_FN},
+            {"CINFO_INIT_FN", CINFO_INIT_FN},
+            {"ALLOCATE_BODY_FN", ALLOCATE_BODY_FN},
+            {"ADD_BODY_FN", ADD_BODY_FN},
         };
         count = sizeof(table) / sizeof(table[0]);
         return table;
@@ -431,6 +469,27 @@ namespace goblin::sig
     {
         static SigHealth h;
         return h;
+    }
+
+    // Resolve the CS::PhysWorld FD4Singleton STATIC SLOT (heightfield + add_collision) — AOB-first
+    // over the two independent load sites above, RVA cross-check fallback. Returns &instance.
+    inline void **physworld_slot(uintptr_t base, uintptr_t rva)
+    {
+        void **by_aob = nullptr;
+        try
+        {
+            by_aob = modutils::scan<void *>({.aob = PHYSWORLD_SLOT, .relative_offsets = {{16, 20}}});
+            if (!by_aob)
+                by_aob = modutils::scan<void *>({.aob = PHYSWORLD_SLOT_BACKUP, .relative_offsets = {{20, 24}}});
+        }
+        catch (...) { by_aob = nullptr; }
+        void **by_rva = base ? reinterpret_cast<void **>(base + rva) : nullptr;
+        if (by_aob && by_rva && by_aob != by_rva)
+            spdlog::warn("[SIG] PHYSWORLD_SLOT AOB {} != RVA er+{:#x}={} — using AOB",
+                         (void *)by_aob, rva, (void *)by_rva);
+        if (!by_aob)
+            spdlog::warn("[SIG] PHYSWORLD_SLOT AOB no match — falling back to RVA er+{:#x}", rva);
+        return by_aob ? by_aob : by_rva;
     }
 
     // Resolve a FUNC by its prologue AOB, cross-checked against its known (build-specific) RVA.

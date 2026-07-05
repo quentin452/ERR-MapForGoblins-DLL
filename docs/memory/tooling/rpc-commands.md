@@ -122,6 +122,7 @@ while a human is actively using kb/mouse (`rpc_input_idle=1` in `status`; ini `r
 | `geom_dump` | `geom_dump` | Read-only recon: dump a live geom instance + its CSMsbParts record (name, aegRow, hex) to the `[GEOMDUMP]` log. For ADD-placement RE. |
 | `move_all` | `move_all <dx> <dy> <dz>` | Move EVERY loaded geom instance by the delta (mass visual confirm; dirties the world). |
 | `geom_stats` | `geom_stats` | Count loaded geom instances + class (vtable) histogram. Explains "some objects moved, others not": move_all only touches CSWorldGeomIns-family (~17k), never map parts (walls/terrain); LOD dupes an asset. |
+| `add_collision` | `add_collision [recon \| <hx> <hy> <hz> [<x> <y> <z>] [go]]` | Route D walkable collision body, STAGED: no args = resolve hknpWorld/bodyMgr; `recon` = phase-1 layout dumps (`[ADDCOL]`); 3 half-extents = build+dump the `hknpBodyCinfo` (shape BORROWED from a live body, position defaults to player+40u), NO mutation; append `go` = allocateBody+addBody into the live broadphase. Verify with `hf_probe_present` (hit at body-top Y). In-world, map CLOSED. `docs/re/add_collision_linux_impl_brief.md`. |
 
 ## Extending
 

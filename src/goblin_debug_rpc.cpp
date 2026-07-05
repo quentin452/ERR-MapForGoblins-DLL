@@ -410,7 +410,7 @@ namespace goblin::debug_rpc
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp coords warp_local warp_xyz we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
-                       " | mfg_build er_base er_version mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone"
+                       " | mfg_build er_base er_version mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset add_collision hf_probe hf_probe_present hf_sample hf_shape_probe"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
             if (cmd == "status")
@@ -1038,23 +1038,65 @@ namespace goblin::debug_rpc
                 goblin::heightfield::request_shape_probe();
                 return "ok hf_shape_probe queued — stay in gameplay (map CLOSED); grep [HFSHAPE]";
             }
-            // add_collision recon — Route D phase 1: resolve hknpWorld/bodyMgr + dump hknpBodyCinfo defaults
-            // + a real body header ([ADDCOL] log) to pin the cinfo layout. Read-only (safe on present/RPC).
+            // add_collision — Route D walkable box, staged (brief §5):
+            //   add_collision                       -> resolve hknpWorld/bodyMgr only (read-only)
+            //   add_collision recon                 -> phase-1 layout dumps ([ADDCOL], read-only)
+            //   add_collision <hx> <hy> <hz>        -> build+dump the cinfo, NO world mutation
+            //   add_collision <hx> <hy> <hz> go     -> alloc + addBody at player + 40u up
+            //   add_collision <hx> <hy> <hz> <x> <y> <z> go  -> at an explicit block-local position
+            // Shape is BORROWED from a live body until the box builder lands (findings §6 shortcut).
             if (cmd == "add_collision")
             {
                 std::string sub = next_token(rest);
+                char b[224];
+                if (sub.empty())
+                {
+                    auto r = goblin::add_collision::resolve_world();
+                    if (!r.ok) { std::snprintf(b, sizeof(b), "err add_collision: %s", r.err); return std::string(b); }
+                    std::snprintf(b, sizeof(b), "ok add_collision resolve: world=%#llx bodyMgr=%#llx bodies=%#llx count=%u",
+                                  (unsigned long long)r.world, (unsigned long long)r.bodyMgr,
+                                  (unsigned long long)r.bodies, r.count);
+                    return std::string(b);
+                }
                 if (sub == "recon")
                 {
                     auto r = goblin::add_collision::recon();
-                    char b[192];
-                    std::snprintf(b, sizeof(b), r.ok ? "ok add_collision recon: world=%#llx bodyMgr=%#llx count=%u — see [ADDCOL] log"
-                                                     : "err add_collision recon: %s",
-                                  r.ok ? (unsigned long long)r.world : 0ull,
-                                  r.ok ? (unsigned long long)r.bodyMgr : 0ull, r.ok ? r.count : 0u);
-                    if (!r.ok) std::snprintf(b, sizeof(b), "err add_collision recon: %s", r.err);
+                    if (!r.ok) { std::snprintf(b, sizeof(b), "err add_collision recon: %s", r.err); return std::string(b); }
+                    std::snprintf(b, sizeof(b), "ok add_collision recon: world=%#llx bodyMgr=%#llx count=%u — see [ADDCOL] log",
+                                  (unsigned long long)r.world, (unsigned long long)r.bodyMgr, r.count);
                     return std::string(b);
                 }
-                return "err usage: add_collision recon";
+                // numeric form: hx hy hz [x y z] [go]
+                float v[6] = {};
+                int nv = 0;
+                bool force = false;
+                std::string tok = sub;
+                while (!tok.empty())
+                {
+                    if (tok == "go") { force = true; break; }
+                    if (nv >= 6) return "err too many args — usage: add_collision <hx> <hy> <hz> [<x> <y> <z>] [go]";
+                    try { v[nv++] = std::stof(tok); } catch (...) { return "err bad number '" + tok + "'"; }
+                    tok = next_token(rest);
+                }
+                if (nv != 3 && nv != 6) return "err usage: add_collision <hx> <hy> <hz> [<x> <y> <z>] [go]";
+                float half[3] = {v[0], v[1], v[2]};
+                float pos[3];
+                if (nv == 6) { pos[0] = v[3]; pos[1] = v[4]; pos[2] = v[5]; }
+                else
+                {
+                    float px = 0, py = 0, pz = 0;
+                    if (!goblin::get_player_world_pos(px, py, pz)) return "err not in-world (no player pos)";
+                    pos[0] = px; pos[1] = py + 40.f; pos[2] = pz;   // clearly above the feet → oracle-separable
+                }
+                auto r = goblin::add_collision::add_box(half, pos, force);
+                if (!r.ok) { std::snprintf(b, sizeof(b), "err add_collision: %s", r.err); return std::string(b); }
+                if (!force)
+                    std::snprintf(b, sizeof(b), "ok add_collision DUMPED cinfo (shape=%#llx borrowed, pos %.1f %.1f %.1f) — append 'go' to add",
+                                  (unsigned long long)r.shape, pos[0], pos[1], pos[2]);
+                else
+                    std::snprintf(b, sizeof(b), "ok add_collision ADDED bodyId=%#x (shape=%#llx pos %.1f %.1f %.1f) — verify hf_probe_present",
+                                  r.bodyId, (unsigned long long)r.shape, pos[0], pos[1], pos[2]);
+                return std::string(b);
             }
             // hf_sample [extent] [res] — queue a heightfield GRID sample around the player (D2.2).
             // extent = world-units square side (default 4096), res = cells/side (default 48). Runs on the

@@ -167,6 +167,23 @@ all-zero = origin, `+0x40` = identity quat with `1.0f@+0x4C`, `+0x70=-1.0f`, `+0
   `allocateBody → addBody → broadphase → hf_probe` loop works before you invest in the box builder + cfg. You
   get whatever shape that body had, placed at your cinfo position — fine to confirm collision is live.
 
+## 7. ✅ LIVE SMOKE TEST PASSED (Linux/Proton, 2026-07-05) — Route D loop PROVEN end-to-end
+`goblin_add_collision::add_box` (staged `add_collision` RPC) ran the full recipe on the FIRST attempt,
+from the PRESENT thread (no game-thread hook needed — unlike pivot-2's registrar, `allocateBody`+
+`addBody` did NOT deadlock), with `addMode/actMode = 0,0` (the CS-flush values):
+- **Setup:** in-world (First Step area), map CLOSED. cinfo = `FUN_141911210` defaults + shape@+0x00
+  (BORROWED from a live body per §6's shortcut, vt er+0x2eec9b0) + position@+0x30 = player+40u up.
+- **alloc/add:** `allocateBody` returned id `0x10043f5`; `addBody(mgr,&id,1,0,0)` returned; game alive.
+  New body slot dump shows our position at body+0x30 and a quantized AABB at +0x50 — broadphase-inserted.
+- **Oracle:** `hf_probe_present` ground Y jumped 21.44 → **133.37 = EXACTLY the cinfo position Y**
+  (Δfoot=+40.00) — the down-ray now hits OUR body instead of the terrain 112u below. Hit normal came
+  back (0,0,0) (frac 0.490) — normal readback on the injected body TBD, hit position is correct.
+- **Persistence:** still hit at 8s. Tile re-stream / long-run persistence not yet tested (§brief 6.5).
+- **Remaining for a REAL box:** `FUN_141916c30(self, aabb[8], convexRadius, cfg)` + the small BuildCfg
+  map (§6) — the borrowed-shape probe body inherits the donor's geometry, not the requested half-extents.
+All four pipeline anchors are now AOB-hardened (CINFO_INIT_FN / ALLOCATE_BODY_FN / ADD_BODY_FN +
+PHYSWORLD_SLOT — `rva_aob_hardening_backlog.md` 2026-07-05, [SIG] 48/48 clean).
+
 ## 6b. Anchors (er-relative, imagebase 0x140000000, this ERR build)
 ```
 hknpWorld vtable            er+0x2eedc78  (RTTI .?AVhknpWorld@@)  = command-dispatcher primary vtable

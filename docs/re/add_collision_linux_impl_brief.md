@@ -1,5 +1,11 @@
 # `add_collision` — Linux/Proton implementation brief (Route D: walkable greybox box)
 
+> **✅ IMPLEMENTED + LIVE-PROVEN 2026-07-05** (`src/goblin_add_collision.{hpp,cpp}`, staged RPC, 9/9
+> `test_add_collision.py`; oracle hit at the injected body's exact Y, present-thread, addMode/actMode
+> 0,0). Result: `hknpworld_addbody_slot_re_findings.md` §7. Remaining = §1's real box builder
+> (`FUN_141916c30` + BuildCfg map — the probe borrows a live shape) + walk-on confirm + re-stream
+> persistence. Anchors AOB-hardened ([SIG] 48/48).
+
 Implements the walkable-greybox collision box: spawn a Havok `hknpBoxShape` body into the live world so the
 player can stand on / be blocked by it, with ZERO authored art. This is the minimal "our own asset" brick
 (`custom_asset_creation_options_re_findings.md` §D). The static RE is COMPLETE

@@ -33,6 +33,17 @@ verified **PASS + UNIQUE** in the live `[SIG]` health check + exercised in-world
 | CASTRAY_FN | 0xc70360 | PhysWorld cast-ray (heightfield) | goblin_heightfield.cpp |
 | WARPPIN_BUILDER_FN | 0x88b7b0 | WarpPinData builder (**hooked**) | goblin_grace_suppression.cpp |
 | WARPPIN_SETTO_FN | 0x87ae20 | vt[1] SetTo (**hooked**) | goblin_grace_suppression.cpp |
+| CINFO_INIT_FN | 0x1911210 | hknpBodyCinfo init (add_collision) | goblin_add_collision.cpp (2026-07-05) |
+| ALLOCATE_BODY_FN | 0x18aabf0 | hknpBodyManager::allocateBody | goblin_add_collision.cpp (2026-07-05) |
+| ADD_BODY_FN | 0x18a9ff0 | hknp addBody (broadphase insert) | goblin_add_collision.cpp (2026-07-05) |
+
+## ✅ STATIC-SLOT — PHYSWORLD hardened 2026-07-05 (the FWA recipe, exactly as written below)
+`mem_fwa <er+0x3d76060> 8 r` live → 16 distinct reader RIPs in one 6s capture → two load sites turned
+into AOBs. `PHYSWORLD_SLOT` (reader er+0x1b2444, the FD4 null-check idiom) = **PASS + UNIQUE**;
+`PHYSWORLD_SLOT_BACKUP` (reader er+0xc66fdd, the 24-bit sentinel idiom) matches 2 sites image-wide so
+it is deliberately NOT in the health table (last-resort fallback; RVA cross-check at use warns).
+Resolver `sig::physworld_slot(base, rva)` (AOB→backup→RVA) now feeds BOTH `goblin_heightfield.cpp`
+and `goblin_add_collision.cpp`. [SIG] 48/48 clean.
 
 The 2 grace fns (tier-S: RVA + code-patch write + crash-on-wrong, the audit's top items) were the
 trickiest — being HOOKED, a live dump reads the detour JMP, not the prologue. **Captured by booting with
@@ -49,7 +60,7 @@ patches the bytes). Trampoline-read was NOT needed — the flag-gate is simpler.
 ## STATIC-SLOT — singleton/vtable slots with NO AOB
 | symbol | RVA | resolves | file |
 |---|---|---|---|
-| PHYSWORLD_RVA | 0x3d76060 | CS::PhysWorld FD4Singleton (heightfield) | goblin_heightfield.cpp:23 |
+| ~~PHYSWORLD_RVA~~ | 0x3d76060 | ✅ hardened 2026-07-05 (see above) | re_signatures.hpp `physworld_slot()` |
 | WORLDMAP_VIEWMODEL_VTABLE_RVA | 0x2ad82e0 | WorldMapViewModel vtable (+page table) | re_signatures.hpp:272 |
 | CURSOR_VTABLE_RVA | 0x2b29a90 | WorldMapCursorControl vtable (many sites) | re_signatures.hpp:305 |
 | ICON_MGR_SLOT_RVA / _SIBLING | 0x3d6e9b0 / 0x3d6f558 | CSWorldMapPointMan (native-pin suppression) | re_signatures.hpp:315/316 |
@@ -88,9 +99,10 @@ a region is VMProtect-*mutated* per-run (no stable AOB exists — rare; detect b
 ## Priority
 ~~Hot-path FUNCs (CASTRAY, ENSURE_ASSET_REQUEST, GETTER)~~ ✅ + ~~cheap-win switches (CSMenuMan,
 CreateImage)~~ ✅ + ~~the 2 hooked grace-suppression FUNCs (tier-S, the audit's top danger)~~ ✅ DONE
-2026-07-04. Remaining, in order: **PHYSWORLD** slot (heightfield — FWA a load site); the tier-S engine
-**vtable slots** (geom setter 26, grace SetTo vt[1] — resolve/assert from a ctor AOB, per
-`fragile_primitives_audit.md`); then the worldmap vtables/slots and the icon-harvest set.
+2026-07-04. ~~**PHYSWORLD** slot~~ ✅ + ~~add_collision FUNCs (CINFO_INIT/ALLOCATE_BODY/ADD_BODY)~~ ✅
+DONE 2026-07-05. NB the tier-S geom setter slot 26 is ALREADY self-healing (`goblin_geom_move.cpp
+resolve_setter` verifies the slot against the SET_WORLD_MATRIX_FN AOB and searches the vtable on
+mismatch). Remaining, in order: the worldmap vtables/slots; the icon-harvest set; diag-only leftovers.
 
 Note: `goblin_markers.cpp` old RVAs 0x3D5DF38/0x2AC21D8 are already migrated to AOB (comments only).
 See [re-signatures-registry](../memory/tooling/re-signatures-registry.md) for how to add a signature.

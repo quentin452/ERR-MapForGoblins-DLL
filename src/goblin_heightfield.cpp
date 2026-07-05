@@ -62,7 +62,7 @@ void resolve()
     {
         g_cast = reinterpret_cast<CastRayFn>(
             goblin::sig::resolve_func_aob(goblin::sig::CASTRAY_FN, er, CASTRAY_RVA, "CASTRAY"));
-        g_physworld_slot = reinterpret_cast<void **>(er + PHYSWORLD_RVA); // slot: FWA-harden later (backlog)
+        g_physworld_slot = goblin::sig::physworld_slot(er, PHYSWORLD_RVA); // AOB-first, RVA fallback
     }
     g_ready.store(true);
     spdlog::info("[HEIGHTFIELD] resolve: er={:#x} cast={} physworld_slot={} ({})", er, (void *)g_cast,
