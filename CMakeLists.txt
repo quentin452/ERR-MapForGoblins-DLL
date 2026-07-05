@@ -125,9 +125,6 @@ set(GOBLIN_RENDER_SOURCES
   src/overlay_panel/panel_dev_tools.cpp
   src/overlay_panel/panel_world_editor.cpp
   src/overlay_panel/panel_virtual_map.cpp
-  src/goblin_virtual_world.cpp
-  src/goblin_custom_markers.cpp
-  src/goblin_add_collision.cpp
   src/worldmap/marker_layer.hpp
   src/worldmap/grace_layer.hpp
   src/worldmap/grace_layer.cpp
@@ -137,8 +134,6 @@ set(GOBLIN_RENDER_SOURCES
   src/worldmap/category_meta.cpp
   src/worldmap/map_entry_layer.hpp
   src/worldmap/map_entry_layer.cpp
-  src/worldmap/maptile.hpp
-  src/worldmap/maptile.cpp
   src/worldmap/map_renderer.hpp
   src/worldmap/map_renderer.cpp)
 
@@ -151,6 +146,14 @@ set(GOBLIN_HOST_SOURCES
   src/from/paramdef/WORLD_MAP_LEGACY_CONV_PARAM_ST.hpp
   src/goblin_legacy_fold.hpp
   src/goblin_legacy_fold.cpp
+  # Stateful data/logic, host-side so their state survives a render hot-swap + host RPC/boot can call
+  # them directly (render imports the exported API via MapForGoblins.lib). Moved out of the render
+  # module 2026-07-05 when the split link drifted (see overlay_hot_reload_playwright_plan.md).
+  src/goblin_virtual_world.cpp
+  src/goblin_custom_markers.cpp
+  src/goblin_add_collision.cpp
+  src/worldmap/maptile.hpp
+  src/worldmap/maptile.cpp
   src/modutils.hpp
   src/modutils.cpp
   src/goblin_log_archive.hpp

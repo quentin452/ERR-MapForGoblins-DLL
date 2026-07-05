@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "goblin_dll_export.hpp"  // GOBLIN_RENDER_API — host exports these to the render DLL (hot-reload split)
+
 namespace goblin::custom_markers
 {
 struct Marker
@@ -20,15 +22,15 @@ struct Marker
 constexpr int kMaxPerGroup = 24;   // cap per world (like ER's placed-marker limit)
 
 // Add a marker (enforces the per-group cap: drops the request + returns false when full).
-bool add(float wx, float wz, int group, const std::string &name, uint32_t color);
-void remove_at(size_t index);
-void clear();
-size_t count();
-size_t count_in_group(int group);
+GOBLIN_RENDER_API bool add(float wx, float wz, int group, const std::string &name, uint32_t color);
+GOBLIN_RENDER_API void remove_at(size_t index);
+GOBLIN_RENDER_API void clear();
+GOBLIN_RENDER_API size_t count();
+GOBLIN_RENDER_API size_t count_in_group(int group);
 // Snapshot (copy) of all markers — callers iterate a stable copy without holding the lock.
-std::vector<Marker> snapshot();
+GOBLIN_RENDER_API std::vector<Marker> snapshot();
 // Mutable access for the editor (rename). Returns false if index is out of range.
-bool set_name(size_t index, const std::string &name);
+GOBLIN_RENDER_API bool set_name(size_t index, const std::string &name);
 } // namespace goblin::custom_markers
 
 namespace goblin::search_marks
@@ -37,10 +39,10 @@ namespace goblin::search_marks
 // search) and the minimap (draws the current-dimension hits) read the same data, like custom_markers.
 // In-session, replaced per search, wiped by Clear. Distinct from the blue custom pins + the native ring.
 struct Mark { float wx = 0.f, wz = 0.f; int group = 0; };
-void set(std::vector<Mark> marks);   // replace ALL (vmap writes once per search; empty clears)
-std::vector<Mark> snapshot();        // stable copy (vmap draw + minimap read)
-void clear();
-size_t count();
+GOBLIN_RENDER_API void set(std::vector<Mark> marks);   // replace ALL (vmap writes once per search; empty clears)
+GOBLIN_RENDER_API std::vector<Mark> snapshot();        // stable copy (vmap draw + minimap read)
+GOBLIN_RENDER_API void clear();
+GOBLIN_RENDER_API size_t count();
 } // namespace goblin::search_marks
 
 namespace goblin::death_marker
@@ -48,10 +50,10 @@ namespace goblin::death_marker
 // The single "you died here" marker (dropped runes / bloodstain), drawn with the native MENU_MAP_DropSoul
 // icon on the vmap + minimap. Set on death (get_player_map_pos), replaced by the next death, cleared on
 // pickup/manual. World-frame (map-space) so no chunk->world bridge needed.
-void set(float wx, float wz, int group, int souls);
-bool get(float &wx, float &wz, int &group, int &souls);   // false = none active; souls = runes waiting
-void clear();
+GOBLIN_RENDER_API void set(float wx, float wz, int group, int souls);
+GOBLIN_RENDER_API bool get(float &wx, float &wz, int &group, int &souls);   // false = none active; souls = runes waiting
+GOBLIN_RENDER_API void clear();
 // Per-frame: reads player HP, and on the alive->dead edge records get_player_map_pos as the death spot.
 // Call every present frame (runs during gameplay, map closed). Cheap; no-op until the HP chain resolves.
-void tick();
+GOBLIN_RENDER_API void tick();
 } // namespace goblin::death_marker

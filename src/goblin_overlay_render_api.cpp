@@ -21,6 +21,7 @@
 #include "goblin_warp.hpp"                // warp_to_grace bridge (vmap click-to-warp)
 #include "worldmap/loot_disk.hpp"
 #include "worldmap/map_entry_layer.hpp"   // rebuild_markers (refresh_markers RPC)
+#include "goblin_overlay_render_loader.hpp"  // call_* — route host->render marker/relief calls across the hot-reload split
 #include "worldmap/name_fmg_en.hpp"
 #include "input/input_shared.hpp"
 #include "input/input_cursor.hpp"
@@ -103,7 +104,7 @@ namespace goblin::overlay_api
     bool quest_unfinishable(size_t i) { return goblin::ui::quest_unfinishable(i); }
     bool read_event_flag(uint32_t id) { return goblin::ui::read_event_flag(id); }
     void request_cluster_replan() { goblin::ui::request_cluster_replan(); }
-    void rebuild_markers() { goblin::worldmap::rebuild_markers(); }
+    void rebuild_markers() { goblin::overlay_render_loader::call_rebuild_markers(); }
     void virtual_map_set_open(bool open) { goblin::overlay::panel::virtual_map_open() = open; }
     bool virtual_map_is_open() { return goblin::overlay::panel::virtual_map_open(); }
     void f1_request_tab(int idx) { goblin::overlay::request_f1_tab(idx); }
@@ -228,7 +229,7 @@ namespace goblin::overlay_api
     bool heightfield_sampling() { return goblin::heightfield::sampling(); }
     size_t far_relief_snapshot(std::vector<goblin::heightfield::Cell> &out) { return goblin::worldmap::far_relief_snapshot(out); }
     float far_relief_step() { return goblin::worldmap::far_relief_step(); }
-    void far_relief_build(int group, int cellSize) { goblin::worldmap::build_far_relief(group, cellSize); }
+    void far_relief_build(int group, int cellSize) { goblin::overlay_render_loader::call_build_far_relief(group, cellSize); }
     int far_relief_built_group() { return goblin::worldmap::far_relief_built_group(); }
     void set_grace_from_candidate(size_t index) { goblin::set_grace_from_candidate(index); }
     const std::vector<goblin::LiveGrace> &live_graces() { return goblin::live_graces(); }

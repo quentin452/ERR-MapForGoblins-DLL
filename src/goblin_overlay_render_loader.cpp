@@ -12,8 +12,9 @@
 #include <thread>
 #include "worldmap/loot_disk.hpp"  // set_build_trigger — host-held render fn ptr, de/re-registered around a swap
 #else
-#include "worldmap/map_entry_layer.hpp"  // prebuild_markers, refresh_overlay_census (same binary)
+#include "worldmap/map_entry_layer.hpp"  // prebuild_markers, refresh_overlay_census, rebuild_markers, far_relief (same binary)
 #include "worldmap/map_renderer.hpp"     // inworld_hovered (same binary)
+namespace goblin::overlay::panel { void virtual_map_service_pending_warp(); }  // panel_virtual_map.cpp (same binary)
 #endif
 
 #if defined(GOBLIN_OVERLAY_HOTRELOAD_BUILD)
@@ -56,6 +57,10 @@ namespace goblin::overlay_render_loader
         using RefreshOverlayCensusFn = void (*)();
         using RenderIdleFn = int (*)();
         using RenderInitLoggingFn = void (*)(int);
+        using RebuildMarkersFn = void (*)();
+        using ServicePendingWarpFn = void (*)();
+        using BuildFarReliefFn = void (*)(int, int, char *, int);
+        using FarReliefProbeFn = void (*)(char *, int);
 
         struct RenderExports
         {
@@ -69,6 +74,10 @@ namespace goblin::overlay_render_loader
             RefreshOverlayCensusFn refresh_overlay_census = nullptr;
             RenderIdleFn render_idle = nullptr;
             RenderInitLoggingFn init_logging = nullptr;
+            RebuildMarkersFn rebuild_markers = nullptr;
+            ServicePendingWarpFn service_pending_warp = nullptr;
+            BuildFarReliefFn build_far_relief = nullptr;
+            FarReliefProbeFn far_relief_probe = nullptr;
         };
 
         RenderExports g_cur;             // the live render module; swapped under g_lock exclusive
@@ -153,8 +162,14 @@ namespace goblin::overlay_render_loader
                 reinterpret_cast<RefreshOverlayCensusFn>(GetProcAddress(m, "MFG_RefreshOverlayCensus"));
             e.render_idle = reinterpret_cast<RenderIdleFn>(GetProcAddress(m, "MFG_RenderIdle"));
             e.init_logging = reinterpret_cast<RenderInitLoggingFn>(GetProcAddress(m, "MFG_RenderInitLogging"));
+            e.rebuild_markers = reinterpret_cast<RebuildMarkersFn>(GetProcAddress(m, "MFG_RebuildMarkers"));
+            e.service_pending_warp =
+                reinterpret_cast<ServicePendingWarpFn>(GetProcAddress(m, "MFG_ServicePendingWarp"));
+            e.build_far_relief = reinterpret_cast<BuildFarReliefFn>(GetProcAddress(m, "MFG_BuildFarRelief"));
+            e.far_relief_probe = reinterpret_cast<FarReliefProbeFn>(GetProcAddress(m, "MFG_FarReliefProbe"));
             if (!e.draw_panel || !e.draw_worldmap_markers || !e.draw_minimap_hud || !e.prebuild_markers ||
-                !e.inworld_hovered || !e.refresh_overlay_census || !e.render_idle || !e.init_logging)
+                !e.inworld_hovered || !e.refresh_overlay_census || !e.render_idle || !e.init_logging ||
+                !e.rebuild_markers || !e.service_pending_warp || !e.build_far_relief || !e.far_relief_probe)
             {
                 spdlog::error("[HOTRELOAD] GetProcAddress failed for one or more render exports in {}", utf8(dest));
                 FreeLibrary(m);
@@ -353,6 +368,30 @@ namespace goblin::overlay_render_loader
         SharedGuard g;
         if (g_cur.refresh_overlay_census) g_cur.refresh_overlay_census();
     }
+    void call_rebuild_markers()
+    {
+        SharedGuard g;
+        if (g_cur.rebuild_markers) g_cur.rebuild_markers();
+    }
+    void call_service_pending_warp()
+    {
+        SharedGuard g;
+        if (g_cur.service_pending_warp) g_cur.service_pending_warp();
+    }
+    std::string call_build_far_relief(int group, int cellSize)
+    {
+        SharedGuard g;
+        char b[192] = {};
+        if (g_cur.build_far_relief) g_cur.build_far_relief(group, cellSize, b, (int)sizeof(b));
+        return b;
+    }
+    std::string call_far_relief_probe()
+    {
+        SharedGuard g;
+        char b[256] = {};
+        if (g_cur.far_relief_probe) g_cur.far_relief_probe(b, (int)sizeof(b));
+        return b;
+    }
 #else
     // Default single-DLL build: direct calls, no indirection, nothing to load or reload.
     bool load() { return true; }
@@ -371,5 +410,9 @@ namespace goblin::overlay_render_loader
     void call_prebuild_markers() { goblin::worldmap::prebuild_markers(); }
     bool call_inworld_hovered() { return goblin::worldmap::inworld_hovered(); }
     void call_refresh_overlay_census() { goblin::worldmap::refresh_overlay_census(); }
+    void call_rebuild_markers() { goblin::worldmap::rebuild_markers(); }
+    void call_service_pending_warp() { goblin::overlay::panel::virtual_map_service_pending_warp(); }
+    std::string call_build_far_relief(int group, int cellSize) { return goblin::worldmap::build_far_relief(group, cellSize); }
+    std::string call_far_relief_probe() { return goblin::worldmap::far_relief_probe(); }
 #endif
 }

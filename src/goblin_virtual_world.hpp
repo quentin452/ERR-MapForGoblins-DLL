@@ -16,6 +16,8 @@
 #include <utility>
 #include <vector>
 
+#include "goblin_dll_export.hpp"  // GOBLIN_RENDER_API — host exports these to the render DLL (hot-reload split)
+
 namespace goblin::vworld
 {
 struct Marker
@@ -40,31 +42,31 @@ struct World
 };
 
 // Create a new custom world; returns its id (≥1). The framework owns the id/namespace, not the caller.
-int create(const std::string &name);
+GOBLIN_RENDER_API int create(const std::string &name);
 // Append a marker to world `worldId` (world-relative coords). false if the id is unknown.
-bool add_marker(int worldId, float x, float z, const std::string &name, uint32_t color, int category = -1);
+GOBLIN_RENDER_API bool add_marker(int worldId, float x, float z, const std::string &name, uint32_t color, int category = -1);
 // Set the ACTIVE world (0 = base ER). false if id unknown (and ≠ 0).
-bool set_active(int id);
-int active();
+GOBLIN_RENDER_API bool set_active(int id);
+GOBLIN_RENDER_API int active();
 // The vworld the PLAYER physically occupies (PlayerDim): reads the live player dimension area
 // (get_player_dimension_area) and returns the world whose physical_area matches, else 0 (base ER). The
 // natural target for the "Player" button / map-open — recenter in whatever 3D world the player is in.
 // Today returns 0 (no world binds a physical area yet); ready for reserved walkable worlds.
-int player_world();
+GOBLIN_RENDER_API int player_world();
 // Snapshot-copy world `id` (thread-safe read for the render thread). false if unknown.
-bool get_world(int id, World &out);
+GOBLIN_RENDER_API bool get_world(int id, World &out);
 // (id, name) pairs for the selector — index 0 is always the synthetic {0,"Base ER"}.
-std::vector<std::pair<int, std::string>> list();
+GOBLIN_RENDER_API std::vector<std::pair<int, std::string>> list();
 // Remove all custom worlds + reset active to 0 (base ER).
-void clear();
+GOBLIN_RENDER_API void clear();
 
 // ── Persistence (bundle-backed, TOML — slice C3) ──────────────────────────────────────────────────
 // Records `mod_folder` so the no-arg default_path()/save_default()/load_boot() work later.
-void set_folder(const std::filesystem::path &mod_folder);
-std::filesystem::path default_path();                 // <mod_folder>/virtual_worlds.toml
-bool save(const std::filesystem::path &path);         // write the registry (+ active id) to a TOML file
-bool load(const std::filesystem::path &path);         // parse a TOML file INTO the registry (REPLACES it)
-bool save_default();                                  // save() to default_path()
-int load_default();                                   // load default_path() if present (folder already set)
-int load_boot(const std::filesystem::path &mod_folder);  // set_folder + load default if present; #worlds
+GOBLIN_RENDER_API void set_folder(const std::filesystem::path &mod_folder);
+GOBLIN_RENDER_API std::filesystem::path default_path();                 // <mod_folder>/virtual_worlds.toml
+GOBLIN_RENDER_API bool save(const std::filesystem::path &path);         // write the registry (+ active id) to a TOML file
+GOBLIN_RENDER_API bool load(const std::filesystem::path &path);         // parse a TOML file INTO the registry (REPLACES it)
+GOBLIN_RENDER_API bool save_default();                                  // save() to default_path()
+GOBLIN_RENDER_API int load_default();                                   // load default_path() if present (folder already set)
+GOBLIN_RENDER_API int load_boot(const std::filesystem::path &mod_folder);  // set_folder + load default if present; #worlds
 } // namespace goblin::vworld

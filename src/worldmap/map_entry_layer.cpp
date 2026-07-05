@@ -3932,6 +3932,7 @@ const std::vector<MerchantItem> &merchant_search_items() { return g_merchant_ite
 // calls refresh_overlay_census() from the watcher thread — both host-side, so (like the 3 draw
 // functions) these need stable-name extern "C" exports resolved via GetProcAddress, not ordinary
 // dllimport. See goblin_overlay_render_loader.{hpp,cpp} for the host-side call sites.
+namespace goblin::overlay::panel { void virtual_map_service_pending_warp(); }  // panel_virtual_map.cpp (render)
 extern "C"
 {
     __declspec(dllexport) void MFG_PrebuildMarkers() { goblin::worldmap::prebuild_markers(); }
@@ -3941,5 +3942,20 @@ extern "C"
     // stores g_disk_running=false a few instructions before actually leaving render code; the
     // loader additionally defers the old module's FreeLibrary by one reload to cover that tail.)
     __declspec(dllexport) int MFG_RenderIdle() { return goblin::worldmap::disk_build_running() ? 0 : 1; }
+    // Host→render calls the host makes into the (render-resident) marker/relief/panel code. Routed
+    // through the loader's export table so they follow the module across a hot-swap. The two status
+    // strings fill a caller buffer instead of returning std::string across the C boundary.
+    __declspec(dllexport) void MFG_RebuildMarkers() { goblin::worldmap::rebuild_markers(); }
+    __declspec(dllexport) void MFG_ServicePendingWarp() { goblin::overlay::panel::virtual_map_service_pending_warp(); }
+    __declspec(dllexport) void MFG_BuildFarRelief(int group, int cellSize, char *out, int cap)
+    {
+        std::string s = goblin::worldmap::build_far_relief(group, cellSize);
+        if (out && cap > 0) { std::snprintf(out, (size_t)cap, "%s", s.c_str()); }
+    }
+    __declspec(dllexport) void MFG_FarReliefProbe(char *out, int cap)
+    {
+        std::string s = goblin::worldmap::far_relief_probe();
+        if (out && cap > 0) { std::snprintf(out, (size_t)cap, "%s", s.c_str()); }
+    }
 }
 #endif

@@ -727,7 +727,7 @@ namespace goblin::debug_rpc
             // far_relief_probe — D-far -1: dump the MSB placement Y-cloud distribution per overworld tile
             // (validates whether posY is world-ish or block-local before building the far-relief grid).
             if (cmd == "far_relief_probe")
-                return goblin::worldmap::far_relief_probe();
+                return goblin::overlay_render_loader::call_far_relief_probe();
             // far_relief [group] [cellSize] — D-far -1 v0: build the MSB Y-cloud relief field for a vmap
             // group (0=OW 1=UG 2=DLC-OW 3=DLC-UG; default 0) at cellSize (default 128u). The vmap also
             // auto-builds the active group when Relief is on, so this is mainly for a headless/forced build.
@@ -737,7 +737,7 @@ namespace goblin::debug_rpc
                 int group = 0, cell = 128;
                 if (!gs.empty()) { try { group = std::stoi(gs); } catch (...) {} }
                 if (!cs.empty()) { try { cell = std::stoi(cs); } catch (...) {} }
-                return goblin::worldmap::build_far_relief(group, cell);
+                return goblin::overlay_render_loader::call_build_far_relief(group, cell);
             }
             // vworld create <name> | marker <id> <x> <z> [name] | active <id> | list | clear —
             // drive the virtual-world registry (custom mod worlds shown on the virtual map).

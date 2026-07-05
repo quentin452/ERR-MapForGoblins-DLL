@@ -4,6 +4,8 @@
 // 3D worlds. RE: docs/re/hknpworld_addbody_slot_re_findings.md + add_collision_linux_impl_brief.md.
 #include <cstdint>
 
+#include "goblin_dll_export.hpp"  // GOBLIN_RENDER_API — host exports these to the render DLL (hot-reload split)
+
 namespace goblin::add_collision
 {
 struct Result
@@ -16,12 +18,12 @@ struct Result
 };
 
 // Read-only: resolve hknpWorld/bodyMgr from the PhysWorld singleton (no allocation, no call). Sanity gate.
-Result resolve_world();
+GOBLIN_RENDER_API Result resolve_world();
 
 // Phase-1 RECON: resolve + call hknpBodyCinfo init on a scratch buffer + read body[0], logging both byte
 // dumps ([ADDCOL]) so the cinfo field layout (shape/pos/orient/motionType/flags) can be pinned. No world
 // mutation → safe from the present/RPC thread. Returns the resolve result (dumps go to the log).
-Result recon();
+GOBLIN_RENDER_API Result recon();
 
 // Phase-2 ADD (findings §6): build an hknpBodyCinfo — init defaults, then the minimal STATIC fill
 // (+0x00 shape / +0x30 position; orientation stays identity, motionType stays 0 = STATIC) — and
@@ -34,5 +36,5 @@ Result recon();
 //                 CS flush). Present-thread first attempt (brief §4) — the freeze watchdog covers a
 //                 stall; fall back to a FUN_140c72c20-mirror game-thread hook if it does.
 // Verify with hf_probe_present at pos: a down-ray hit at the body's top = it is live in the broadphase.
-Result add_box(const float half[3], const float pos[3], bool force);
+GOBLIN_RENDER_API Result add_box(const float half[3], const float pos[3], bool force);
 } // namespace goblin::add_collision

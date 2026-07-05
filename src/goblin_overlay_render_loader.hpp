@@ -9,6 +9,8 @@
 // through a GetProcAddress-resolved function pointer (GOBLIN_OVERLAY_HOTRELOAD_BUILD) — no
 // branching needed at the call site either way.
 
+#include <string>
+
 #include "goblin_overlay_render.hpp"  // OverlayFrameCtx
 
 namespace goblin::overlay_render_loader
@@ -46,4 +48,10 @@ namespace goblin::overlay_render_loader
     void call_prebuild_markers();
     bool call_inworld_hovered();
     void call_refresh_overlay_census();
+    // Host→render calls the host makes into render-resident marker/relief/panel code (2026-07-05
+    // split resync). Same both-build indirection as above.
+    void call_rebuild_markers();
+    void call_service_pending_warp();
+    std::string call_build_far_relief(int group, int cellSize);
+    std::string call_far_relief_probe();
 }

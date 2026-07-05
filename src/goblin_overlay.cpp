@@ -2016,7 +2016,7 @@ namespace
         goblin::debug_rpc::pump(swapchain);
         // Service a vmap grace-warp queued by a double-click THIS frame — post-Render, same safe point as
         // the RPC pump (running warp mid-ImGui-draw froze the loading screen).
-        goblin::overlay::panel::virtual_map_service_pending_warp();
+        goblin::overlay_render_loader::call_service_pending_warp();
         // Heightfield present-thread probe (D2.2 experiment): no-op unless queued; casts only during
         // gameplay (map closed). Tests whether a read-only ray-cast is safe off the present thread.
         goblin::heightfield::tick_present();

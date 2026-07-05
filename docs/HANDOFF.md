@@ -35,6 +35,21 @@ User wants to STOP the ~3-4min game-reboot per fix and revive the overlay hot-re
     RPC). **Full list:** `ninja -C build-linux-hotreload MapForGoblins 2>&1 | grep 'undefined symbol'`.
   - **⚠ maintenance root cause:** the split has no CI/build check, so every new host↔render call silently
     breaks it. After resync, add a `build-linux-hotreload` compile to the dev checklist / a VSCode task.
+  - **★ RESYNC IN PROGRESS (2026-07-05, partial — DEFAULT build stays clean throughout):** Category A DONE
+    (moved `goblin_virtual_world.cpp`, `goblin_custom_markers.cpp`, `goblin_add_collision.cpp`,
+    `worldmap/maptile.cpp` to HOST_SOURCES + marked their public APIs `GOBLIN_RENDER_API`). Category-B first
+    tranche DONE (loader exports `MFG_RebuildMarkers`/`MFG_ServicePendingWarp`/`MFG_BuildFarRelief`/
+    `MFG_FarReliefProbe` + `call_*` wrappers in both branches + routed the 5 host callers). **But the build
+    revealed the drift is ~2× bigger:** the ENTIRE `vmap` RPC→panel surface is called directly by the host
+    (debug_rpc) — ~18 more `goblin::overlay::panel::virtual_map_*` fns (fit/group/tile/tiles_clear/load_lod/
+    load_resident/tile_recon/locate/offmap/find/item_search/force_spiderfy/set_relief/set_view/set_flip/
+    group/open) + `overlay::request_f1_tab`, `panel::dump_markers_csv`, `worldmap::far_relief_snapshot`, and
+    more surface after those. **DECISION NEEDED — two ways to finish:** (1) per-function loader exports (same
+    mechanism, ~100 more mechanical edits); OR (2) **ONE generic `MFG_VmapCommand(subcmd, args, out, cap)`
+    export** — move the debug_rpc `vmap`-verb dispatch into the render module (it already holds all the panel
+    fns), collapsing ~18 exports into 1 (much less wiring, but refactors the rich per-verb arg parsing in
+    debug_rpc). Recommend (2) for the vmap surface + per-fn for the ~3 stragglers. **All committed as a WIP
+    checkpoint; the default single-DLL build (the shipped/used one) links + runs unaffected.**
 - **Boss dedup bug (task #16, user-reported):** bosses of the same NAME collapse to one/first. Demi-Human
   Chief should be x2 Coastal Cave + x1 Demi-Human Forest Ruins (3); Erdtree Avatar should be 7 (1 UG + 6 OW)
   but ~4 show. Check `build_live_bosses` (`map_entry_layer.cpp`) + any name/entity dedup dropping duplicates.
