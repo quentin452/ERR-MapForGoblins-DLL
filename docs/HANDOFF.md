@@ -283,14 +283,13 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
 
 ## Open / next items
 
-- **Off-map markers = area-11 grid(5,0) fold to (0,0) — followup fix (2026-07-05, triaged via `vmap offmap`).**
-  `virtual_map_offmap_probe` (RPC `vmap offmap`) found ALL 57 off-map-dropped markers (of 9794) are
-  origin-zero AND all in raw ER **area 11 (Leyndell) grid(5,0)** — Leyndell/Ashen-Capital graces + loot
-  (Elden Throne, Queen's Bedchamber, Star Fist, Erdtree's Favor +2, Golden Seed, Smithing Stone [7], …).
-  So one broken fold tile: area-11 grid(5,0) projects to (0,0) instead of folding onto the overworld Leyndell
-  (the m35 Ashen→11→60 legacy fold path). Fix = make that tile fold correctly (check `goblin::legacy_fold`
-  for an area-11 grid(5,0) row / the chained-dst; these may be Ashen-Capital placements with a default/
-  unresolved MSB position). Re-run `vmap offmap` to confirm 0 after.
+- **✅ Off-map markers = area-11 (Leyndell) fold-to-(0,0) — FIXED 2026-07-05.** `vmap offmap` triaged ALL 57
+  off-map markers → origin-zero, all raw area 11 grid(5,0) (Leyndell/Ashen graces + loot). Root cause: block
+  (11,5,0) carries SEVERAL `WorldMapLegacyConvParam` rows with different dst (→60 overworld AND →19/34/35
+  sub-maps); `legacy_fold` kept the FIRST per block (param row-id order), and a dead-end (area 19 = 0 further
+  rows) won → the marker folded to grid~0 = (0,0). Fix (`goblin_legacy_fold.cpp ensure_built`): a row whose
+  dst is a TERMINAL (overworld, area∈[50,88]) beats a non-terminal dst for the same block → (11,5,0) now folds
+  to a60 (Leyndell overworld). Re-ran `vmap offmap`: **0 off-map of 9796** (was 57).
   **ALSO (user-observed 2026-07-05): (0,0) objects appear on ALL 3 pages (OW/UG/DLC), not just overworld.**
   `vmap offmap` only surfaced the 57 area-11 ones (they fold to group-0 OW) because it reads the STORED
   worldX (marker_world_pos / legacy fold). The vmap DRAWS UG/DLC via `vmap_proj` (the live VM converter), so

@@ -71,8 +71,17 @@ bool ensure_built() {
                  L"WorldMapLegacyConvParam")) {
             ConvRow c{ row.srcAreaNo, row.srcGridXNo, row.srcGridZNo, row.srcPosX, row.srcPosZ,
                        row.dstAreaNo, row.dstGridXNo, row.dstGridZNo, row.dstPosX, row.dstPosZ };
-            // First base point per full block wins (engine tree key is the packed block).
-            g_by_block.emplace(block_key(c.src_area, c.src_gx, c.src_gz), c);
+            // One block can carry SEVERAL conv rows with different dst (e.g. Leyndell block (11,5,0) has
+            // dst→60 overworld AND dst→19/34/35 sub-maps). First-wins by param row-id picked the WRONG one
+            // when a dead-end (area 19 has 0 further rows) came first → the marker folded to grid~0 = (0,0)
+            // off-map (57 Leyndell/Ashen graces+loot, `vmap offmap`). Fix: a row whose dst is a TERMINAL
+            // (overworld, area∈[50,88]) beats a non-terminal (intermediate/dead-end) dst for the same block.
+            {
+                uint32_t bk = block_key(c.src_area, c.src_gx, c.src_gz);
+                auto ins = g_by_block.emplace(bk, c);
+                if (!ins.second && !is_terminal(ins.first->second.dst_area) && is_terminal(c.dst_area))
+                    ins.first->second = c;   // upgrade to the direct-to-overworld row
+            }
             g_by_area[c.src_area].push_back(c);
             ++n;
         }
