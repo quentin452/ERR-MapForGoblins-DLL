@@ -203,6 +203,15 @@ namespace goblin::worldmap_probe
     // distinct (viewport, map_open) once as [VIEWPORT]. Gated by debug_scissor_probe.
     void note_map_viewport(float x, float y, float w, float h, bool map_open);
 
+    // M5 native-map cull — the GFx-layer render toggle (Scaleform MovieImpl+0xB0 clip rect, reached
+    // WorldMapDialog+0x140 -> +0x00; RE worldmap_native_clip_b3_scaleform_re_findings.md). Zeroing the
+    // clip stops the native map movie rasterizing while WorldMapDialog logic keeps ticking. Replaces the
+    // DISPROVEN D3D12 scissor path (no map-specific rect exists). Map must be OPEN to resolve.
+    GOBLIN_RENDER_API bool movieclip_read(int outLTWH[4], int outBufWH[2]);  // read L,T,W,H (+ buf W,H)
+    GOBLIN_RENDER_API void movieclip_set_hide(bool on);                      // arm/disarm the cull
+    GOBLIN_RENDER_API bool movieclip_hiding();                               // current arm state
+    GOBLIN_RENDER_API bool movieclip_maintain();  // per-frame: force clip 0 while armed, else restore
+
     // No-restart fix for mid-session resolution / display-mode changes: edge-triggered
     // call to ER's complete swapchain re-apply (FUN_1419ed440 — release+ResizeBuffers+
     // recreate all render targets), fixing windowed/fullscreen/borderless. Render-thread

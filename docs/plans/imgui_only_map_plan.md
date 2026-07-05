@@ -34,7 +34,7 @@ Two independent tracks; the user confirmed **Track 1 first**:
 | M2 | **Content parity** | Track A rows + D2 heightfield (UNBLOCKED — present-thread cast works, `d3ca993`) + tiles; far-terrain OPTIONAL for full-map coverage | `far_terrain_heightmap_re_prompt.md` (optional) |
 | M3 | ✅ **USABLE — "our map shows"** | `world_map_open()` → vmap **cover opaque** (accept the native draw cost for now), mouse+kb | none (open is state-based → already remap/pad-agnostic) |
 | M4 | **Nav parity** | warp-on-click (done), close, region switch, **gamepad nav** | `windows_keybinding_config_re_prompt.md` (remap-aware triggers); gamepad-nav itself = M1, no decode |
-| M5 | **Cull native (perf)** | suppress the native DRAW — the Scaleform movie `02_120_worldmap.gfx` + the tile canvas — NOT just cover (cover ≠ cull → two maps drawn) | `worldmap_native_clip_b3_scaleform_re_findings.md` (movie + chain FOUND) → find a render/visible toggle; `CANVAS_SINGLETON` for the tile canvas |
+| M5 | **Cull native (perf)** — ⚠ both CHEAP levers DEAD (2026-07-05), DEPRIORITIZED | suppress the native DRAW (cover ≠ cull). D3D12 scissor + GFx `MovieImpl+0xB0` clip write BOTH disproven live (`..._render_toggle_re_findings.md` §4c/§4d). Left = Scaleform draw-vfunc no-op / movie visible-flag / CSMenuMan draw-skip = **Windows Ghidra, not-cheap**; gated on parity+fast-travel anyway | Windows RE (draw-vfunc); `CANVAS_SINGLETON` for the tile canvas |
 
 **Key ordering insight:** M3 (usable, cover-opaque) ships BEFORE the cull (M5) and gamepad (M4). Cull +
 gamepad are quality/perf upgrades, **not blockers** for "our map replaces theirs visually" — so Track 1
@@ -190,12 +190,23 @@ Original spec (a grace LIST menu, not just clicking dots on the canvas), so the 
   single-surface goal, so pick its mechanism on merits, not on the (defunct) menu-context hypothesis.
 - **C1 (= M3 interim → M5 cull):** take over the native map. **M3 interim = cover opaque** (vmap over the
   native map on `world_map_open()` — usable, but the native still draws → two maps). **M5 = actually CULL the
-  native DRAW** (cover ≠ cull): the native map is a **Scaleform movie `02_120_worldmap.gfx`** reachable via
-  `WorldMapDialog+0x140 → MovieImpl` (RTTI-resolved, `worldmap_native_clip_b3_scaleform_re_findings.md`) PLUS
-  a separate engine **tile canvas** (`CANVAS_SINGLETON` 0x47ef360). Suppress BOTH draws (a render/visible
-  toggle or a no-op of the render call) while **keeping the Dialog STATE open** → pause/input/close plumbing
-  stays free. Two RPM experiments de-risk it first: zero `MovieImpl+0xB0` (does the terrain vanish too, or is
-  it engine-tiles? → one suppress point or two) + probe for a visible flag on the movie/player.
+  native DRAW** (cover ≠ cull). **⚠ 2026-07-05: both CHEAP levers are DEAD (live-disproven on Linux) — M5
+  DEPRIORITIZED:**
+  - **D3D12 `RSSetScissorRects` empty-clip (was RECOMMENDED) — DEAD:** the Scaleform map rasterizes full-screen
+    through the same generic engine scissors (shadow/mip/full-screen); there is NO map-specific rect (the
+    `[SCISSOR]` recon found 0 mapopen=1-only rects; the minimap rect correctly isolated as mapopen=0-only, so
+    the tagging was sound). Findings §4c.
+  - **GFx `MovieImpl+0xB0` clip write (the pivot) — DEAD:** resolve is correct (`WorldMapDialog+0x140 →
+    *(+0x00)=MovieImpl`, validated by `buf==1920×1080`) and the zero-write HOLDS, but the map still renders →
+    `+0xB0` is a DESCRIPTIVE viewport, not a render gate. Findings §4d. (Shipped `movieclip read` as a live
+    map-viewport diagnostic; hide/show kept as inert scaffolding.)
+  - **What's left (all not-cheap):** the Scaleform DRAW-vfunc no-op (Windows Ghidra — "several uncertain runs"),
+    a movie/player visible/enable flag (risky RPM field-scan spike, reuse the `movieclip` scaffolding), or the
+    CSMenuMan draw-loop skip. Plus the separate engine tile canvas (`CANVAS_SINGLETON` 0x47ef360). Keep the
+    Dialog STATE open so pause/input/close stay free.
+  - **Net:** production cull is gated on Track A parity + Track B fast-travel anyway (not met), so the cull is
+    BOTH not-cheap AND not-urgent → keep advancing the migration on ungated bricks; do the cull from the
+    Windows/RE track when it has a slot.
 - **C2: RESOLVED (see Locked decisions)** — no hardcoded key. The vmap opens on `world_map_open()` (game menu
   state) → remap/gamepad-agnostic for OPEN, for free. Gamepad NAV of the vmap = feed the polled XInput into
   ImGui nav (M1, no RE); remap-aware action triggers = `windows_keybinding_config_re_prompt.md`.

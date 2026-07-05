@@ -77,6 +77,59 @@ game-breaking risk the design docs flag). **Follow-up RE:** read the combat/dang
 game's own "warp allowed?" gate (must replicate it for fast-travel anyway); alternatives = a battle/danger
 flag on WorldChrMan/LocalPlayer. Deferred to after the render toggle.
 
+## 4c. ⛔ Candidate 2 (D3D12 RSSetScissorRects) DISPROVEN live — 2026-07-05 (Linux/Proton)
+Ran the scissor recon end-to-end (`tmp/scissor_recon.py`: boot → 3× native-map open/close cycles → the
+`[SCISSOR]`/`[VIEWPORT]` detour dedup sets, tagged mapopen). **Result: ZERO rects appear mapopen=1-only.**
+All 30 distinct scissor rects are GENERIC engine passes present every frame regardless of the map — shadow
+atlas tiles `(3072,1024)-(4096,2048)` 1024², the mip chain `512/256/128/64/16/4/1`, full-screen
+`1920×1080` / `960×540`. The tagging is sound (proven by the ONE mapopen=0-only rect = the **minimap**
+`(1681,24)-(1895,238)` 214², correctly present only when the map is CLOSED). So a distinct map scissor would
+have shown as mapopen=1-only — none did.
+
+**Conclusion:** the Scaleform world-map rasterizes **full-screen through the same generic engine scissors**;
+there is **no map-specific scissor rect to force empty**. Emptying the shared full-screen rect while the map
+is open would blank the WHOLE frame (game render included), not just the map = black screen, not a cull.
+**Candidate 2 is dead for isolating the map.** (The scissor detour stays useful as-is for the `MAPCLIP`/
+resolution diagnostics, just not as the cull lever.)
+
+**⇒ Pivot to the GFx-layer lever (candidate 1, but reached without the draw-vfunc slot):** the native map IS
+the Scaleform movie `02_120_worldmap.gfx`, and its render **clip rect is already RE'd** at `MovieImpl+0xB0`
+(int L,T,W,H, virtual 1920×1080) via `WorldMapDialog+0x140 → +0x00`
+(`worldmap_native_clip_b3_scaleform_re_findings.md`, there READ for our marker clip). Forcing that clip to
+`(0,0,0,0)` each frame stops the movie rasterizing while `WorldMapDialog`'s UPDATE tick keeps running = the
+exact "render-only, keep logic" toggle — no menu vtable/slot needed, and **Linux-doable** (the offsets are
+live-verified reads). Implemented behind the dev RPC `movieclip read|hide|show` +
+`worldmap_probe::movieclip_maintain()` (per-present zero-write) 2026-07-05; live GO/NO-GO test in progress.
+
+## 4d. ⛔ MovieImpl+0xB0 clip write ALSO inert for cull — 2026-07-05 (Linux/Proton)
+Implemented + live-tested the §4c pivot (`movieclip read|hide|show` RPC + `movieclip_maintain()` per-present
+zero-write; `tmp/movieclip_test.py`). **The resolve is CORRECT** — with the two-deref chain
+`WorldMapDialog+0x140 → *(+0x00)=MovieImpl`, `read` returns `clip=(0,0,1920,1080) buf=(1920,1080)` (matches the
+findings; a one-deref bug first read garbage `buf=(942682421,…)` — the fix is: movieHandle is a POINTER at
+`dialog+0x140`, MovieImpl is a POINTER at `movieHandle+0x00`, so TWO derefs, validated by `buf==1920×1080`).
+**But forcing `+0xB0` to `(0,0,0,0)` does NOT hide the map:** the write HOLDS (read-back stays `(0,0,0,0)`, the
+engine does not rewrite it) yet the native map + all markers render unchanged (screenshots `mc_before/hide/show`).
+Clean round-trip, no crash, menu logic intact throughout (map closes normally).
+
+**Conclusion:** `MovieImpl+0xB0` is a **descriptive** viewport (the map's screen extent — what B3 READ it for, to
+clip OUR markers), **not a render-enable the GFx pass consults.** So BOTH cheap levers are dead: candidate 2
+(D3D12 scissor, §4c — no map-specific rect) and this GFx clip write. The `movieclip read` verb is KEPT as a live
+map-viewport diagnostic; `hide/show` are kept as reusable scaffolding (resolve + per-frame maintain) for a future
+**movie visible/enable-flag** hunt, but are INERT for culling today.
+
+**⇒ What's actually left for the cull** (all NOT cheap, and the production flip is GATED on Track A parity +
+Track B fast-travel anyway, so this is not urgent):
+- **Candidate 1 — the Scaleform DRAW vfunc no-op** (skip submitting the movie's GFx render pass). Needs the draw
+  slot — findings §4 flagged this as "several uncertain Ghidra runs" (Windows). The real remaining path.
+- **A movie/player visible/enable flag** — blind RPM field-scan of MovieImpl / `CSScaleformSwfPlayer`
+  (`movieHandle+0x58`) for a boolean that gates render. Linux-doable but a risky spike (flipping unknown fields
+  can crash); reuse the `movieclip` scaffolding.
+- **Candidate 3 — CSMenuMan draw-loop skip the WorldMapDialog entry** (Windows RE).
+
+**Recommendation:** since M5's cheap Linux levers are exhausted AND the production flip is gated + not-cheap,
+**deprioritize the cull** and keep advancing the vmap migration on UNGATED bricks; pick up the cull via candidate 1
+(Windows Ghidra) when the Windows/RE track has a slot.
+
 ## 5. Sequencing (honest — per the design docs)
 - **Now (cheap, do it):** RE/pin the toggle point + wire a dev flag. Lets you **A/B the vmap against the
   native map** live and de-risks the takeover — value even before replacement.
@@ -94,7 +147,8 @@ native map menu     CS::WorldMapDialog       vtable er+0x2b2d7d8  (size 0x3ed0; 
 menu base class     CS::MenuWindow  (CSMenu base ctor FUN_140741960 er+0x741960: DLReferenceCountObject->SceneObjModifier->MenuWindow)
 menu managers       CSFeManImp (ctor 0x76b9d0) / CSMenuManImp (ctor 0x7650a0)  [CSFEMAN_SLOT/CSMENUMAN_SLOT pinned]
 menu UPDATE tick    FUN_140766980 (er+0x766980)  = CSMenuManImp CSEzUpdateTask execute (LOGIC, not draw — leave running)
-RECOMMENDED toggle  D3D12 RSSetScissorRects detour (goblin_config Task B2 [SCISSOR], mapopen-tagged) — draw is a separate Scaleform pass
+toggle (DISPROVEN)  D3D12 RSSetScissorRects — DEAD (§4c): map draws full-screen through generic engine scissors, no map-specific rect
+RECOMMENDED toggle  GFx clip write: MovieImpl+0xB0 (int L,T,W,H) = 0 via WorldMapDialog+0x140->+0x00 — RPC movieclip, movieclip_maintain() per frame
 ```
 Cross-ref: `imgui_only_map_plan.md` (Track C), `single_surface_ui_plan.md`, `virtual_world_multi_world_design.md`
 (endgame phase 3), `windows_csworldmapmenu_re_prompt.md` (the CSWorldMapMenu subsystem).

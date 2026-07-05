@@ -25,6 +25,12 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **Virtual World Map auto-follows the player's dimension.** A new `Follow` toggle (on by default) switches
+  the vmap page to match the dimension the player is physically in — cross from the overworld into an
+  underground/DLC area and the map page changes with you. Edge-triggered on the actual crossing, so a manual
+  page pick between crossings still sticks (turn `Follow` off to browse other pages freely). Reuses the live
+  PlayerDim resolver; the camera is left where it is (this switches the page, not the view — the one-shot
+  `Player` button still recenters).
 - **Mod-agnostic catch-all category (`Loot - Other`).** A placed item MFG's live taxonomy resolves but
   can't sort into any known category now routes into a terminal `Loot - Other` category (toggle
   `show_other`, on by default) and draws with its OWN native item icon (a plain circle only when even that
