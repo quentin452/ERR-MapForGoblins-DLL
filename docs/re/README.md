@@ -143,6 +143,11 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
   (`havok_vdb_presence_findings.md`); could give a free 3D collision render via the official client, but is
   gated on a version-matched client (~2018 Havok). SECONDARY — the ESP hknp-wireframe path avoids the version
   lock. Settle the client GO/NO-GO first.
+- **ER frame bottleneck profiling (name the mono-thread hot path) — `er_frame_bottleneck_profiling_re_idea.md`.**
+  IDEA/followup. `perf` proved ER is mono-thread CPU-bound (~69% on the main thread, GPU idle, vkd3d ~4%) but
+  the hot addrs are VMProtect-unresolved. Resolve them → RVA → Ghidra (decrypted dump) to NAME the dominant
+  frame subsystem. ⚠ For engine understanding, NOT for the Linux<Windows fps deficit (that = wine per-call
+  overhead → gamescope/Proton/governor, not one hot fn).
 - **Debug-render / wireframe flag (greybox job #2a — CHEAP scan) — `windows_debug_render_flag_re_prompt.md`.**
   Does retail ER expose a leftover debug-render flag (wireframe / untextured / flat / collision-draw) that
   restyles the engine's OWN render, systems untouched? Binary GO/NO-GO strings/RTTI/globals scan (hours). GO =
