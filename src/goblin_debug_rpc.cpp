@@ -411,7 +411,7 @@ namespace goblin::debug_rpc
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp coords warp_local warp_xyz we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
-                       " | mfg_build er_base er_version proj mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset add_collision hf_probe hf_probe_present hf_sample hf_shape_probe far_relief_probe"
+                       " | mfg_build er_base er_version proj mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset add_collision hf_probe hf_probe_present hf_sample hf_shape_probe far_relief_probe far_relief"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
             if (cmd == "status")
@@ -535,6 +535,15 @@ namespace goblin::debug_rpc
                     goblin::overlay_api::virtual_map_force_spiderfy(on);
                     return std::string("ok vmap spiderfy ") + (on ? "1" : "0");
                 }
+                // vmap relief [0|1] — toggle the terrain-relief hillshade (near raycast + D-far -1 cloud),
+                // so cloud-relief vs the native map ART tile can be A/B screenshotted at the same framing.
+                if (arg == "relief")
+                {
+                    std::string s = next_token(rest);
+                    bool on = (s != "0");
+                    goblin::overlay_api::virtual_map_set_relief(on);
+                    return std::string("ok vmap relief ") + (on ? "1" : "0");
+                }
                 // vmap locate <name_id> [group] — A9: centre the vmap on an item-search hit (test the
                 // click-to-locate path headlessly). name_id = FMG text id; group 0=OW 1=UG 2=DLC.
                 if (arg == "locate")
@@ -648,6 +657,15 @@ namespace goblin::debug_rpc
             // (validates whether posY is world-ish or block-local before building the far-relief grid).
             if (cmd == "far_relief_probe")
                 return goblin::worldmap::far_relief_probe();
+            // far_relief [cellSize] — D-far -1 v0: build the MSB Y-cloud relief field (default 128u cells)
+            // → the vmap draws it under the Relief toggle (cooler tint). Compare vs the native map art tile.
+            if (cmd == "far_relief")
+            {
+                std::string cs = next_token(rest);
+                int cell = 128;
+                if (!cs.empty()) { try { cell = std::stoi(cs); } catch (...) {} }
+                return goblin::worldmap::build_far_relief(cell);
+            }
             // vworld create <name> | marker <id> <x> <z> [name] | active <id> | list | clear —
             // drive the virtual-world registry (custom mod worlds shown on the virtual map).
             if (cmd == "vworld")

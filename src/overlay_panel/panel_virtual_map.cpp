@@ -182,6 +182,10 @@ int virtual_map_group() { return s_group; }
 // unreliable). Screenshot-verify the fan geometry. No effect in normal use (off).
 void virtual_map_force_spiderfy(bool on) { s_force_spiderfy = on; s_open = true; }
 
+// Dev/test: toggle the terrain-relief hillshade backdrop (near raycast + D-far -1 cloud) so a headless
+// driver can A/B screenshot cloud-relief vs the native map ART tile at the same framing.
+void virtual_map_set_relief(bool on) { s_show_relief = on; s_open = true; }
+
 // A9 dev/test: open the vmap item-search sidebar and set its query (drives the same list the UI builds).
 // Lets a headless driver populate + screenshot the search without ImGui clicks. Empty query just opens it.
 void virtual_map_item_search(const char *query)
@@ -1099,6 +1103,34 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         }
         else
         {
+            // D-far -1 v0: the MSB Y-cloud relief (whole-overworld, from parsed placement posY, RPC
+            // `far_relief`). Drawn UNDER the near raycast (below) so the exact near samples overdraw the
+            // cloud estimate where both exist. Cooler tint than the near field so cloud vs raycast reads apart.
+            {
+                static std::vector<goblin::heightfield::Cell> s_far;
+                goblin::overlay_api::far_relief_snapshot(s_far);
+                const float fcell = goblin::overlay_api::far_relief_step();
+                if (fcell > 0.f && !s_far.empty())
+                {
+                    const float h = fcell * 0.5f;
+                    const float Lx = 0.40f, Ly = 0.82f, Lz = 0.40f;
+                    for (const goblin::heightfield::Cell &c : s_far)
+                    {
+                        if (!c.hit) continue;
+                        ImVec2 a = w2s(c.wx - h, c.wz - h), b = w2s(c.wx + h, c.wz + h);
+                        ImVec2 p0(a.x < b.x ? a.x : b.x, a.y < b.y ? a.y : b.y);
+                        ImVec2 p1(a.x < b.x ? b.x : a.x, a.y < b.y ? b.y : a.y);
+                        if (p1.x < origin.x || p0.x > canvas_end.x || p1.y < origin.y || p0.y > canvas_end.y) continue;
+                        float nl = std::sqrt(c.nx * c.nx + c.ny * c.ny + c.nz * c.nz);
+                        float sh = nl > 1e-4f ? (c.nx * Lx + c.ny * Ly + c.nz * Lz) / nl : 0.6f;
+                        sh = sh < 0.20f ? 0.20f : (sh > 1.10f ? 1.10f : sh);
+                        auto ch = [sh](float base) { int v = (int)(base * sh + 0.5f); return v < 0 ? 0 : (v > 255 ? 255 : v); };
+                        dl->AddRectFilled(p0, p1, IM_COL32(ch(104), ch(118), ch(128), 210));  // cooler = cloud estimate
+                        ++s_relief_drawn;
+                    }
+                    s_relief_hits += (int)s_far.size();   // suppress the "no terrain" hint when the cloud is up
+                }
+            }
             static std::vector<goblin::heightfield::Cell> s_relief;
             goblin::overlay_api::heightfield_snapshot(s_relief);
             const float cell = goblin::overlay_api::heightfield_cell_step();

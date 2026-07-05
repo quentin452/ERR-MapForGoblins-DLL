@@ -3,6 +3,7 @@
 
 #include "category_meta.hpp"
 #include "loot_disk.hpp"       // disk-MSB loot source (DiskTreasure / load_disk_treasures) + load_quest_npcs
+#include "../goblin_heightfield.hpp"  // heightfield::Cell — reused for the D-far -1 MSB Y-cloud relief
 #include "quest_npc_layer.hpp" // QuestFallbackNpc + set_quest_fallback_npcs (runtime quest fallback)
 #include "goblin_quest_steps.hpp" // goblin::generated::QUEST_BROWSER (hand-authored fail_flags to join on)
 #include "goblin_config.hpp"   // config::lootFromDiskMsb
@@ -3613,6 +3614,85 @@ std::string far_relief_probe()
         n, byTile.size(), gmin, gmax, meanSpread, meanAdj, maxAdj);
     return out;
 }
+
+// ── D-far -1 v0 — MSB Y-cloud relief ─────────────────────────────────────────────────────────────
+// Build a whole-overworld ground-height field from the placement Y the disk parse already captured
+// (g_parsed.collectibles, clutter INCLUDED — pots/jars rest on the ground = best ground-Y). Per-cell
+// median → heightfield::Cell[] (normals from the grid gradient), consumed by the SAME vmap hillshade
+// as the near-field raycast. FREE: no Havok, no new parse. Frame validated world-ish (far_relief_probe).
+static std::mutex g_far_mtx;
+static std::vector<goblin::heightfield::Cell> g_far_relief;
+static float g_far_cell = 0.f;
+
+std::string build_far_relief(int cellSize)
+{
+    if (cellSize < 16) cellSize = 128;
+    std::lock_guard<std::mutex> lk(g_far_mtx);
+    g_far_relief.clear();
+    g_far_cell = 0.f;
+    if (!g_parsed.valid)
+        return "err far_relief: disk parse not ready — be in-world / refresh_markers first";
+    const float cs = (float)cellSize;
+
+    // Bucket overworld (area 60) collectible Y into cells (worldX=gx*256+posX, no projection for area 60).
+    std::unordered_map<uint64_t, std::vector<float>> byCell;
+    for (const DiskCollectible &c : g_parsed.collectibles)
+    {
+        if (c.area != 60) continue;
+        const float wx = c.gx * 256.f + c.posX, wz = c.gz * 256.f + c.posZ;
+        const int cx = (int)std::floor(wx / cs), cz = (int)std::floor(wz / cs);
+        byCell[((uint64_t)(uint32_t)cx << 32) | (uint32_t)cz].push_back(c.posY);
+    }
+    if (byCell.empty())
+        return "err far_relief: 0 overworld collectible placements";
+
+    // Per-cell robust height = median.
+    std::unordered_map<uint64_t, float> medY;
+    medY.reserve(byCell.size());
+    for (auto &kv : byCell)
+    {
+        auto &v = kv.second; size_t m = v.size() / 2;
+        std::nth_element(v.begin(), v.begin() + m, v.end());
+        medY[kv.first] = v[m];
+    }
+    auto at = [&](int cx, int cz, float &out) -> bool {
+        auto it = medY.find(((uint64_t)(uint32_t)cx << 32) | (uint32_t)cz);
+        if (it == medY.end()) return false; out = it->second; return true;
+    };
+
+    // Emit cells with hillshade normals from the grid gradient (central difference; falls back to flat
+    // at holes so an isolated cell still shades ambient).
+    g_far_relief.reserve(medY.size());
+    float gmin = 1e30f, gmax = -1e30f;
+    for (auto &kv : medY)
+    {
+        const int cx = (int)(kv.first >> 32), cz = (int)(uint32_t)kv.first;
+        const float y = kv.second;
+        float xp, xm, zp, zm;
+        const float dydx = (at(cx + 1, cz, xp) && at(cx - 1, cz, xm)) ? (xp - xm) / (2.f * cs) : 0.f;
+        const float dydz = (at(cx, cz + 1, zp) && at(cx, cz - 1, zm)) ? (zp - zm) / (2.f * cs) : 0.f;
+        goblin::heightfield::Cell cell{};
+        cell.wx = (cx + 0.5f) * cs; cell.wz = (cz + 0.5f) * cs; cell.groundY = y;
+        cell.nx = -dydx; cell.ny = 1.f; cell.nz = -dydz; cell.hit = true;
+        g_far_relief.push_back(cell);
+        gmin = (std::min)(gmin, y); gmax = (std::max)(gmax, y);
+    }
+    g_far_cell = cs;
+
+    char out[192];
+    std::snprintf(out, sizeof(out), "ok far_relief: %zu cells @%dpx, Y[%.0f..%.0f] (toggle Relief on the vmap)",
+                  g_far_relief.size(), cellSize, gmin, gmax);
+    spdlog::info("[FARRELIEF] built cloud field: {} cells @ {}u, Y[{:.1f}..{:.1f}]", g_far_relief.size(), cs, gmin, gmax);
+    return out;
+}
+
+size_t far_relief_snapshot(std::vector<goblin::heightfield::Cell> &out)
+{
+    std::lock_guard<std::mutex> lk(g_far_mtx);
+    out = g_far_relief;
+    return out.size();
+}
+float far_relief_step() { std::lock_guard<std::mutex> lk(g_far_mtx); return g_far_cell; }
 
 // Slice D reload gate (MFG_RenderIdle below): true while the detached disk-build worker is running.
 bool disk_build_running() { return g_disk_running.load(std::memory_order_acquire); }
