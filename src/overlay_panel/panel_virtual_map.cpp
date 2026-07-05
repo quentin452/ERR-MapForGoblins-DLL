@@ -85,6 +85,12 @@ namespace
     uint32_t s_qt_vis_gen = 0xffffffffu;  // visibility_generation() the index was built for → rebuild on toggle
     uint32_t s_qt_region_mask = 0xffffffffu;  // region-enabled bitmask the index was built for → rebuild on a
                                               // region-name toggle (region_set_enabled doesn't bump vis_gen)
+    // Live-projected marker COPIES the vmap actually clusters/draws (underground/DLC markers are re-projected
+    // through the engine converter → their baked worldX/worldZ is wrong; see the QT build). The QT + graces
+    // point into this, so it must outlive them (static, rebuilt with the tree).
+    std::vector<goblin::worldmap::Marker> s_vmarkers;
+    bool s_qt_proj_incomplete = false;   // a UG/DLC marker couldn't live-project (converter not up) → retry
+    int  s_qt_proj_retries = 0;          // bounded rebuild retries while the converter warms up
     uint64_t s_warp_pending = 0;   // grace rowId to warp to; serviced at the next frame's top (not mid-draw)
     int s_warp_offset = 0;          // added to the grace entity id before LuaWarp; 0 = entity id direct (ground truth; CT's -1000 was wrong)
     bool s_fit_requested = false;  // one-shot: on next draw, frame the selected group's markers
@@ -1181,6 +1187,26 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // Project each major-region anchor to WORLD space ONCE (9 anchors) — reused by BOTH the marker gate
     // here and the region-label draw below. regValid[i] = projected; regGrp[i] = its marker group. The
     // on/off flags are the shared map_renderer state (same flags the native chips use).
+    // LIVE-projected vmap position for a marker/anchor (raw area/grid/pos → the unified marker world frame).
+    // The vmap is gated on world_map_open() → the native WorldMapViewModel converter is resident, so the
+    // SAME live projection the native map uses is available here. Baked worldX/worldZ is correct for the
+    // OVERWORLD (area 60) and DLC-overworld (61), but UNDERGROUND (12) is only approximate and DLC-UNDERGROUND
+    // (40-43) is NOT folded at all by the baked path → those land near-origin (bottom-left, e.g. Nameless
+    // Eternal City). For those, re-project via the engine converter → map-space (u,v) → worldX=u+7040,
+    // worldZ=16512-v (the proven overworld affine, the inverse of world_to_mapspace). *ok=false if the
+    // converter isn't resident yet → baked fallback + a bounded rebuild retry. Overworld = no-op (baked).
+    auto vmap_proj = [](int area, int gx, int gz, float px, float pz, float bakedX, float bakedZ,
+                        float &wx, float &wz, bool *ok = nullptr) {
+        wx = bakedX; wz = bakedZ;
+        if (ok) *ok = true;
+        if (area == 12 || (area >= 40 && area <= 43))
+        {
+            float u = 0.f, v = 0.f; int pg = -1;
+            if (goblin::worldmap_probe::project(area, gx, gz, px, pz, u, v, pg))
+            { wx = u + 7040.0f; wz = 16512.0f - v; }
+            else if (ok) *ok = false;
+        }
+    };
     constexpr int kRegCap = 16;  // MAJOR_REGION_ANCHOR_COUNT is 9; cap defensively.
     float regWx[kRegCap] = {}, regWz[kRegCap] = {};
     int regGrp[kRegCap];
@@ -1196,8 +1222,12 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         if (!goblin::overlay_api::marker_world_pos(a.area, a.gx, a.gz, a.px, a.pz, ga, rwx, rwz,
                                                    /*conv_underground=*/true))
             continue;
-        regWx[i] = rwx;
-        regWz[i] = rwz;
+        // Re-project the anchor with the SAME converter the markers use, so an underground/DLC anchor and
+        // its markers share one frame (else the region gate assigns the wrong area — Deeproot/Ainsel bug).
+        float pwx = rwx, pwz = rwz;
+        vmap_proj(a.area, a.gx, a.gz, a.px, a.pz, rwx, rwz, pwx, pwz);
+        regWx[i] = pwx;
+        regWz[i] = pwz;
         regGrp[i] = goblin::marker_group_from(a.area, ga);
         regValid[i] = true;
         if (!goblin::worldmap::region_enabled(i))
@@ -1259,11 +1289,11 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         uint32_t region_mask = 0;
         for (int i = 0; i < regN && i < kRegCap && i < 32; ++i)
             if (regValid[i] && goblin::worldmap::region_enabled(i)) region_mask |= (1u << i);
-        if (s_qt_group != s_group || s_qt_vis_gen != vis_gen || s_qt_region_mask != region_mask)
+        // A UG/DLC group whose live projection was incomplete (converter still warming up) forces a bounded
+        // rebuild retry — so the correct positions land once the WorldMapViewModel is resident.
+        const bool proj_retry = s_qt_proj_incomplete && s_qt_proj_retries < 60;
+        if (s_qt_group != s_group || s_qt_vis_gen != vis_gen || s_qt_region_mask != region_mask || proj_retry)
         {
-            std::vector<const goblin::worldmap::Marker *> pts;
-            pts.reserve(8192);
-            s_grace_pts.clear();
             // Reject "hors map" markers: origin-defaulted (0,0) and wildly-out-of-frame coords (a few
             // markers project to garbage like (110767,-59445)). ER base world XZ is ~[0..20000]; a generous
             // ±40000 box keeps every real marker while dropping the outliers that otherwise (a) draw as
@@ -1271,24 +1301,44 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             auto implausible = [](float x, float z) {
                 return (x == 0.f && z == 0.f) || x < -40000.f || x > 40000.f || z < -40000.f || z > 40000.f;
             };
+            // PASS 1 — build the live-projected marker COPIES for this group (underground/DLC re-projected
+            // through the engine converter; overworld = baked no-op). region_gated then reads the LIVE pos.
+            s_vmarkers.clear();
+            s_vmarkers.reserve(8192);
+            bool proj_incomplete = false;
             for (auto *L : overlay_layers())
             {
                 if (!L) continue;
                 for (const goblin::worldmap::Marker &m : L->markers())
                 {
-                    if (m.group != s_group || implausible(m.worldX, m.worldZ) || !marker_shown(m) ||
-                        region_gated(m))   // exclude region-hidden markers from the tree → piles de-count them too
-                        continue;
-                    if (m.category == kGraceCat)
-                        s_grace_pts.push_back(&m);   // graces: kept out of the tree, drawn on top (region-exempt)
-                    else
-                        pts.push_back(&m);
+                    if (m.group != s_group || !marker_shown(m)) continue;
+                    goblin::worldmap::Marker cm = m;   // Marker is trivially copyable (POD + a static const char*)
+                    bool ok = true;
+                    vmap_proj(m.raw_area, m.raw_gx, m.raw_gz, m.raw_px, m.raw_pz, m.worldX, m.worldZ,
+                              cm.worldX, cm.worldZ, &ok);
+                    if (!ok) proj_incomplete = true;
+                    if (implausible(cm.worldX, cm.worldZ)) continue;
+                    s_vmarkers.push_back(cm);
                 }
+            }
+            // PASS 2 — gate (region_gated on the LIVE pos) + split graces, pointing into the final vector.
+            std::vector<const goblin::worldmap::Marker *> pts;
+            pts.reserve(s_vmarkers.size());
+            s_grace_pts.clear();
+            for (const goblin::worldmap::Marker &cm : s_vmarkers)
+            {
+                if (region_gated(cm)) continue;   // exclude region-hidden → piles de-count them too (Fork 1)
+                if (cm.category == kGraceCat)
+                    s_grace_pts.push_back(&cm);    // graces drawn on top (region-exempt); into s_vmarkers
+                else
+                    pts.push_back(&cm);
             }
             s_qt.build(pts);
             s_qt_group = s_group;
             s_qt_vis_gen = vis_gen;
             s_qt_region_mask = region_mask;
+            s_qt_proj_incomplete = proj_incomplete;
+            s_qt_proj_retries = proj_incomplete ? (s_qt_proj_retries + 1) : 0;
         }
         // Fit frames ALL markers of the group → take the bbox from the index (not just the drawn subset).
         s_qt.bounds(minx, minz, maxx, maxz);
