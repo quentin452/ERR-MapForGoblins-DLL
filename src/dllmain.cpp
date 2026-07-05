@@ -183,16 +183,12 @@ static void setup_logger(std::filesystem::path log_file)
 
 static std::filesystem::path g_mod_folder;
 
-// Author surface applier — needs g_mod_folder, so defined after it (unlike the other init wrappers).
-static void init_custom_items()     { goblin::custom_items::apply(g_mod_folder); }
-// World bundle (vision #1): re-apply the saved World Editor edits (clones + field sets). After
-// custom_items (params ready) and before the first marker build, so the initial resolve sees them.
-static void init_world_bundle()     { goblin::world_bundle::apply_boot(g_mod_folder); }
-// Virtual worlds (vision #1): load the saved mod-owned custom map pages (virtual_worlds.toml) so they
-// persist across sessions and show on the virtual map (panel_virtual_map). Data-only; no engine writes.
-static void init_virtual_worlds()   { goblin::vworld::load_boot(g_mod_folder); }
-// Mod manifest (mod_manifest_system_plan.md): one mod.toml declares the whole mod. Slice 1 = [mod]
-// metadata + [style] -> postfx. After the subsystems (it composes/overrides them); no mod.toml = no-op.
+// Mod manifest (mod_manifest_system_plan.md, slice 2): one mod.toml declares + OWNS the whole-mod boot.
+// mod::load orchestrates the sub-systems in the required order — custom_items (author items; after
+// setup_messages/params ready) -> world_bundle (AEG edits; before the first marker build) -> vworld
+// (mod-owned map pages) -> [style]->postfx. No mod.toml = load everything (backward-compatible); a
+// section with enabled=false is skipped. Replaces the old separate init_custom_items/world_bundle/
+// virtual_worlds boot calls. Needs g_mod_folder, so defined after it.
 static void init_mod()              { goblin::mod::load(g_mod_folder); }
 
 static void setup_mod()
@@ -318,10 +314,8 @@ static void setup_mod()
         safe_init_step(&init_setup_messages,  "setup_messages");
         // Author surface (Gap C): apply custom_items.toml — clone+fields+name+sidecar-register each
         // declared item. After setup_messages (name inject needs the FMG repo) + params ready.
-        safe_init_step(&init_custom_items,    "custom_items::apply");
-        safe_init_step(&init_world_bundle,    "world_bundle::apply_boot");
-        safe_init_step(&init_virtual_worlds,  "vworld::load_boot");
-        safe_init_step(&init_mod,             "mod::load (manifest)");
+        // Mod manifest owns the whole-mod boot (items -> bundle -> worlds -> style), in the required order.
+        safe_init_step(&init_mod,             "mod::load (manifest boot)");
         // Queue the live-refresh hook (FUN_140a82a80) — kept for the native-pin
         // suppression path; no-op until enabled.
         safe_init_step(&init_icon_tex_probe,  "install_icon_texture_probe");
