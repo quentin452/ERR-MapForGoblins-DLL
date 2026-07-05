@@ -3546,17 +3546,37 @@ std::string far_relief_probe()
         return v[k];
     };
 
-    // Bucket overworld collectible Y by tile (gx,gz).
+    // Bucket overworld collectible Y by tile (gx,gz) + histogram the AEG family (aegRow = A*1000+B, i.e.
+    // AEG{A}_{B}) so we can see WHICH object family supplies the Y-cloud (the bulk = discarded pot/jar clutter).
     std::map<uint16_t, std::vector<float>> byTile;
+    std::unordered_map<uint32_t, int> byAeg;      // aegRow -> count
+    std::unordered_map<uint32_t, int> byAegGroup; // aegRow/1000 (the AEG### group) -> count
     size_t n = 0; float gmin = 1e30f, gmax = -1e30f;
     for (const DiskCollectible &c : g_parsed.collectibles)
     {
         if (c.area != 60) continue;
         byTile[((uint16_t)c.gx << 8) | c.gz].push_back(c.posY);
+        byAeg[c.aegRow]++; byAegGroup[c.aegRow / 1000]++;
         gmin = (std::min)(gmin, c.posY); gmax = (std::max)(gmax, c.posY); ++n;
     }
     if (n == 0)
         return "err far_relief_probe: 0 overworld (area 60) collectible placements in the cache";
+
+    // Top AEG families feeding the cloud (by placement count).
+    {
+        std::vector<std::pair<uint32_t, int>> fam(byAeg.begin(), byAeg.end());
+        std::sort(fam.begin(), fam.end(), [](auto &a, auto &b) { return a.second > b.second; });
+        std::string top;
+        for (size_t i = 0; i < fam.size() && i < 15; ++i)
+        { char b[48]; std::snprintf(b, sizeof(b), " AEG%03u_%03u:%d", fam[i].first / 1000, fam[i].first % 1000, fam[i].second); top += b; }
+        spdlog::info("[FARRELIEF] top AEG families (area60, {} distinct):{}", byAeg.size(), top);
+        std::vector<std::pair<uint32_t, int>> grp(byAegGroup.begin(), byAegGroup.end());
+        std::sort(grp.begin(), grp.end(), [](auto &a, auto &b) { return a.second > b.second; });
+        std::string tg;
+        for (size_t i = 0; i < grp.size() && i < 10; ++i)
+        { char b[32]; std::snprintf(b, sizeof(b), " AEG%03u:%d", grp[i].first, grp[i].second); tg += b; }
+        spdlog::info("[FARRELIEF] by AEG group:{}", tg);
+    }
 
     // Per-tile median + within-tile P10..P90 spread (real terrain relief inside a tile).
     std::map<uint16_t, float> tileMed;

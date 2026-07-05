@@ -1527,7 +1527,11 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                 // Gate the OPEN on Ctrl (default) so panning/hovering the map doesn't pop fans as the
                 // cursor sweeps clusters; once open the keep-open logic holds it without Ctrl.
                 const bool mod_ok = !goblin::config::spiderfyHoldCtrl || io.KeyCtrl;
-                if (mod_ok && dx * dx + dy * dy <= hitR * hitR) { s_fan_open = true; s_fan_key = fc.key; break; }
+                // DON'T steal an already-open fan: only latch a NEW cluster when none is open. Otherwise
+                // moving the cursor toward a fanned icon could re-latch to a neighbouring islet the path
+                // passes over (fan A stops → fan B draws). The open fan closes via keep-open (cursor left
+                // its reach) below, and only THEN can the next frame's hit-test open a different one.
+                if (!s_fan_open && mod_ok && dx * dx + dy * dy <= hitR * hitR) { s_fan_open = true; s_fan_key = fc.key; break; }
             }
             // Resolve the open cluster + its members.
             const FanCluster *open = nullptr;
