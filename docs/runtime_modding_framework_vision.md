@@ -195,6 +195,20 @@ and draw a diamond / line / box-wireframe / level-grid with the modder's chosen 
   needs zero mesh authoring — the framework owns Havok-collision + ImGui-draw; the modder supplies pos +
   shape + colour. Strictly simpler + already 90% built (only the 3D w2s remains). It is `far_terrain_relief_
   plan.md` Layer 2 ("make it exist under the player's feet") realised via greybox instead of streamed geom.
+- **Enemies in the ImGui world = 3 layers, not 1 (user Q 2026-07-05).** An enemy ≠ a glyph. Split it:
+  (a) **Visual** — greybox procedural, EASY: a state machine + procedural transforms on primitives (the
+  POSITION animates = the "walk"; scale/rotation/colour pulse for breathe/attack/hit; glyph swap per STATE,
+  not per frame; squash-stretch on a hit). NEVER a skeletal/keyframe/mesh-deform engine in ImGui (perf/code
+  hell — the trap). (b) **Behaviour** — chase/patrol/aggro as a mod-code state machine, doable, pure code.
+  (c) **COMBAT** (hurt the player + be hurtable) — NOT ImGui: needs engine primitives — damage-apply
+  (damage-hook / SpEffect), hit-detection (player weapon vs its hitbox), a moving hitbox (Havok
+  `add_collision` follows — we HAVE that). Damage-apply + hitreg are the gameplay-modding frontier, NOT RE'd
+  (HANDOFF radar, off the map). ⇒ An ImGui enemy that MOVES + reacts visually is doable now (w2s3d + state
+  machine); one that KILLS / is killable needs the combat frontier → until then it's a **dummy/target**.
+  **Architecture (extends the AEG-vs-ImGui split):** ImGui greybox = STATIC world (platforms/walls/triggers/
+  waypoints, no behaviour, no wall). Combat ACTORS = real engine `ChrIns` (native spawn → real AI/anim/
+  combat). Same rule: real content → engine; our virtual STRUCTURE → ImGui; ImGui enemies only as dummies
+  until the combat primitives land.
 - **Quadtree reuse (user Q):** the vmap `MarkerQuadtree` is a 2D XZ index for MAP-viewport cull+cluster; 3D
   objects cull by camera FRUSTUM + distance + behind-camera reject, a different axis. Reuse it only as a
   COARSE broad-phase (XZ-near-camera query → skip projecting far objects), then per-candidate do the 3D
