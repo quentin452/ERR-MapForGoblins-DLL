@@ -3,6 +3,10 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <deque>
+#include <mutex>
+#include <atomic>
+#include <thread>
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -18,8 +22,19 @@ namespace
     // RVA call like goblin_geom_move (the FUN_ has no AOB yet); the reqMgr singleton IS AOB-resolved.
     constexpr uintptr_t ENSURE_ASSET_REQUEST_RVA = 0x6a5080;  // FUN_1406a5080(reqMgr, wchar_t* name)
     constexpr uintptr_t REQ_MGR_OFFSET = 0x30;                // reqMgr = *(singleton + 0x30)
-
     using EnsureAssetReqFn = void *(__fastcall *)(void *mgr, const wchar_t *name);
+
+    // ── deferred spawn queue, drained on the GAME's MAIN-UPDATE thread via a per-frame step hook ─────────
+    // present-thread call = deadlock (lock inversion); worker-thread call = FAULT (registrar needs the game's
+    // own thread context). So drain inside a hooked per-frame main-update step (the streamer's own thread).
+    // FUN_140699170 never fired (conditional) -> try its sibling FUN_14069a550 (Q4: FUN_14069a550->d80).
+    constexpr uintptr_t STREAMER_STEP_RVA = 0x69a550;   // FUN_14069a550 (main-update per-frame step)
+    std::deque<std::wstring> g_queue;
+    std::mutex g_qmtx;
+    std::atomic<bool> g_hook_installed{false};
+    EnsureAssetReqFn g_ensure_fn = nullptr;
+    using StepFn = void(__fastcall *)(void *, void *, void *, void *);
+    StepFn g_step_orig = nullptr;
 
     bool rpm(const void *addr, void *out, size_t n)
     {
@@ -56,6 +71,47 @@ namespace
         reqmgr_out = (uint64_t)reqMgr;
         return "";
     }
+
+    // Per-frame main-update step detour: run orig, then drain ONE queued spawn on THIS (game) thread.
+    void __fastcall hk_step(void *a, void *b, void *c, void *d)
+    {
+        g_step_orig(a, b, c, d);
+        static std::atomic<uint64_t> fires{0};
+        if (fires.fetch_add(1, std::memory_order_relaxed) == 0)
+            spdlog::info("[SPAWNASSET] hk_step FIRED (first) — main-update thread reached");
+        std::wstring name;
+        {
+            std::lock_guard<std::mutex> lk(g_qmtx);
+            if (g_queue.empty()) return;
+            name = std::move(g_queue.front());
+            g_queue.pop_front();
+        }
+        uint64_t sing = 0, mgr = 0;
+        if (resolve_mgr(sing, mgr)[0] || !mgr || !g_ensure_fn) return;
+        void *req = nullptr;
+        bool ok = call_ensure(g_ensure_fn, (void *)mgr, name.c_str(), req);
+        spdlog::info("[SPAWNASSET] step serviced -> ok={} req={:p} (reqMgr=0x{:x})", ok, req,
+                     (unsigned long long)mgr);
+    }
+
+    bool ensure_hook()
+    {
+        if (g_hook_installed.load()) return true;
+        uintptr_t er = (uintptr_t)GetModuleHandleA("eldenring.exe");
+        if (!er) return false;
+        g_ensure_fn = (EnsureAssetReqFn)goblin::sig::resolve_func_aob(
+            goblin::sig::ENSURE_ASSET_REQUEST_FN, er, ENSURE_ASSET_REQUEST_RVA, "ENSURE_ASSET_REQUEST");
+        if (!g_ensure_fn) return false;
+        try
+        {
+            modutils::hook((void *)(er + STREAMER_STEP_RVA), reinterpret_cast<void *>(&hk_step),
+                           reinterpret_cast<void **>(&g_step_orig));
+        }
+        catch (const std::exception &e) { spdlog::error("[SPAWNASSET] step hook failed: {}", e.what()); return false; }
+        g_hook_installed = true;
+        spdlog::info("[SPAWNASSET] main-update step hooked @ er+{:#x}", STREAMER_STEP_RVA);
+        return true;
+    }
 }
 
 namespace goblin::geom_spawn
@@ -82,20 +138,28 @@ namespace goblin::geom_spawn
         const char *e = resolve_mgr(r.singleton, r.reqMgr);
         if (e[0]) { std::snprintf(r.err, sizeof(r.err), "%s", e); return r; }
 
-        // Default: read-only resolve, DO NOT call — the direct call deadlocks the present thread (see the
-        // header note / the pivot-2 findings). `force` fires it anyway (for a future main-thread hook).
-        if (!force)
-        {
-            r.ok = true;  // resolve succeeded; req stays 0 (no call made)
-            spdlog::warn("[SPAWNASSET] '{}' resolve OK (reqMgr=0x{:x}) — direct call SKIPPED (deadlocks "
-                         "present thread; pass force). See windows_geom_spawn_pivot2_re_findings.md.",
-                         r.name, r.reqMgr);
-            return r;
-        }
-        spdlog::warn("[SPAWNASSET] force: calling FUN_1406a5080('{}') — EXPECTED TO HANG (lock inversion).", r.name);
-
         // widen "AEG099_090" -> L"AEG099_090"
         std::wstring wname(r.name, r.name + std::strlen(r.name));
+
+        // DEFAULT (pivot-2 refined): QUEUE the request for the MAIN-THREAD step hook to service — the direct
+        // call on the present/RPC thread deadlocks (lock inversion with the streamer). `force` still fires the
+        // direct call (diagnostic; WILL hang).
+        if (!force)
+        {
+            if (!ensure_hook())
+            {
+                std::snprintf(r.err, sizeof(r.err), "step hook / registrar-fn init failed");
+                return r;
+            }
+            {
+                std::lock_guard<std::mutex> lk(g_qmtx);
+                g_queue.push_back(std::move(wname));
+            }
+            r.ok = true;   // queued; the worker thread services it off the present thread
+            spdlog::info("[SPAWNASSET] '{}' QUEUED for main-update-step spawn (reqMgr=0x{:x})", r.name, r.reqMgr);
+            return r;
+        }
+        spdlog::warn("[SPAWNASSET] force: DIRECT call FUN_1406a5080('{}') — EXPECTED TO HANG (lock inversion).", r.name);
 
         EnsureAssetReqFn fn = (EnsureAssetReqFn)goblin::sig::resolve_func_aob(
             goblin::sig::ENSURE_ASSET_REQUEST_FN, base, ENSURE_ASSET_REQUEST_RVA, "ENSURE_ASSET_REQUEST");

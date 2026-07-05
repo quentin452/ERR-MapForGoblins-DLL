@@ -158,6 +158,27 @@ a real `CSWorldGeom` instance (not visual-only). Recap of what's known:
 This is a **multi-step subsystem build** vs MOVE's one-vcall; the static anchors are all resolved, but the
 live result adds a **thread/locking constraint** that the static RE could not see.
 
+## ⛔ LIVE — 4 injection-thread attempts 2026-07-05 (Linux/Proton): all blocked, the thread is the wall
+Refined `goblin_geom_spawn.cpp` into a deferred-queue (spawn_asset QUEUES; a servicer drains + calls the
+registrar off the present thread). Tried 4 servicer contexts to run `FUN_1406a5080` safely — **none works yet**,
+and the results pin WHY:
+| servicer thread | result |
+|---|---|
+| **present/RPC thread** (direct) | **DEADLOCK** — lock inversion with the streamer on the reqMgr tree (as before). |
+| **dedicated worker `std::thread`** | **NO deadlock** (a 3rd thread avoids the present↔streamer inversion) **but the registrar FAULTS** (`call_ensure` ok=false) → **`FUN_1406a5080` needs the game's own thread context** (thread-local / main-update-only state), not just "any non-present thread". *New data point: the present-thread failure is not only the lock — the call is game-thread-bound.* |
+| **hook `FUN_140699170`** (streamer step, Q4) | detour installed (no exception) but **NEVER FIRES** in the Church-of-Elleh scene → the proximity AEG-streamer steps are conditional/gated, not a reliable per-frame hook. |
+| **hook `FUN_14069a550`** (sibling streamer step) | same — **NEVER FIRES.** |
+
+**⇒ Conclusion: the ADD needs a servicer that runs on the game's MAIN-UPDATE thread AND fires every frame** —
+the two proximity-streamer steps don't (gated), the worker thread is the wrong context, present deadlocks. The
+**deferred-queue scaffolding is correct** (`spawn_asset` queues; flip the servicer once the target is known);
+what's missing is a **reliable always-per-frame main-update-thread injection point**. Candidates for the next
+RE step (Windows or a smarter Linux probe): the top-level `CSSystemStep` execute (from `FUN_140ded060`'s step
+tree), the world/geom update tick, or hook `FUN_1406a5080` itself to learn the streamer's real thread + a live
+window. This is the "which thread + safe injection point" the verdict flagged as the remaining work — confirmed
+non-trivial. (`goblin_geom_spawn.cpp` keeps the queue + a swappable `STREAMER_STEP_RVA` hook target + the
+diagnostic `force` direct-call path.)
+
 ## Anchors
 - registrar `FUN_1406a5080` er+0x6a5080; request-name builder `FUN_1406c7000` er+0x6c7000; request state
   machine `FUN_1406c6050` er+0x6c6050 (state arg; `req+0x4d` bits; `FUN_1406a6630` block-registry).
