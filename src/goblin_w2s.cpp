@@ -270,4 +270,24 @@ namespace goblin::w2s
     // exposed for the RPC verb to tweak convention/fov live
     void set_conv(int c) { g_conv = c; }
     void set_fovy(float f) { g_fovy = f; }
+
+    // Live ER camera for the 3D backend (goblin_r3d): the render-local VIEW matrix (GameRend+0xF0, row-vector
+    // v*M, conv2 forward=-vz) + the per-frame REBASE origin (subtract from a world point before the VIEW) +
+    // the vertical FOV. Re-finds the origin each call (the render re-centres per frame). false if the camera/
+    // origin can't be resolved (menu / not in-world). Present-thread only.
+    bool get_camera(float outView[16], float outOrigin[3], float &outFovy, float vpW, float vpH)
+    {
+        uintptr_t hit = find_cam_instance();
+        if (!hit) return false;
+        float m[16];
+        if (!rd(hit + VIEW_FROM_HIT, m) || !looks_like_view(m)) return false;
+        float px, py, pz;
+        if (!goblin::get_player_world_pos(px, py, pz)) return false;
+        if (!(vpW > 0 && vpH > 0)) return false;
+        if (!find_origin(hit - 0x10, m, px, py, pz, vpW, vpH)) return false;
+        for (int i = 0; i < 16; ++i) outView[i] = m[i];
+        outOrigin[0] = g_origin[0]; outOrigin[1] = g_origin[1]; outOrigin[2] = g_origin[2];
+        outFovy = g_fovy;
+        return true;
+    }
 }

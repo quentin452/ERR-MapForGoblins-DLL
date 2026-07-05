@@ -28,4 +28,10 @@ namespace goblin::w2s
     // Called once per present frame from the overlay; draws the debug dot at the projected player
     // pixel when enabled. No-op when disabled or the camera can't be resolved.
     void draw_present();
+
+    // Live ER camera for the mod-owned 3D backend (goblin_r3d): the render-local VIEW matrix (16 floats,
+    // row-major, row-vector v*M, conv2 forward=-vz), the per-frame render REBASE origin (subtract from a
+    // WORLD point before the VIEW), and the vertical FOV. Lets r3d build a world->clip matrix aligned with
+    // ER's own view. Re-finds the origin each call (the render re-centres per frame). Present-thread only.
+    bool get_camera(float outView[16], float outOrigin[3], float &outFovy, float vpW, float vpH);
 }

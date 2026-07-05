@@ -11,6 +11,9 @@
 
 #include <spdlog/spdlog.h>
 
+#include "goblin_inject.hpp"   // get_player_world_pos — place the cube at the player (world-anchored)
+#include "goblin_w2s.hpp"      // get_camera — ER VIEW matrix + rebase origin, so the cube aligns with ER's view
+
 namespace
 {
     // ── state (created once, on the present thread) ─────────────────────────────
@@ -51,6 +54,18 @@ namespace
         return M4{{1, 0, 0, 0, 0, c, s, 0, 0, -s, c, 0, 0, 0, 0, 1}};
     }
     M4 translate(float x, float y, float z) { return M4{{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1}}; }
+    M4 scale(float s) { return M4{{s, 0, 0, 0, 0, s, 0, 0, 0, 0, s, 0, 0, 0, 0, 1}}; }
+    // Perspective for ER's calibrated camera convention: row-vector, forward = -vz (conv2), clip.w = -vz.
+    // Reproduces w2s's validated pinhole exactly (aspect = W/H). Depth is flat (NDC.z=0.5) — fine for the
+    // wireframe cube with no depth buffer; the 3D shape comes from the perspective x/y divide.
+    M4 perspNegZ(float fovy, float aspect)
+    {
+        float f = 1.0f / std::tan(fovy * 0.5f);
+        return M4{{f / aspect, 0, 0, 0,
+                   0, f, 0, 0,
+                   0, 0, -0.5f, -1,
+                   0, 0, 0, 0}};
+    }
     // LH perspective, row-vector, D3D clip z in [0,1]
     M4 perspLH(float fovY, float aspect, float zn, float zf)
     {
@@ -205,11 +220,30 @@ namespace goblin::r3d
         if (!g_ok) return;
         if (!(vpW > 0 && vpH > 0)) return;
 
-        const float a = (float)(g_frame++) * 0.02f;
-        M4 model = mul(rotX(a * 0.6f), rotY(a));                 // spin
-        M4 view = translate(0.f, 0.f, 3.5f);                    // push the box in front of the camera at origin
-        M4 proj = perspLH(1.0472f /*60deg*/, vpW / vpH, 0.1f, 100.f);
-        M4 mvp = mul(mul(model, view), proj);                   // row-vector: v * Model * View * Proj
+        // STEP 2: world-anchored — place the cube at the player's WORLD pos using ER's live camera (via w2s),
+        // so it sits in the world + stays put as the camera moves (case 1, reuses the w2s3d RE). Fall back to
+        // the hardcoded spin (step 1) when the camera can't resolve (menu / not in-world).
+        M4 mvp;
+        float view16[16], origin[3], fovy = 0.7505f, px, py, pz;
+        if (goblin::w2s::get_camera(view16, origin, fovy, vpW, vpH) &&
+            goblin::get_player_world_pos(px, py, pz))
+        {
+            M4 V;
+            for (int i = 0; i < 16; ++i) V.m[i] = view16[i];
+            M4 model = mul(scale(1.5f), translate(px, py, pz));            // cube at the player, ~1.5u
+            M4 torg = translate(-origin[0], -origin[1], -origin[2]);       // rebase world -> render-local
+            M4 proj = perspNegZ(fovy, vpW / vpH);                          // ER's conv2 (-vz) perspective
+            mvp = mul(mul(mul(model, torg), V), proj);   // v * Model * T(-origin) * View * Proj
+            g_frame++;
+        }
+        else
+        {
+            const float a = (float)(g_frame++) * 0.02f;
+            M4 model = mul(rotX(a * 0.6f), rotY(a));                 // spin
+            M4 view = translate(0.f, 0.f, 3.5f);                    // push the box in front of the camera at origin
+            M4 proj = perspLH(1.0472f /*60deg*/, vpW / vpH, 0.1f, 100.f);
+            mvp = mul(mul(model, view), proj);                      // row-vector: v * Model * View * Proj
+        }
 
         D3D12_VIEWPORT vp{0, 0, vpW, vpH, 0.f, 1.f};
         D3D12_RECT sc{0, 0, (LONG)vpW, (LONG)vpH};
