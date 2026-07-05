@@ -11,6 +11,7 @@
 #include "goblin_virtual_world.hpp"  // vworld registry — `vworld` RPC (custom virtual worlds)
 #include "worldmap/loot_disk.hpp"    // read_game_file_decompressed — `assets_probe` path-loading guard
 #include "worldmap/maptile.hpp"      // maptile::probe — `maptile_probe` (endgame phase-1a tile recon)
+#include "worldmap/map_entry_layer.hpp" // far_relief_probe — `far_relief_probe` (D-far -1 Y-cloud frame check)
 #include "goblin_worldmap_probe.hpp"  // dump_menu_state (dumpmenu cmd)
 #include "goblin_overlay_render_loader.hpp"
 #include "goblin_param_edit.hpp"  // param_get/param_set commands — Slice 1 in-game smoke test
@@ -410,7 +411,7 @@ namespace goblin::debug_rpc
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp coords warp_local warp_xyz we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
-                       " | mfg_build er_base er_version proj mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset add_collision hf_probe hf_probe_present hf_sample hf_shape_probe"
+                       " | mfg_build er_base er_version proj mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset add_collision hf_probe hf_probe_present hf_sample hf_shape_probe far_relief_probe"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
             if (cmd == "status")
@@ -643,6 +644,10 @@ namespace goblin::debug_rpc
                 std::string filt = next_token(rest);
                 return goblin::worldmap::maptile::probe(base, mx, filt.empty() ? nullptr : filt.c_str());
             }
+            // far_relief_probe — D-far -1: dump the MSB placement Y-cloud distribution per overworld tile
+            // (validates whether posY is world-ish or block-local before building the far-relief grid).
+            if (cmd == "far_relief_probe")
+                return goblin::worldmap::far_relief_probe();
             // vworld create <name> | marker <id> <x> <z> [name] | active <id> | list | clear —
             // drive the virtual-world registry (custom mod worlds shown on the virtual map).
             if (cmd == "vworld")

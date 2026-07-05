@@ -3529,6 +3529,91 @@ void prebuild_markers()
     ensure_buckets();
 }
 
+// D-far -1 diagnostic — dump the MSB placement Y-cloud distribution per overworld (area 60) tile so we
+// can decide whether posY is usable directly (world-ish → smooth across tiles) or block-local (per-tile Y
+// origin → stepped, needs correction) BEFORE building the far-relief grid/renderer. Reads the already-parsed
+// g_parsed cache (no new parse). Clutter (pots/jars) INCLUDED — small props rest on the ground, best data.
+std::string far_relief_probe()
+{
+    if (!g_parsed.valid)
+        return "err far_relief_probe: disk parse not ready — be in-world (markers built) or run refresh_markers first";
+
+    auto pct = [](std::vector<float> &v, float p) -> float {
+        if (v.empty()) return 0.f;
+        size_t k = (size_t)(p * (float)(v.size() - 1));
+        std::nth_element(v.begin(), v.begin() + k, v.end());
+        return v[k];
+    };
+
+    // Bucket overworld collectible Y by tile (gx,gz).
+    std::map<uint16_t, std::vector<float>> byTile;
+    size_t n = 0; float gmin = 1e30f, gmax = -1e30f;
+    for (const DiskCollectible &c : g_parsed.collectibles)
+    {
+        if (c.area != 60) continue;
+        byTile[((uint16_t)c.gx << 8) | c.gz].push_back(c.posY);
+        gmin = (std::min)(gmin, c.posY); gmax = (std::max)(gmax, c.posY); ++n;
+    }
+    if (n == 0)
+        return "err far_relief_probe: 0 overworld (area 60) collectible placements in the cache";
+
+    // Per-tile median + within-tile P10..P90 spread (real terrain relief inside a tile).
+    std::map<uint16_t, float> tileMed;
+    float maxSpread = 0.f, sumSpread = 0.f;
+    for (auto &kv : byTile)
+    {
+        tileMed[kv.first] = pct(kv.second, 0.5f);
+        float sp = pct(kv.second, 0.9f) - pct(kv.second, 0.1f);
+        maxSpread = (std::max)(maxSpread, sp); sumSpread += sp;
+    }
+    float meanSpread = tileMed.empty() ? 0.f : sumSpread / (float)tileMed.size();
+
+    // Cross-tile continuity: |Δmedian| between horizontally/vertically ADJACENT tiles. Small vs the
+    // within-tile spread ⇒ posY flows like a world height (usable as-is). Large systematic steps at tile
+    // borders ⇒ block-local Y origin (each tile re-based) → needs a per-tile Y correction first.
+    float maxAdj = 0.f, sumAdj = 0.f; int adjN = 0;
+    for (auto &kv : tileMed)
+    {
+        int gx = kv.first >> 8, gz = kv.first & 0xff;
+        const uint16_t nbs[2] = { (uint16_t)(((gx + 1) << 8) | gz), (uint16_t)((gx << 8) | (gz + 1)) };
+        for (uint16_t nb : nbs)
+        {
+            auto it = tileMed.find(nb);
+            if (it == tileMed.end()) continue;
+            float d = std::fabs(kv.second - it->second);
+            maxAdj = (std::max)(maxAdj, d); sumAdj += d; ++adjN;
+        }
+    }
+    float meanAdj = adjN ? sumAdj / (float)adjN : 0.f;
+
+    spdlog::info("[FARRELIEF] area60 collectibles: {} samples across {} tiles; globalY [{:.1f} .. {:.1f}]",
+                 n, byTile.size(), gmin, gmax);
+    spdlog::info("[FARRELIEF] within-tile relief (P90-P10): mean {:.1f}, max {:.1f}", meanSpread, maxSpread);
+    spdlog::info("[FARRELIEF] cross-tile |Δmedian| adjacent: mean {:.1f}, max {:.1f} over {} pairs — "
+                 "SMALL vs within-tile ⇒ world-ish Y (usable); LARGE steps ⇒ block-local origin (needs correction)",
+                 meanAdj, maxAdj, adjN);
+    // A horizontal strip (first well-populated row) so a human can eyeball a gradient across gx.
+    for (int gz = 0; gz < 64; ++gz)
+    {
+        int cnt = 0; for (auto &kv : tileMed) if ((kv.first & 0xff) == gz) ++cnt;
+        if (cnt >= 6)
+        {
+            std::string row;
+            for (auto &kv : tileMed) if ((kv.first & 0xff) == gz)
+            { char b[32]; std::snprintf(b, sizeof(b), " gx%d:%.0f", kv.first >> 8, kv.second); row += b; }
+            spdlog::info("[FARRELIEF] median-Y strip gz={}:{}", gz, row);
+            break;
+        }
+    }
+
+    char out[256];
+    std::snprintf(out, sizeof(out),
+        "ok far_relief_probe: %zu area60 samples / %zu tiles; globalY[%.0f..%.0f]; within-tile mean %.0f; "
+        "cross-tile Dmed mean %.0f max %.0f (detail in [FARRELIEF] log)",
+        n, byTile.size(), gmin, gmax, meanSpread, meanAdj, maxAdj);
+    return out;
+}
+
 // Slice D reload gate (MFG_RenderIdle below): true while the detached disk-build worker is running.
 bool disk_build_running() { return g_disk_running.load(std::memory_order_acquire); }
 

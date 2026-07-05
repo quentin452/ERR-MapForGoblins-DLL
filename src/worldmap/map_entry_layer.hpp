@@ -5,6 +5,8 @@
 
 #include "marker_layer.hpp"
 
+#include <string>
+
 namespace goblin::worldmap
 {
 class MapEntryLayer : public MarkerLayer
@@ -29,6 +31,12 @@ void prebuild_markers();
 // Force a fresh bucket rebuild (disk source only) so a config change affecting bucket content —
 // e.g. stackIdenticalItems — applies without a map reload. Called from the F1 menu on toggle.
 void rebuild_markers();
+
+// D-far -1 diagnostic (far_terrain_relief_plan.md): dump the MSB placement Y-cloud distribution per
+// overworld tile from the already-parsed cache, to decide BEFORE building the far-relief grid whether
+// posY is usable directly (world-ish, smooth across tiles) or block-local (per-tile origin → stepped).
+// No new parse. Returns a summary; detail goes to the [FARRELIEF] log. RPC `far_relief_probe`.
+std::string far_relief_probe();
 
 // Recompute the per-category census (total collectible + looted) from the overlay's
 // OWN marker buckets — the same markers + collected detection the renderer grays — and
