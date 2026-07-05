@@ -337,11 +337,22 @@ void emit_lot_siblings(uint32_t baseLot,
 // OTHER categories stay baked (NPCs are NpcParam-synthetic, loot is MSB/item-lot — no live WMP
 // source). NOTE: live rows are still in the dungeon-internal frame (area 10/31/…) like the bake,
 // so this does NOT change the dungeon-boss projection drift — same marker_world_pos path.
+// A marked boss TYPE, captured from WorldMapPointParam so the enemy-supplement below can complete its
+// instances: its name (for enemy name-match), the row's textId1/iconId (reused verbatim so supplemented
+// markers look identical), and a set of tile cells it already occupies (for dedup).
+struct MarkedBoss { int32_t textId1 = 0; int iconId = 0; std::unordered_set<uint32_t> cells; };
+static inline uint32_t boss_cell_key(uint8_t a, uint8_t gx, uint8_t gz)
+{
+    return ((uint32_t)a << 16) | ((uint32_t)gx << 8) | (uint32_t)gz;
+}
+
 void build_live_bosses()
 {
     namespace gen = goblin::generated;
     const int c = static_cast<int>(gen::Category::WorldBosses);
     int n = 0;
+    // name -> the marked boss type (its icon/textId + the tiles already marked)
+    std::unordered_map<std::string, MarkedBoss> marked;
     try
     {
         for (auto [rowId, row] :
@@ -350,6 +361,16 @@ void build_live_bosses()
             if (row.textId2 != 5100) continue;          // field-boss marker rows only
             push_marker(rowId, row, c, /*lotId=*/0u, /*lotType=*/0u, Source::Live);
             ++n;
+            // Record this marked boss TYPE by its display name so the enemy-supplement can fill in the
+            // instances FromSoft did NOT map-mark (the native map is selective: 4 of the 7 Erdtree
+            // Avatars, incl. none underground). Name from the row's own textId1.
+            std::string nm = goblin::overlay_api::lookup_text_utf8(row.textId1);
+            if (!nm.empty())
+            {
+                MarkedBoss &mb = marked[nm];
+                mb.textId1 = row.textId1; mb.iconId = row.iconId;
+                mb.cells.insert(boss_cell_key(row.areaNo, row.gridXNo, row.gridZNo));
+            }
             // Suppress the game's NATIVE boss icon: clear dispMask on the live row so the engine
             // skips drawing it, leaving the overlay as the sole boss source (no double icon). Safe
             // because push_marker already snapshotted pos/name/icon and it IGNORES dispMask, so our
@@ -367,7 +388,40 @@ void build_live_bosses()
         spdlog::warn("[BOSSLIVE] WorldMapPointParam not readable — boss markers absent this build");
         return;
     }
-    spdlog::info("[BOSSLIVE] built {} boss markers from live WorldMapPointParam (textId2==5100)", n);
+
+    // ── Enemy supplement (mod-agnostic, runtime): complete each ALREADY-MARKED boss type with the
+    // instances the native map omitted, sourced from the LIVE MSB enemy scan (g_parsed.enemies). For each
+    // enemy, resolve its display name (goblin::enemy_display_name, tiers 1-3 incl. the vanilla field-boss
+    // band); if it matches a marked boss name AND its tile isn't already occupied by that boss, emit a
+    // marker reusing the marked row's textId1/iconId at the enemy's position (same push_marker/projection
+    // path as loot enemies, so the dungeon fold applies). Only KNOWN boss types are supplemented — never a
+    // false boss. Dedup by tile so a multi-part arena (e.g. c4810 ×4 at m60_52_56) counts once.
+    int supp = 0;
+    for (const DiskEnemy &en : g_parsed.enemies)
+    {
+        if (en.name.empty() || en.name[0] != 'c') continue;
+        int model = 0;
+        { size_t u = en.name.find('_'); try { model = std::stoi(en.name.substr(1, u == std::string::npos ? std::string::npos : u - 1)); } catch (...) { continue; } }
+        if (model <= 0) continue;
+        std::string nm = goblin::enemy_display_name((int)en.npcParamId, model);
+        if (nm.empty()) continue;
+        auto it = marked.find(nm);
+        if (it == marked.end()) it = marked.find(nm + "s");  // grouped-plural marker (enemy "Demi-Human Chief" → marked "Demi-Human Chiefs")
+        if (it == marked.end()) continue;               // only complete boss types the native map marks
+        const uint32_t key = boss_cell_key(en.area, en.gx, en.gz);
+        if (!it->second.cells.insert(key).second) continue;   // tile already has this boss (marked or added)
+        from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
+        d.areaNo = en.area; d.gridXNo = en.gx; d.gridZNo = en.gz;
+        d.posX = en.posX; d.posZ = en.posZ;
+        d.textId1 = it->second.textId1;
+        d.textId2 = 5100;
+        d.iconId = (int16_t)it->second.iconId;
+        const uint64_t rid = en.entityId ? (uint64_t)en.entityId : (0xB055ull << 32 | key);
+        push_marker(rid, d, c, /*lotId=*/0u, /*lotType=*/0u, Source::Live);
+        ++supp;
+    }
+    spdlog::info("[BOSSLIVE] built {} boss markers from live WorldMapPointParam (textId2==5100) + {} "
+                 "enemy-supplemented instances ({} marked boss types)", n, supp, (int)marked.size());
 }
 
 // Build the LANDMARK buckets LIVE from WorldMapPointParam.iconId (MapGenie category-coverage

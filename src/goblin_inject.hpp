@@ -439,6 +439,8 @@ namespace goblin
     // Offsets pinned vs the paramdef layout + raw rows (tools/probe_npcparam_offsets.py:
     // itemLot 0x30/0x34 cross-check + 25/25 invaders confirmed).
     bool npc_team_and_name(uint32_t npcParamId, uint8_t *teamOut, int32_t *nameOut);
+    // Enemy display name (tiers 1-3, cached). "" = nameless. Boss-marker enemy-supplement.
+    GOBLIN_RENDER_API std::string enemy_display_name(int npcParam, int model);  // render (build_live_bosses) calls it
 
     // True iff an EquipParamGoods row is a region Map fragment (sortGroupId u8 @ +0x72 ∈
     // {190 base, 191 DLC}). The no-bake World-Maps pass routes map-good pickups to WorldMaps.

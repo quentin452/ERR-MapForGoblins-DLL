@@ -25,6 +25,13 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **All field-boss INSTANCES now show, not just the map-marked ones.** The native ER map is selective — it
+  marks only some instances of a repeated boss (e.g. 4 of the 7 Erdtree Avatars, and none underground) and
+  groups some (one "Demi-Human Chiefs" icon). Boss markers are now completed from the LIVE MSB enemy scan:
+  for each boss TYPE the native map marks, every other instance of it (matched by the enemy's runtime-resolved
+  name, deduped per tile) gets a marker too — so item search / the map find them all. Mod-agnostic (reads the
+  active install's enemy placements + NpcParam names, no bake). Only boss types already on the native map are
+  completed (never a false boss). Erdtree Avatar 4 → 6 (incl. the underground one).
 - **Item search distinguishes Royal vs Ashen Capital (and other pre/post story states).** A state-gated
   item now shows its game-state in the vmap item-search results — e.g. `[+] Item — Royal Capital` (reachable
   in the current playthrough state) vs `[x] Item — Ashen Capital` (needs the other state) — so you don't hunt

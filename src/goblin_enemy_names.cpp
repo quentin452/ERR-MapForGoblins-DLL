@@ -225,6 +225,14 @@ const ResolvedName &resolve_enemy_name(int npcParam, int model)
 }
 } // namespace
 
+// Public: the enemy's display name (tiers 1-3, cached; "" = nameless). For the boss-marker
+// enemy-supplement (map_entry_layer build_live_bosses) — mod-agnostic, reads the active install's
+// NpcParam/NpcName (tier 3 = the vanilla field-boss band, e.g. "Erdtree Avatar").
+std::string goblin::enemy_display_name(int npcParam, int model)
+{
+    return resolve_enemy_name(npcParam, model).name;
+}
+
 // On-screen thresholds (1920x1080 space, PostureBarMod values): keep the label inside a sane band so
 // it doesn't ride the extreme screen edge or fall off the bottom (raw screenPos clamps to 1080 there).
 constexpr float kClampL = 130.0f, kClampR = 1790.0f, kClampT = 175.0f, kClampB = 990.0f;
