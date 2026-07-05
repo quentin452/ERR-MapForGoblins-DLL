@@ -101,8 +101,14 @@ User wants to STOP the ~3-4min game-reboot per fix and revive the overlay hot-re
   904810600/601/602="Erdtree Avatar"); (4) dedup vs `WorldMapPointParam` boss markers by position (a c4810
   near an existing "Erdtree Avatar" marker = same boss); (5) emit uncovered ones via `push_marker`
   (Source::Live, WorldBosses). Add to `build_live_bosses` in `map_entry_layer.cpp` (render→hot-reloadable).
-  Verify: `vmap find "Erdtree Avatar"` → 7. NOT needed for native parity, but the user asked for full coverage.
-  (Also re-proved
+  **✅ DONE + LIVE-VERIFIED 2026-07-06 (`352409c`):** `build_live_bosses` now supplements each marked boss
+  type from `g_parsed.enemies` via the new `goblin::enemy_display_name` (tier-1/3 resolver, GOBLIN_RENDER_API
+  exported), name-matched (plural-tolerant) + tile-deduped, reusing the marked row's textId1/iconId.
+  `vmap find "Erdtree Avatar"` 4→**6** (incl. `area12` UNDERGROUND + `area11` Leyndell-folded); 223 instances
+  supplemented across 162 boss types. Both builds link clean. **KNOWN LIMITATION:** Demi-Human Chief stays 1
+  — its c4120 enemies don't resolve to exactly "Demi-Human Chief" (a name-resolution edge, not the plural
+  logic). **`boss_list.json` DELETED (`69c9746`)** — it was WMP-derived (inherited the same 4), fed only dead
+  outputs; removed the file + generator + diagnostic + pipeline stage + all refs. (Also re-proved
   the hot-reload loop here: added `[BOSSDIAG]` to `map_entry_layer.cpp`, hot-swapped render `gen0→gen1` live,
   read the log, removed it — no reboot. Persistent-game harness caveat: the keepalive loop exited when
   foreground `mfg rpc` calls raced its `ping` — gate the keepalive on real liveness, don't break on one ping.)
