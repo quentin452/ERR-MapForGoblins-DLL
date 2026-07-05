@@ -16,8 +16,10 @@ pin (§4).**
 - **The SAFE on/off = render-only:** skip the dialog's **draw** while letting its **update/logic** run. Keeps
   fast-travel, page state, cursor, fog/fragments alive → no state-machine break, no freeze. **Do NOT suppress
   the menu open/close** (that risks the known vmap map-context freeze).
-- **Cheapest already-built lever = the D3D12 `RSSetScissorRects` detour** (dev Task B2 in `goblin_config`) —
-  clip the native map-layer scissor to empty. Crude (clips, doesn't skip work) but needs no menu vtable.
+- **RECOMMENDED toggle = the D3D12 `RSSetScissorRects` detour** (dev Task B2 in `goblin_config`) — force the
+  native map-layer scissor empty. Confirmed the right lever (§4): the menu **draw is a separate Scaleform
+  render pass**, not a slot in the update tick — so the scissor (downstream, at the D3D12 rasterize layer) is
+  the clean "hide pixels, keep logic" point, needs no menu vtable/slot, and MFG already hooks there.
 - **Sequence:** RE + wire the toggle NOW (cheap; enables A/B vmap-vs-native + de-risks the takeover), but only
   FLIP it off in production AFTER Track A parity + **Track B fast-travel** (the map's #1 job). = endgame phase 3.
 
@@ -48,13 +50,32 @@ pixels; keeping the update preserves all logic** (fast-travel resolution, page/c
 - **Avoid:** suppressing the menu OPEN/close or the update (breaks the state machine → freeze; the map drives
   fast-travel/page/fog).
 
-## 4. Remaining pin (one more RE step)
-The exact **draw vfunc slot** of `WorldMapDialog`/CSMenu. The vtable-walk prints only ~6 slots, so pin it by
-decompiling the **CSMenu draw dispatch** (the FeMan/MenuMan per-menu update+draw loop) and reading the
-indirect `(**(code**)(*menu + 0xNN))(menu)` that submits the GFx movie — the same technique that found the
-geom `SetWorldMatrix` slot. Then AOB the target draw function (a slot index can't be AOB'd) + self-heal the
-slot at runtime, like `goblin_geom_move.cpp resolve_setter`. Alternatively skip this and ship candidate (2)
-(the scissor detour) first — it's already scaffolded and needs no slot.
+## 4. Draw-slot hunt — RESULT: the menu draw is a SEPARATE render pass ⇒ use candidate 2 (2026-07-05)
+Traced the menu system to find candidate-1's draw vfunc slot. Chain:
+- CSMenu base ctor `FUN_140741960` (er+0x741960) stamps `DLReferenceCountObject → CS::SceneObjModifier →
+  **CS::MenuWindow**` — so the menu base class is **`CS::MenuWindow`** (WorldMapDialog derives from it).
+- `CSMenuManImp` ctor `FUN_1407650a0` registers a `CSEzUpdateTask<CSEzTask,CSMenuManImp>` whose execute is
+  **`FUN_140766980`** (er+0x766980) — the per-frame menu-manager tick.
+- **`FUN_140766980` is the menu UPDATE (logic) tick, NOT draw:** it advances menu logic + dev-hotkey toggles
+  (`FUN_140ddb560()==0x2d/0x38/0xa/…`), calling sub-steps `FUN_140767180`/`FUN_1407668f0`/`FUN_1407664f0`. The
+  per-menu **DRAW is a separate Scaleform RENDER pass** (the GFx movies rasterize during present, not in this
+  logic tick).
+
+**⇒ Conclusion:** the menu-level draw vfunc lives in the Scaleform render path (deeper — chasing it is
+several more runs, uncertain), while the **update** is `FUN_140766980` (leave it running = keeps logic alive).
+So **candidate 1 (draw-vfunc no-op) is NOT the cheap path.** **Build the toggle as candidate 2 — the D3D12
+`RSSetScissorRects` detour** (already scaffolded, `goblin_config` Task B2 `[SCISSOR]`): the native map's GFx
+rasterizes under a scissor seen only with `mapopen=1`; forcing that rect empty hides the pixels at the exact
+render layer, needs NO menu vtable/slot, and MFG already hooks there. This IS the "render-only, keep logic"
+toggle the design wants — the scissor is downstream of the untouched update tick.
+
+## 4b. Combat gate (follow-up — noted, not yet RE'd)
+The user's map↔combat gate is TWO uses of one state: (UX) in combat → cut the vmap OR show an "in combat"
+badge; (CORRECTNESS) in combat → disable `warp` in the grace-list (ER forbids warping in combat; the vmap,
+being mod-drawn, must replicate that gate or it would let the player warp illegally — the fast-travel
+game-breaking risk the design docs flag). **Follow-up RE:** read the combat/danger state — cleanest is the
+game's own "warp allowed?" gate (must replicate it for fast-travel anyway); alternatives = a battle/danger
+flag on WorldChrMan/LocalPlayer. Deferred to after the render toggle.
 
 ## 5. Sequencing (honest — per the design docs)
 - **Now (cheap, do it):** RE/pin the toggle point + wire a dev flag. Lets you **A/B the vmap against the
@@ -70,8 +91,10 @@ native map menu     CS::WorldMapDialog       vtable er+0x2b2d7d8  (size 0x3ed0; 
   base              CS::WorldMapDialogBase   vtable via FUN_1409be5e0 (er+0x9be5e0); CSMenu base ctor FUN_140741960
   view model        CS::WorldMapViewModel    vtable er+0x2ad82e0  (pinned WORLDMAP_VIEWMODEL_VTABLE_RVA)
   GFx sprite getter FUN_14074a2f0(movie, out, "Body/…")   (Scaleform display-list access = it's a GFx menu)
-menu managers       CSFeMan (CSFEMAN_SLOT) / CSMenuMan (CSMENUMAN_SLOT)   [pinned] — own the update+draw loop
-already-built lever D3D12 RSSetScissorRects detour (goblin_config Task B2 [SCISSOR], mapopen-tagged)
+menu base class     CS::MenuWindow  (CSMenu base ctor FUN_140741960 er+0x741960: DLReferenceCountObject->SceneObjModifier->MenuWindow)
+menu managers       CSFeManImp (ctor 0x76b9d0) / CSMenuManImp (ctor 0x7650a0)  [CSFEMAN_SLOT/CSMENUMAN_SLOT pinned]
+menu UPDATE tick    FUN_140766980 (er+0x766980)  = CSMenuManImp CSEzUpdateTask execute (LOGIC, not draw — leave running)
+RECOMMENDED toggle  D3D12 RSSetScissorRects detour (goblin_config Task B2 [SCISSOR], mapopen-tagged) — draw is a separate Scaleform pass
 ```
 Cross-ref: `imgui_only_map_plan.md` (Track C), `single_surface_ui_plan.md`, `virtual_world_multi_world_design.md`
 (endgame phase 3), `windows_csworldmapmenu_re_prompt.md` (the CSWorldMapMenu subsystem).
