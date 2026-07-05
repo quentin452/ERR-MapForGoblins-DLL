@@ -51,8 +51,9 @@ Pipeline stages:
 15. `generate_maps` → World Maps
 16. `generate_gestures` → Gestures (via common event 90005570 scan)
 17. `generate_hostile_npcs` → invaders (via `teamType=24` in NpcParam + MSB)
-18. `generate_data` — parses all .MASSEDIT → `goblin_map_data.cpp` +
-    `goblin_legacy_conv.hpp` (dungeon→overworld coord conversion from WorldMapLegacyConvParam).
+18. `generate_data` — writes the `goblin_map_data.cpp` no-bake stub. (The baked
+    `goblin_legacy_conv.hpp` dungeon→overworld table was DELETED 2026-07-05; the DLL
+    folds WorldMapLegacyConvParam LIVE via `goblin::legacy_fold`.)
 
 Direct build order (manual invocation):
 `extract_all_items.py` → `build_entity_index.py` → `scan_emevd_awards.py` →
@@ -111,12 +112,12 @@ Output: `data/massedit_generated/Reforged - Rune Pieces.MASSEDIT`, `*_slots.json
 ### generate_data.py - Generate C++ source from MASSEDIT
 Reads all MASSEDIT files and generates C++ arrays compiled into the DLL. Maps
 MASSEDIT categories to C++ enums, embeds geom_slot from slot JSONs, de-overlaps
-icons that share coords via a square spiral. Also emits the legacy dungeon→overworld
-conversion table from WorldMapLegacyConvParam. Text rendering is done at runtime
-via an offset-encoded ID that redirects to the game's own FMG entries — no custom
-text file is generated.
+icons that share coords via a square spiral. (The legacy dungeon→overworld
+conversion table was retired — the DLL folds WorldMapLegacyConvParam LIVE via
+`goblin::legacy_fold`.) Text rendering is done at runtime via an offset-encoded ID
+that redirects to the game's own FMG entries — no custom text file is generated.
 Args: `[--massedit-dir PATH]` (default: `data/massedit`; pipeline uses `data/massedit_generated`).
-Output: `src/generated/goblin_map_data.cpp`, `src/generated/goblin_legacy_conv.hpp`.
+Output: `src/generated/goblin_map_data.cpp`.
 
 ### generate_loot_massedit.py - Generate loot/equipment/magic/etc MASSEDIT
 Reads items_database + goods classification files. Each category has a lambda filter

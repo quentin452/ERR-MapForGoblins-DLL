@@ -8,7 +8,6 @@
 #include "goblin_messages.hpp"
 #include "goblin_map_data.hpp"
 #include "goblin_legacy_fold.hpp"
-#include "goblin_legacy_conv.hpp"
 #include "goblin_logic.hpp"
 #include "goblin_name_regions.hpp"
 #include "goblin_tile_tabs.hpp"
@@ -43,11 +42,12 @@
 
 // Bug A fix: minor dungeons (catacombs/caves/tunnels/hero's graves) have no
 // in-game map page, so rows injected with their dungeon areaNo are never
-// rendered. The game ships WorldMapLegacyConvParam (baked here as LEGACY_CONV)
-// describing how each such sub-map projects onto the overworld (areaNo 60/61).
-// We apply that conversion in-place to the injected row so its icon appears
-// near the dungeon entrance. Rows already on the overworld, or with no conv
-// entry (legacy dungeons that have their own page / unmappable), are untouched.
+// rendered. The game ships WorldMapLegacyConvParam describing how each such
+// sub-map projects onto the overworld (areaNo 60/61); we fold it LIVE from the
+// resident regulation param (goblin::legacy_fold — no baked snapshot) and apply
+// that conversion in-place to the injected row so its icon appears near the
+// dungeon entrance. Rows already on the overworld, or with no conv entry (legacy
+// dungeons that have their own page / unmappable), are untouched.
 static bool project_dungeon_row_to_overworld(
     from::paramdef::WORLD_MAP_POINT_PARAM_ST *d,
     float *out_ent_x = nullptr, float *out_ent_z = nullptr,
@@ -86,77 +86,19 @@ static bool project_dungeon_row_to_overworld(
             d->posZ = fr.posZ;
             return true;
         }
-        // Live param resident but no row for this block → genuinely unmappable; the
-        // baked table can't do better, so don't bother scanning it.
+        // Live param resident but no row for this block → genuinely unmappable.
         if (goblin::legacy_fold::available())
             return false;
     }
 
-    // BAKED fallback (param not loaded yet). Prefer an EXACT (src_area, src_gx, src_gz) base-point — its local coords share
-    // an origin with this row, so we keep the in-dungeon offset. Else fall back to the
-    // NEAREST base-point of the same src_area (by grid distance) and cluster at that
-    // overworld entrance — visible, region-correct, if without intra-dungeon spread.
-    // (Was: the FIRST entry of the area, which sent the few rows whose gridX matches
-    //  no entry — e.g. an m31 cave grace at gx 8 — to an arbitrary far cave mouth.)
-    const goblin::generated::LegacyConvEntry *exact = nullptr;
-    const goblin::generated::LegacyConvEntry *nearest = nullptr;
-    int best_dist = 0x7fffffff;
-    for (size_t i = 0; i < goblin::generated::LEGACY_CONV_COUNT; ++i)
-    {
-        const auto &c = goblin::generated::LEGACY_CONV[i];
-        if (c.src_area != d->areaNo)
-            continue;
-        int dgx = (int)c.src_gx - (int)d->gridXNo; if (dgx < 0) dgx = -dgx;
-        int dgz = (int)c.src_gz - (int)d->gridZNo; if (dgz < 0) dgz = -dgz;
-        int dist = dgx + dgz;
-        if (dist < best_dist) { best_dist = dist; nearest = &c; }
-        if (c.src_gx == d->gridXNo && c.src_gz == d->gridZNo)
-        {
-            exact = &c;
-            break;
-        }
-    }
-    const auto *c = exact ? exact : nearest;
-    if (!c)
-        return false;
-
-    // Base-point TRANSLATION (RE: docs/marker_to_mapspace_re_findings.md §2). The
-    // legacy-dungeon→overworld conv is a uniform translation: take the marker's FULL
-    // world offset (grid + pos) from the src base point and apply it to the dst base
-    // point. The previous code added only the LOCAL pos delta (posX-src_pos_x),
-    // dropping the (gridXNo-src_gx)·256 grid term + src_gz entirely → markers in a
-    // different grid cell than the base landed in the wrong region (the area-16 bug).
-    float dst_base_x = static_cast<float>(c->dst_gx) * 256.0f + c->dst_pos_x;
-    float dst_base_z = static_cast<float>(c->dst_gz) * 256.0f + c->dst_pos_z;
-    // The conv base point IS the dungeon's overworld ENTRANCE — hand it back so a
-    // cluster of this dungeon's markers can sit there instead of at the centroid
-    // of their spread-out projected interior (which can drift off into the sea).
-    if (out_ent_x) *out_ent_x = dst_base_x;
-    if (out_ent_z) *out_ent_z = dst_base_z;
-    float marker_x = static_cast<float>(d->gridXNo) * 256.0f + d->posX;
-    float marker_z = static_cast<float>(d->gridZNo) * 256.0f + d->posZ;
-    float src_base_x = static_cast<float>(c->src_gx) * 256.0f + c->src_pos_x;
-    float src_base_z = static_cast<float>(c->src_gz) * 256.0f + c->src_pos_z;
-    float wx = dst_base_x + (marker_x - src_base_x);
-    float wz = dst_base_z + (marker_z - src_base_z);
-    // GUARD: a few baked rows carry abnormal local coords (e.g. area-11 grid(10,0)
-    // posX=-4695) → the translation sends wx/wz out of the overworld tile extent →
-    // gridXNo (uint8) wraps → the game's icon build (FUN_141eb9ed0) indexes an
-    // out-of-range tile and CRASHES on map open. Out of range → fall back to the
-    // entrance base point (the old clustering behaviour, always valid).
-    if (wx < 0.f || wz < 0.f || wx > 0x3F * 256.0f || wz > 0x3F * 256.0f)
-    {
-        wx = dst_base_x;
-        wz = dst_base_z;
-    }
-    int gx = static_cast<int>(std::floor(wx / 256.0f));
-    int gz = static_cast<int>(std::floor(wz / 256.0f));
-    d->areaNo = c->dst_area;
-    d->gridXNo = static_cast<uint8_t>(gx);
-    d->gridZNo = static_cast<uint8_t>(gz);
-    d->posX = wx - static_cast<float>(gx) * 256.0f;
-    d->posZ = wz - static_cast<float>(gz) * 256.0f;
-    return true;
+    // Warm-up window ONLY (regulation param not resident yet): the baked LEGACY_CONV
+    // table + its nearest-base-point scan were DELETED (docs/plans/imgui_only_map_plan.md
+    // Track C — prime directive: runtime/disk over baked; the baked scan was the source of
+    // the area-12 sub-region mis-fold + the DLC-UG residual). Before WorldMapLegacyConvParam
+    // loads there is no fold source, so leave the row unprojected — callers fall back to raw
+    // per-area coords / the circle glyph. Every caller runs in-world, long after regulation is
+    // resident, so this branch is effectively unreached (legacy_fold::available() is true).
+    return false;
 }
 
 // ── Runtime grace anchors (replacing baked GRACE_ANCHORS) ────────────────────────────

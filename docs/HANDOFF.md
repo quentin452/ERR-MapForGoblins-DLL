@@ -48,9 +48,13 @@ self-heals. Backlog now: worldmap vtables/slots + icon-harvest set only.
 **Converter residency — VERIFIED SAFE for the M5 cull.** The recommended native-draw removal (D3D12
 `RSSetScissorRects` empty-clip, commit `2208332`) hides pixels but KEEPS the menu logic tick → VM stays live.
 Proven weaker-than-close: `proj` RPC + `test_converter_residency.py` (5/5) → project() identical map-closed
-(du=0.0). **Endgame data cleanup queued** (`imgui_only_map_plan` Track C): once the vmap owns the surface,
-DELETE the baked `LEGACY_CONV` + its nearest-fallback in `project_dungeon_row_to_overworld` (source of the
-area-12 mis-fold + DLC-UG residual), route all UG/DLC projection through the live converter.
+(du=0.0). **Endgame data cleanup DONE 2026-07-05** (`imgui_only_map_plan` Track C): DELETED the baked
+`LEGACY_CONV` table (`src/generated/goblin_legacy_conv.hpp`) + its nearest-base-point scan in
+`project_dungeon_row_to_overworld` + the sibling scan in `goblin_markers.cpp::entry_world_coords` + the
+generator emission (`tools/generate_data.py`). All dungeon/UG/DLC projection now folds LIVE via
+`goblin::legacy_fold` off the resident regulation `WorldMapLegacyConvParam` (its own exact-block +
+nearest-base-point lookup). The baked scan was already dead once regulation is resident — which every caller
+is — so this was behaviour-neutral in steady state; warm-up window → raw/circle fallback. Cross-build clean.
 
 **Parity gate (Track A) now:** A1/A2*/A4/A5/A6/A7/A8/A9/A11/A13 ✅ + gamepad nav + grace search/warp. Open
 pure-Linux: A15 (legacy-dungeon sub-maps). A3 tiles = Windows RE. A12 (ERR dial) low-prio.

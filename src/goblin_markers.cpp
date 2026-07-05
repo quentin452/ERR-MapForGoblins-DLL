@@ -15,7 +15,6 @@
 #include "goblin_messages.hpp"
 #include "modutils.hpp"
 #include "re_signatures.hpp"
-#include "goblin_legacy_conv.hpp"
 #include "goblin_legacy_fold.hpp"
 #include "goblin_map_data.hpp"
 #include "goblin_categories.gen.hpp"  // CATEGORY_META (name + section, data-driven)
@@ -365,8 +364,10 @@ static bool entry_world_coords(const generated::MapEntry &e, float &wx, float &w
         return true;
     }
     // Dungeon: fold to the overworld via the LIVE WorldMapLegacyConvParam
-    // (full-block key + chained + [50,88] terminal). Falls back to the baked
-    // LEGACY_CONV when the param isn't resident yet.
+    // (full-block key + chained + [50,88] terminal). The baked LEGACY_CONV fallback
+    // was DELETED (imgui_only_map_plan Track C — runtime over baked); before the param
+    // is resident the row is simply unmappable (this whole path is baked-MAP_ENTRY only,
+    // MAP_ENTRY_COUNT==0, so it is unreached in practice).
     {
         auto fr = goblin::legacy_fold::fold(area, e.data.gridXNo, e.data.gridZNo,
                                             e.data.posX, e.data.posZ);
@@ -376,23 +377,8 @@ static bool entry_world_coords(const generated::MapEntry &e, float &wx, float &w
             wz = static_cast<float>(fr.gz) * 256.0f + fr.posZ;
             return true;
         }
-        if (goblin::legacy_fold::available())
-            return false;  // resident but unmappable
     }
-    // BAKED fallback: lookup (srcArea, srcGridX) in conv table (takes first match).
-    for (size_t i = 0; i < generated::LEGACY_CONV_COUNT; ++i)
-    {
-        const auto &c = generated::LEGACY_CONV[i];
-        if (c.src_area == area && c.src_gx == e.data.gridXNo)
-        {
-            wx = static_cast<float>(c.dst_gx) * 256.0f + c.dst_pos_x
-               + (e.data.posX - c.src_pos_x);
-            wz = static_cast<float>(c.dst_gz) * 256.0f + c.dst_pos_z
-               + (e.data.posZ - c.src_pos_z);
-            return true;
-        }
-    }
-    return false;  // unmappable (rare edge dungeons)
+    return false;  // unmappable (rare edge dungeons / param not resident)
 }
 
 

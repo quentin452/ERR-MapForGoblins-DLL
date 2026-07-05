@@ -210,16 +210,18 @@ Original spec (a grace LIST menu, not just clicking dots on the canvas), so the 
   `tools/rpc_tests/test_converter_residency.py` (`proj` RPC returns IDENTICAL u,v with the map fully closed,
   du=0.0). So culling the draw is safe for projection. When the scissor toggle is RPC-exposed, extend that
   test to toggle it between the two `proj` calls (belt-and-suspenders).
-- **★ ENDGAME data cleanup — REMOVE the BAKED LegacyConv once the vmap owns the surface.** With the live
-  converter proven resident even map-closed/culled, the mod no longer needs the **baked** `LEGACY_CONV` table
-  (`src/generated/goblin_legacy_conv.hpp`) + its nearest-base-point fallback in
-  `goblin_world_position.cpp::project_dungeon_row_to_overworld` — that fallback is the source of the area-12
-  sub-region mis-fold + the DLC-UG gap (the Fork 2 residual few tiles). Prime-directive win (runtime/disk
-  over baked): route ALL underground/DLC projection through `worldmap_probe::project` (live regulation
-  `WorldMapLegacyConvParam`), delete the baked table + the `LEGACY_CONV` scan branch, and keep only a
-  circle/at-raw fallback for the pre-first-map-open warm-up window. Gate: after M5 (vmap is the sole surface,
-  so the converter is guaranteed resolved before any draw the user sees). Tracked here so the baked snapshot
-  doesn't ossify.
+- **★ ENDGAME data cleanup — REMOVE the BAKED LegacyConv — ✅ DONE 2026-07-05.** Deleted the baked
+  `LEGACY_CONV` table (`src/generated/goblin_legacy_conv.hpp`) + its nearest-base-point scan branch in
+  `goblin_world_position.cpp::project_dungeon_row_to_overworld` AND the sibling scan in
+  `goblin_markers.cpp::entry_world_coords`, plus the generator emission (`tools/generate_data.py`). All
+  dungeon/UG/DLC projection now folds LIVE from the resident regulation `WorldMapLegacyConvParam` via
+  `goblin::legacy_fold` (which carries its OWN exact-block + nearest-base-point lookup off the live param);
+  the baked scan was already dead in steady state (`legacy_fold::available()` gates it out once regulation is
+  resident, which every caller is) — it only ran in a pre-regulation warm-up window that no caller reaches.
+  The warm-up path now `return false` → callers fall back to raw per-area coords / the circle glyph (prime
+  directive). Cross-build clean. The safety rationale for the VM-converter half (Fork 2's
+  `worldmap_probe::project`) — resident even map-closed/culled — held; `legacy_fold` is the regulation-param
+  path and is independent of the M5 gate, so this landed without waiting on M5.
 - **GATE:** C1-cull / C3 only after Track A (parity) is all-green.
 
 ---

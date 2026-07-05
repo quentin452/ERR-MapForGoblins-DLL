@@ -91,7 +91,7 @@ MSB + regulation.bin + EMEVD
     │   generate_paintings.py, generate_maps.py, generate_gestures.py,
     │   generate_hostile_npcs.py    → world-infrastructure MASSEDIT
     │
-    └─► generate_data.py → goblin_map_data.cpp + goblin_legacy_conv.hpp
+    └─► generate_data.py → goblin_map_data.cpp (no-bake stub)
                               │
                               └─► build.bat → MapForGoblins.dll
 ```

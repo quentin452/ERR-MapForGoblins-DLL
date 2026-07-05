@@ -4,17 +4,17 @@ Generate the live runtime C++ tables (NOT the marker bake — that was retired i
 
 Emits:
   - src/generated/goblin_map_data.cpp        (Phase-2 empty no-bake stub; markers come live/disk)
-  - src/generated/goblin_legacy_conv.hpp     (dungeon -> overworld coord conversion)
+
+The dungeon->overworld conversion table (goblin_legacy_conv.hpp) was DELETED
+2026-07-05 (imgui_only_map_plan Track C): the DLL folds it LIVE from the resident
+regulation param via goblin::legacy_fold, so no baked snapshot is emitted.
 
 Localization is handled by the DLL at runtime via FMG offset-encoding
 (textId = real_id + category_offset), so no text compilation step is needed.
 """
 
 import os
-import re
-import json
 import sys
-from collections import defaultdict
 from pathlib import Path
 
 # Phase-2 no-bake stub written to the COMPILED goblin_map_data.cpp. The static marker bake is
@@ -93,10 +93,6 @@ def main():
     print("=== Generating map data C++ (no-bake stub) ===")
     generate_map_data_cpp(output_dir / "goblin_map_data.cpp")
 
-    print("\n=== Generating legacy-conv C++ ===")
-    generate_legacy_conv_cpp(config.DATA_DIR / "WorldMapLegacyConvParam.json",
-                             output_dir / "goblin_legacy_conv.hpp")
-
     # Category descriptor (data/categories.json -> goblin_categories.gen.hpp). Keeps the
     # committed generated header in sync so name/section never drift from the table.
     print("\n=== Generating category descriptor ===")
@@ -104,92 +100,6 @@ def main():
     generate_categories.main()
 
     print("\nDone.")
-
-
-def generate_legacy_conv_cpp(conv_json, output_path):
-    """Emit a C++ header with the dungeon→overworld conversion table.
-    Used by goblin_markers to place dungeon MAP_ENTRIES on overworld coords."""
-    if not conv_json.exists():
-        print(f"  WARNING: {conv_json} missing, skipping")
-        return
-    rows = json.load(open(conv_json, encoding='utf-8'))
-    # Parse every hop. The param maps a sub-area onto another area; many dungeon
-    # sub-areas reach the overworld (60/61) only TRANSITIVELY — e.g. Leyndell's
-    # Ashen Capital m35 -> area 11 (Leyndell) -> area 60. A single-hop filter
-    # (dst in 60/61) silently drops those, so follow the chains and compose the
-    # translations down to 60/61.
-    hops = []
-    for r in rows:
-        if not isinstance(r, dict): continue
-        hops.append({
-            'src_area': int(r.get('srcAreaNo', 0)),
-            'src_gx': int(r.get('srcGridXNo', 0)),
-            'src_gz': int(r.get('srcGridZNo', 0)),
-            'src_pos_x': float(r.get('srcPosX', 0)),
-            'src_pos_z': float(r.get('srcPosZ', 0)),
-            'dst_area': int(r.get('dstAreaNo', 0)),
-            'dst_gx': int(r.get('dstGridXNo', 0)),
-            'dst_gz': int(r.get('dstGridZNo', 0)),
-            'dst_pos_x': float(r.get('dstPosX', 0)),
-            'dst_pos_z': float(r.get('dstPosZ', 0)),
-        })
-    by_src = {}   # (area, gx) -> first hop
-    by_area = {}  # area -> first hop (grid fallback)
-    for h in hops:
-        by_src.setdefault((h['src_area'], h['src_gx']), h)
-        by_area.setdefault(h['src_area'], h)
-
-    def w(gx, pos): return gx * 256.0 + pos
-
-    def resolve(h, seen):
-        """Compose chains until dst is 60/61; None if it never reaches overworld."""
-        if h['dst_area'] in (60, 61):
-            return h
-        if h['dst_area'] in seen:  # cycle guard
-            return None
-        nxt = by_src.get((h['dst_area'], h['dst_gx'])) or by_area.get(h['dst_area'])
-        if not nxt:
-            return None
-        r = resolve(nxt, seen | {h['dst_area']})
-        if not r:
-            return None
-        # Translate H's dst world point by R's (dst - src) offset.
-        cx = w(h['dst_gx'], h['dst_pos_x']) + w(r['dst_gx'], r['dst_pos_x']) - w(r['src_gx'], r['src_pos_x'])
-        cz = w(h['dst_gz'], h['dst_pos_z']) + w(r['dst_gz'], r['dst_pos_z']) - w(r['src_gz'], r['src_pos_z'])
-        gx, gz = int(cx // 256), int(cz // 256)
-        return {**h, 'dst_area': r['dst_area'], 'dst_gx': gx, 'dst_gz': gz,
-                'dst_pos_x': cx - gx * 256.0, 'dst_pos_z': cz - gz * 256.0}
-
-    by_key = {}
-    for h in hops:
-        key = (h['src_area'], h['src_gx'])
-        if key in by_key:
-            continue
-        res = resolve(h, {h['src_area']})
-        if res:
-            by_key[key] = res
-    entries = sorted(by_key.values(), key=lambda e: (e['src_area'], e['src_gx']))
-    with open(output_path, 'w', encoding='utf-8') as f:
-        f.write("#pragma once\n// AUTO-GENERATED — do not edit.\n")
-        f.write("// Dungeon-area → overworld-tile conversion table (first base-point per src key,\n")
-        f.write("// transitively composed down to area 60/61 — e.g. Ashen Capital m35→11→60).\n\n")
-        f.write("#include <cstdint>\n#include <cstddef>\n\n")
-        f.write("namespace goblin::generated {\n\n")
-        f.write("struct LegacyConvEntry {\n")
-        f.write("    uint8_t src_area;\n    uint8_t src_gx;\n    uint8_t src_gz;\n")
-        f.write("    float src_pos_x;\n    float src_pos_z;\n")
-        f.write("    uint8_t dst_area;\n    uint8_t dst_gx;\n    uint8_t dst_gz;\n")
-        f.write("    float dst_pos_x;\n    float dst_pos_z;\n")
-        f.write("};\n\n")
-        f.write(f"constexpr LegacyConvEntry LEGACY_CONV[] = {{\n")
-        for e in entries:
-            f.write(f"    {{ {e['src_area']}, {e['src_gx']}, {e['src_gz']}, {e['src_pos_x']:.3f}f, {e['src_pos_z']:.3f}f, ")
-            f.write(f"{e['dst_area']}, {e['dst_gx']}, {e['dst_gz']}, ")
-            f.write(f"{e['dst_pos_x']:.3f}f, {e['dst_pos_z']:.3f}f }},\n")
-        f.write("};\n\n")
-        f.write(f"constexpr size_t LEGACY_CONV_COUNT = {len(entries)};\n\n")
-        f.write("} // namespace goblin::generated\n")
-    print(f"  Generated {output_path.name} with {len(entries)} conv entries")
 
 
 if __name__ == "__main__":

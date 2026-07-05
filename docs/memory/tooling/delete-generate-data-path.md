@@ -44,11 +44,13 @@ downstream consumers retired.
 
 ## ⚠️ CORRECTION to the old plan: generate_data.py is NOT deletable
 The earlier note assumed generate_data only owned icons+enemy-names → deletable after splitting them
-out. **WRONG.** generate_data still owns **5 live runtime tables**: `goblin_item_icons.cpp` (1818),
-`goblin_category_exceptions.cpp` (133), `goblin_enemy_names.cpp`, `goblin_name_aliases_en.cpp` (3276),
-`goblin_legacy_conv.hpp` (94) — plus the map_data stub. CATEGORY_MAP is shared by item-icons +
-category-exceptions. So generate_data stays; it just no longer parses MASSEDIT or emits the bake table.
-Regen-validated: those 5 tables stay byte-identical, only the stub comment changed.
+out. **WRONG.** generate_data still owns live runtime tables: `goblin_item_icons.cpp` (1818),
+`goblin_category_exceptions.cpp` (133), `goblin_enemy_names.cpp`, `goblin_name_aliases_en.cpp` (3276)
+— plus the map_data stub. CATEGORY_MAP is shared by item-icons + category-exceptions. So generate_data
+stays; it just no longer parses MASSEDIT or emits the bake table.
+**UPDATE 2026-07-05:** `goblin_legacy_conv.hpp` (94) was DELETED — the DLL folds
+`WorldMapLegacyConvParam` LIVE via `goblin::legacy_fold`, so `generate_legacy_conv_cpp` (+ the `json`/`re`
+imports it needed) is gone from generate_data.py (imgui_only_map_plan Track C endgame cleanup).
 
 ## NEXT
 - **Runtime validation (<user>):** a substituted-model gather node must gray on collect — find one via
