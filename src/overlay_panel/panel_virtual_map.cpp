@@ -114,6 +114,14 @@ namespace
     std::vector<ImVec2> s_locate_pts;   // (worldX, worldZ) of the last locate's matches
     bool s_locate_arm = false;          // set by locate; consumed in draw (GetTime() is frame-safe there)
     double s_locate_until = 0.0;        // ImGui::GetTime() expiry of the pulse (0 = inactive)
+
+    // Item-search "mark all results": a persistent highlight on EVERY matching item instance of the current
+    // query (distinct orange, not the blue custom pins), capped at s_search_mark_max, regenerated on each new
+    // search + wiped by Clear. Stored in world XZ + group; drawn for the active group, on top of markers.
+    struct SearchMark { float wx, wz; int group; };
+    std::vector<SearchMark> s_search_marks;
+    int s_search_mark_max = 150;
+    bool s_search_mark_on = true;
     int s_drawn = 0;               // marker count drawn last frame (toolbar readout)
     int s_relief_hits = 0, s_relief_drawn = 0; // D2.3 debug: hit cells fetched / quads actually drawn
     const char *const kGroupNames[4] = {"Base overworld", "Base underground", "DLC overworld",
@@ -865,10 +873,27 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         ImGui::SetNextItemWidth(-1.0f);
         ImGui::InputTextWithHint("##ifilter", tr("item name (2+ chars)"), s_item_filter, sizeof(s_item_filter));
 
+        // Mark-all-results controls: toggle, max count, Clear. Changing the toggle/max re-runs the marks
+        // against the current query (force a rebuild by resetting the query sentinel).
+        ImGui::Checkbox(tr("Mark results"), &s_search_mark_on);
+        ImGui::SameLine(); ImGui::TextDisabled("max"); ImGui::SameLine();
+        ImGui::SetNextItemWidth(64.f * uiScale);
+        ImGui::InputInt("##markmax", &s_search_mark_max, 0);
+        if (s_search_mark_max < 1) s_search_mark_max = 1;
+        if (s_search_mark_max > 4000) s_search_mark_max = 4000;
+        ImGui::SameLine();
+        if (ImGui::Button(tr("Clear marks"))) { s_search_marks.clear(); s_search_mark_on = false; }
+        {
+            static bool s_prev_on = s_search_mark_on; static int s_prev_max = s_search_mark_max;
+            if (s_prev_on != s_search_mark_on || s_prev_max != s_search_mark_max)
+            { s_prev_on = s_search_mark_on; s_prev_max = s_search_mark_max; s_ihits_q = "\x01"; }
+        }
+
         if (std::string(s_item_filter) != s_ihits_q)
         {
             s_ihits_q = s_item_filter;
             s_ihits.clear();
+            s_search_marks.clear();   // regenerate the result marks for the new query
             if (s_ihits_q.size() >= 2)
             {
                 std::unordered_map<int32_t, std::string> loc_cache, en_cache;
@@ -892,6 +917,9 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                         if (loc.empty() && en.empty()) continue;
                         if (!matches_all_tokens(loc + " " + en, s_item_filter)) continue;
                         const int g = m.group & 3;
+                        // Mark EVERY matching instance (not deduped like the list rows), capped.
+                        if (s_search_mark_on && (int)s_search_marks.size() < s_search_mark_max)
+                            s_search_marks.push_back({m.worldX, m.worldZ, g});
                         const int64_t k = ((int64_t)m.name_id << 2) | g;
                         if (hitc[k]++ == 0)
                         {
@@ -1706,6 +1734,23 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     }
     // Player position marker + heading arrow (A11 parity — the native minimap has this; the vmap must
     // too before it can replace the native map). Base ER only, and only when the player's group matches
+    // Item-search RESULT marks — a persistent orange diamond on every matching instance of the current query
+    // (distinct from the blue custom pins + yellow item icons), for the active group. Drawn ON TOP of markers
+    // and independent of the visibility gate, so all results stay visible at once until the next search/Clear.
+    if (active_world == 0 && !s_search_marks.empty())
+    {
+        for (const SearchMark &sm : s_search_marks)
+        {
+            if (sm.group != s_group) continue;
+            ImVec2 p = w2s(sm.wx, sm.wz);
+            if (p.x < origin.x || p.x > canvas_end.x || p.y < origin.y || p.y > canvas_end.y) continue;
+            const float r = 6.0f * uiScale;
+            const ImVec2 d0(p.x, p.y - r), d1(p.x + r, p.y), d2(p.x, p.y + r), d3(p.x - r, p.y);
+            dl->AddQuadFilled(d0, d1, d2, d3, IM_COL32(255, 140, 20, 235));
+            dl->AddQuad(d0, d1, d2, d3, IM_COL32(35, 20, 0, 235), 1.5f * uiScale);
+        }
+    }
+
     // Item-search LOCATE highlight — a pulsing ring at every match on the page, drawn ON TOP of all markers
     // and INDEPENDENT of the visibility gate, so a search hit is visible even with markers toggled off (and
     // gives the "found it" feedback the plain re-centre lacked). Only for Base-ER (locate is Base-ER-only).
