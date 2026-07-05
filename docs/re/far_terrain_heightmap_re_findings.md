@@ -55,7 +55,7 @@ Confirmed by: the rich FLVER/mapbnd infrastructure above + the total absence of 
 |---|------|---------------|--------|----------|---------|
 | 1 | **Parse low-LOD terrain FLVERs from `.mapbnd`** (disk no-bake, Oodle/dvdbnd) → rasterize vertex Y into a heightfield | ✅ (reads active install) | **HIGH** — opens the FLVER frontier (README #4): FLVER parser + per-piece stitch | whole map (all pieces on disk) | the "correct" path; biggest brick |
 | 2 | **Read resident `CSMapModelIns` vertex buffers** (GPU, draw-free, like icon-harvest) | ✅ | HIGH + fragile (find resident VBs, decode FLVER vertex fmt) | only STREAMED LOD (not whole map at once) | worse than #1 (partial coverage) |
-| 3 | **`WorldMapPieceParam` cheap-probe** — check if it carries per-piece elevation/bounds (coarse) | ✅ (param) | LOW to check | per-piece (very coarse) | likely only screen-tile placement, not elevation — but cheap to rule in/out first |
+| 3 | ~~`WorldMapPieceParam` cheap-probe~~ | — | done | — | **RULED OUT (2026-07-05)** — it's a 2D reveal RECTANGLE only (`openEventFlagId` + `openTravelArea` L/R/T/B = X/Z map-space bounds; `WORLD_MAP_PIECE_PARAM_ST.hpp` + `windows_fog_reveal_mask_re_findings.md`). **No Y/elevation field.** No coarse-elevation shortcut here. |
 | 4 | **Reuse the baked map-screen COLOR tiles as the backdrop** (already read by `maptile.cpp`) | ⚠ mod-BAKED snapshot | LOW (done) | whole map | gives a relief IMAGE (shading), NOT elevation Y; violates mod-agnostic for non-ERR |
 | 5 | **Near-field raycast only; leave the far field flat** | ✅ | none | loaded radius only | honest fallback if elevation isn't worth the FLVER project |
 
@@ -75,8 +75,9 @@ This is a **strategic fork**, not a mechanical next step:
   README-#4 frontier; pairs the far field with the near-field raycast for a seamless hillshade).
 - If a visual backdrop suffices → **option #4** (shaded color tiles) is already in place; only the
   mod-agnostic caveat remains.
-- Quick win regardless: **option #3** (`WorldMapPieceParam` probe, ctors 0x55ba10/0x55a610/0x559b10 +
-  0xd570a0/0xd572e0/0xd57460) to confirm it has no usable elevation before deciding.
+- ~~Quick win: option #3 (`WorldMapPieceParam` probe)~~ **DONE — ruled out** (2D reveal rectangle, no
+  elevation; see the table). So no cheap coarse source exists; the fork is genuinely #1 (FLVER) vs #4
+  (visual color-tile backdrop) vs #5 (shelve).
 
 ## 6. Anchors
 ```
