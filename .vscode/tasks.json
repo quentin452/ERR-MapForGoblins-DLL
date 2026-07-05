@@ -39,6 +39,30 @@
       "problemMatcher": []
     },
     {
+      "label": "MFG: Configure hot-reload build",
+      "detail": "First-time — configure build-linux-hotreload (GOBLIN_OVERLAY_HOTRELOAD=ON, split host+render DLLs).",
+      "type": "shell",
+      "command": "cmake -B build-linux-hotreload -G Ninja -DGOBLIN_OVERLAY_HOTRELOAD=ON -DCMAKE_TOOLCHAIN_FILE=clang-cl-xwin.cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "MFG: Hot-reload — build+deploy BOTH (boot once)",
+      "detail": "Build host+render split DLLs and deploy both to dll/offline. Run once, then boot ER; after that use the render-only reload task per edit.",
+      "type": "shell",
+      "command": "ninja -C build-linux-hotreload MapForGoblins goblin_overlay_render && python -c \"import sys,shutil; sys.path.insert(0,'tools'); from mfg_session import DLL_OFFLINE as D; [shutil.copy('build-linux-hotreload/'+f, D+'/'+f) for f in ('MapForGoblins.dll','MapForGoblins.pdb','goblin_overlay_render.dll','goblin_overlay_render.pdb')]; print('deployed host+render to', D)\"",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "MFG: Hot-reload — reload RENDER (no game restart)",
+      "detail": "Rebuild ONLY goblin_overlay_render.dll and copy it to dll/offline — the running game's watcher auto-swaps it ~1.3s later (or send the reload_overlay RPC). Edit render files only (panel_*, map_entry_layer, map_renderer, grace_layer).",
+      "type": "shell",
+      "command": "ninja -C build-linux-hotreload goblin_overlay_render && python -c \"import sys,shutil; sys.path.insert(0,'tools'); from mfg_session import DLL_OFFLINE as D; shutil.copy('build-linux-hotreload/goblin_overlay_render.dll', D+'/goblin_overlay_render.dll'); print('hot-swapped render ->', D)\"",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": ["$gcc"]
+    },
+    {
       "label": "MFG: Run all RPC tests (aggregated)",
       "detail": "Boot ER + run the RPC test suite (single-boot tests share ONE boot) + regression scan.",
       "type": "shell",

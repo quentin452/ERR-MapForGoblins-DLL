@@ -14,6 +14,24 @@ then `docs/re/*.md` (RE findings) and `docs/memory/`.
 User wants to STOP the ~3-4min game-reboot per fix and revive the overlay hot-reload dev loop. Investigated
 + queued two marker bugs. NOT yet coded (diagnosis only this pass).
 
+- **★★ OVERLAY HOT-RELOAD RESYNC = DONE + LIVE-VALIDATED 2026-07-05 (`73c8d96`).** The whole split
+  drift below is FIXED: `build-linux-hotreload` links BOTH `MapForGoblins.dll` + `goblin_overlay_render.dll`
+  clean, AND the default single-DLL build stays clean. **Live-proven:** booted the hotreload build
+  (`status hotreload=1 gen=0`), exercised the moved surfaces (`vmap fit`/`offmap`/`find`, `f1_tab`,
+  `far_relief_probe` — all ok), then `reload_overlay` → **`gen=0→1` (render module hot-swapped, no restart)**,
+  the vmap dispatch still worked post-swap, `ping`→`pong`, and a screenshot shows the F1 panel + minimap
+  render cleanly at 39fps. **DEV LOOP (no game reboot per fix):** edit a RENDER file (`panel_*`,
+  `map_entry_layer.cpp`, `map_renderer.cpp`, `grace_layer.cpp` — NOT host files like `goblin_legacy_fold.cpp`)
+  → `ninja -C build-linux-hotreload goblin_overlay_render` → copy `goblin_overlay_render.dll` to
+  `dll/offline/` → watcher auto-swaps ~1.3s (or `reload_overlay` RPC) → re-test. Boot ONCE with BOTH DLLs
+  deployed (`ninja -C build-linux-hotreload MapForGoblins goblin_overlay_render` + copy both). **Normal-play
+  deploy = the DEFAULT build** (single DLL, `build-linux`); the offline dir is restored to it now (stale
+  render DLL removed so the default host never half-loads it). **⚠ MAINTENANCE GUARD:** the split has no CI —
+  every new host↔render call re-breaks it. Before finishing a session that touched the host/render boundary,
+  run `ninja -C build-linux-hotreload MapForGoblins goblin_overlay_render` and fix any new undefined (move
+  the file to host + `GOBLIN_RENDER_API`, or add a loader export — pattern in `goblin_overlay_render_loader.cpp`).
+  The detail below is the (now-resolved) diagnosis, kept for the pattern.
+
 - **★ Overlay hot-reload EXISTS + was Linux-validated (2026-07-02, `overlay_hot_reload_playwright_plan.md`)
   but the split-build LINK is now BROKEN — drifted since.** `GOBLIN_OVERLAY_HOTRELOAD=ON` builds the draw
   layer as a swappable `goblin_overlay_render.dll` (watcher auto-swaps ~1.3s, no restart; `reload_overlay`
