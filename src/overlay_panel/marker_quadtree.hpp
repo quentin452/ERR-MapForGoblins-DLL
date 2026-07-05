@@ -22,7 +22,9 @@ class MarkerQuadtree
 {
 public:
     using Marker = goblin::worldmap::Marker;
-    struct Pile { float cx, cz; int count; };
+    // node = the collapsing subtree's root index → gather_pile() can enumerate its members on demand (for
+    // hover spiderfy). -1 for piles not produced by collect (none currently).
+    struct Pile { float cx, cz; int count; int node = -1; };
 
     // Rebuild over `items` (marker pointers must outlive the tree — they point into the layers).
     void build(const std::vector<const Marker *> &items, int capacity = 8, int max_depth = 8)
@@ -60,6 +62,14 @@ public:
     {
         if (!m_nodes.empty())
             collect(0, vMinX, vMinZ, vMaxX, vMaxZ, clusterWorld, piles, singles);
+    }
+
+    // Enumerate a pile's member markers (subtree walk from pl.node). On-demand — call only for the ONE
+    // hovered pile so the per-frame cluster draw stays allocation-free. Appends to `out`.
+    void gather_pile(const Pile &pl, std::vector<const Marker *> &out) const
+    {
+        if (pl.node >= 0 && pl.node < (int)m_nodes.size())
+            gather(pl.node, out);
     }
 
 private:
@@ -126,6 +136,18 @@ private:
             place(base + quadrant(ni, m->worldX, m->worldZ), m, depth + 1);
     }
 
+    // Concatenate every marker in the subtree rooted at `ni` (leaves hold the items).
+    void gather(int ni, std::vector<const Marker *> &out) const
+    {
+        const Node &n = m_nodes[ni];
+        if (n.firstChild < 0)
+        {
+            out.insert(out.end(), n.items.begin(), n.items.end());
+            return;
+        }
+        for (int i = 0; i < 4; ++i) gather(n.firstChild + i, out);
+    }
+
     void collect(int ni, float vMinX, float vMinZ, float vMaxX, float vMaxZ, float clusterWorld,
                  std::vector<Pile> &piles, std::vector<const Marker *> &singles) const
     {
@@ -135,7 +157,7 @@ private:
         const float sz = (std::max)(n.maxx - n.minx, n.maxz - n.minz);
         if (n.count > 1 && sz <= clusterWorld)   // node too small on screen → one pile
         {
-            piles.push_back(Pile{(float)(n.sumx / n.count), (float)(n.sumz / n.count), n.count});
+            piles.push_back(Pile{(float)(n.sumx / n.count), (float)(n.sumz / n.count), n.count, ni});
             return;
         }
         if (n.firstChild < 0)                    // leaf → emit the in-view markers individually

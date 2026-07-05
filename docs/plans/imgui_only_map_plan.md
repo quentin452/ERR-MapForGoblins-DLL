@@ -109,13 +109,14 @@ from parity — Track A is real BUILD work, not just a checklist. This IS the go
 **vmap UX backlog (from live testing 2026-07-04):**
 - ✅ grace z-order (draw on top) `dd64d8d`; ✅ hover z-order (grace wins the tooltip/warp) `89d0cd8`;
   ✅ focus-player-on-open `cd7948b`; ✅ grace warp id fix (bonfireEntityId) `89d0cd8`.
-- **Spiderify — LARGELY SUPERSEDED on the vmap (user call 2026-07-04).** Spiderify exists on the NATIVE
-  map because its zoom is capped, so co-located markers can never be separated by zooming — spreading them
-  in a spiral is the only way. The vmap has a HUGE unbounded zoom range (`kZoomMin 0.002 … kZoomMax 4.0`)
-  PLUS quadtree LOD clustering, so the normal "too dense to read / to click" case is solved by *zoom in →
-  the pile expands → markers separate spatially*. The only residual niche = markers at the EXACT same world
-  position (e.g. several items on one loot spot) that never separate at any zoom. Keep spiderfy as a
-  LOW-PRIORITY polish for that exact-coincident case only; the general overlapping case is handled.
+- **Spiderify — ✅ DONE 2026-07-05.** Ported the native hover-fan to the vmap, covering BOTH the quadtree
+  piles (hover a cluster → members fan in a ring ≤12 / spiral beyond, legs back, dedup identical → ×N badge,
+  "+N" overflow past 40) AND the residual EXACT/near-coincident SINGLES the unbounded zoom can't separate
+  (several items on one loot spot — bucketed by an icon-sized screen cell). Each fanned icon feeds the shared
+  hover accumulator so the existing tooltip + grace double-click-warp fire for it. `MarkerQuadtree::Pile`
+  gained a node index + `gather_pile()` (on-demand, only the hovered pile pays). Gated on
+  `config::clusterSpiderfy`. Screenshot-verified via `vmap spiderfy 1` (force-open the largest pile): the
+  spiral fan + ×N/×27/+42 badges render. (Native map has its own spiderfy; this is the vmap-native one.)
 - **Perf follow-ups (the big bottleneck is GONE — `177c73c`, vmap.markers 4.08→0.51 ms).** Minor, for
   later, none blocking: (1) QT rebuild is a ~17 ms one-time spike on group change — build incrementally or
   off-thread only if it's ever felt; (2) ✅ **FIXED 2026-07-05** — `region_gated` markers are now excluded at

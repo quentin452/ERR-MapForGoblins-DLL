@@ -40,6 +40,7 @@ namespace goblin::overlay::panel { bool &virtual_map_open(); void virtual_map_re
                                    std::string virtual_map_tile_recon();
                                    int virtual_map_locate(int32_t name_id, int group);
                                    void virtual_map_item_search(const char *query);
+                                   void virtual_map_force_spiderfy(bool on);
                                    int dump_markers_csv(const char *path);
                                    void virtual_map_set_view(float, float, float);
                                    void virtual_map_set_flip(bool, bool); }
@@ -114,6 +115,7 @@ namespace goblin::overlay_api
     std::string virtual_map_tile_recon() { return goblin::overlay::panel::virtual_map_tile_recon(); }
     int virtual_map_locate(int32_t name_id, int group) { return goblin::overlay::panel::virtual_map_locate(name_id, group); }
     void virtual_map_item_search(const char *query) { goblin::overlay::panel::virtual_map_item_search(query); }
+    void virtual_map_force_spiderfy(bool on) { goblin::overlay::panel::virtual_map_force_spiderfy(on); }
     int virtual_map_dump_markers(const char *path) { return goblin::overlay::panel::dump_markers_csv(path); }
     bool warp_to_grace(int32_t graceId, int32_t offset) { return goblin::warp::to_grace(graceId, offset); }
     void virtual_map_set_view(float camX, float camZ, float zoom)

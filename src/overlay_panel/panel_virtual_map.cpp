@@ -16,6 +16,7 @@
 #include "goblin_map_data.hpp"            // generated::Category::WorldGraces (click-to-warp)
 #include "worldmap/marker_layer.hpp"   // Marker / MarkerLayer (overlay_layers → markers to project)
 #include "worldmap/map_renderer.hpp"   // draw_marker_glyph — reuse the native state-aware per-marker draw
+#include "goblin_config.hpp"           // config::clusterSpiderfy — hover fan-out gate (spiderfy)
 #include "worldmap/maptile.hpp"        // maptile ART reader (endgame phase-1a slice 2/3)
 #include "goblin_worldmap_probe.hpp"   // live converter affine + map-space extent (slice 3 tile placement)
 #include "goblin_virtual_world.hpp"    // vworld registry — the active custom world's markers (slice C)
@@ -91,6 +92,7 @@ namespace
     std::vector<goblin::worldmap::Marker> s_vmarkers;
     bool s_qt_proj_incomplete = false;   // a UG/DLC marker couldn't live-project (converter not up) → retry
     int  s_qt_proj_retries = 0;          // bounded rebuild retries while the converter warms up
+    bool s_force_spiderfy = false;       // dev/test: force-open the spiderfy fan on the largest pile
     uint64_t s_warp_pending = 0;   // grace rowId to warp to; serviced at the next frame's top (not mid-draw)
     int s_warp_offset = 0;          // added to the grace entity id before LuaWarp; 0 = entity id direct (ground truth; CT's -1000 was wrong)
     bool s_fit_requested = false;  // one-shot: on next draw, frame the selected group's markers
@@ -158,6 +160,10 @@ void virtual_map_request_fit() { s_fit_requested = true; }
 void virtual_map_request_focus() { s_focus_player = true; }
 void virtual_map_set_group(int g) { if (g >= 0 && g < 4) s_group = g; }
 int virtual_map_group() { return s_group; }
+
+// Dev/test: force-open the spiderfy hover-fan on the largest visible pile (precise headless hover is
+// unreliable). Screenshot-verify the fan geometry. No effect in normal use (off).
+void virtual_map_force_spiderfy(bool on) { s_force_spiderfy = on; s_open = true; }
 
 // A9 dev/test: open the vmap item-search sidebar and set its query (drives the same list the UI builds).
 // Lets a headless driver populate + screenshot the search without ImGui clicks. Empty query just opens it.
@@ -1379,14 +1385,167 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     ImGui::SetTooltip("%d %s", pl.count, tr("markers — zoom in to expand"));
             }
         }
-        // Non-grace singles (region-gated), then graces ON TOP (separate viewport-culled loop).
+        // Non-grace singles (region-gated), then graces ON TOP (separate viewport-culled loop). Collect
+        // each drawn single's screen pos so the spiderfy pass can fan EXACT/near-coincident ones (several
+        // items on one loot spot never separate by zoom — the residual cluster case).
+        static std::vector<std::pair<ImVec2, const goblin::worldmap::Marker *>> s_single_screen;
+        s_single_screen.clear();
         for (const goblin::worldmap::Marker *m : s_singles)
             if (!region_gated(*m))
+            {
+                ImVec2 ps = w2s(m->worldX, m->worldZ);
+                if (ps.x >= origin.x && ps.x <= canvas_end.x && ps.y >= origin.y && ps.y <= canvas_end.y)
+                    s_single_screen.emplace_back(ps, m);
                 plot(m->worldX, m->worldZ, m->color, m->category, m->name_id, nullptr, m->row_id, m->discover_flag, m);
+            }
         for (const goblin::worldmap::Marker *m : s_grace_pts)
             if (!region_gated(*m) && m->worldX >= vMinX && m->worldX <= vMaxX &&
                 m->worldZ >= vMinZ && m->worldZ <= vMaxZ)
                 plot(m->worldX, m->worldZ, m->color, m->category, m->name_id, nullptr, m->row_id, m->discover_flag, m);
+
+        // ── Spiderfy (hover fan-out) — piles AND coincident singles ──────────────────────────────────
+        // Hover a cluster → its members fan around it (ring ≤12, else spiral) with legs, each fanned icon
+        // hover/warp-able via the shared accumulator. Covers BOTH the quadtree piles (zoom-out clusters) and
+        // exact/near-coincident SINGLES (the case zoom can't separate). Sticky on a world-quantized key so
+        // it survives the per-frame rebuild; closes when the cursor leaves the fan extent. Gate: config flag.
+        if (goblin::config::clusterSpiderfy && (hovered || s_force_spiderfy))
+        {
+            struct FanCluster { ImVec2 anchor; uint64_t key; int pileIdx; };  // pileIdx>=0 → gather from QT
+            std::vector<FanCluster> clusters;
+            auto qkey = [](float wx, float wz, uint64_t tag) -> uint64_t {
+                uint64_t qx = (uint64_t)(int64_t)std::floor(wx / 8.0f) & 0xffffffffu;
+                uint64_t qz = (uint64_t)(int64_t)std::floor(wz / 8.0f) & 0xffffffffu;
+                return (tag << 62) ^ (qx << 30) ^ qz;
+            };
+            // Piles big enough on screen to be worth fanning (else "zoom in to expand" suffices).
+            for (int i = 0; i < (int)s_piles.size(); ++i)
+            {
+                const MarkerQuadtree::Pile &pl = s_piles[i];
+                ImVec2 ps = w2s(pl.cx, pl.cz);
+                if (ps.x < origin.x || ps.x > canvas_end.x || ps.y < origin.y || ps.y > canvas_end.y) continue;
+                clusters.push_back({ps, qkey(pl.cx, pl.cz, 1), i});
+            }
+            // Coincident singles: bucket by an icon-sized screen cell; groups of ≥2 = an unseparable pile.
+            {
+                const float K = (std::max)(6.0f, icoHalf);
+                std::map<std::pair<int, int>, std::vector<const goblin::worldmap::Marker *>> buckets;
+                for (auto &sp : s_single_screen)
+                    buckets[{(int)std::floor(sp.first.x / K), (int)std::floor(sp.first.y / K)}].push_back(sp.second);
+                for (auto &kv : buckets)
+                    if (kv.second.size() >= 2)
+                    {
+                        const goblin::worldmap::Marker *m0 = kv.second.front();
+                        clusters.push_back({w2s(m0->worldX, m0->worldZ), qkey(m0->worldX, m0->worldZ, 2), -1});
+                    }
+            }
+
+            static bool s_fan_open = false;
+            static uint64_t s_fan_key = 0;
+            // Dev/test (vmap spiderfy 1): precise headless hover is unreliable, so force-open the fan on the
+            // LARGEST visible pile to screenshot the geometry. No effect in normal use (flag off).
+            if (s_force_spiderfy && !clusters.empty())
+            {
+                int best = -1, bestc = -1;
+                for (int i = 0; i < (int)clusters.size(); ++i)
+                    if (clusters[i].pileIdx >= 0 && s_piles[clusters[i].pileIdx].count > bestc)
+                    { bestc = s_piles[clusters[i].pileIdx].count; best = i; }
+                if (best >= 0) { s_fan_open = true; s_fan_key = clusters[best].key; }
+            }
+            // Hit-test the cursor against a cluster anchor → (re)latch the sticky key.
+            for (const FanCluster &fc : clusters)
+            {
+                float dx = fc.anchor.x - io.MousePos.x, dy = fc.anchor.y - io.MousePos.y;
+                const float hitR = 22.0f * uiScale;
+                if (dx * dx + dy * dy <= hitR * hitR) { s_fan_open = true; s_fan_key = fc.key; break; }
+            }
+            // Resolve the open cluster + its members.
+            const FanCluster *open = nullptr;
+            for (const FanCluster &fc : clusters)
+                if (s_fan_open && fc.key == s_fan_key) { open = &fc; break; }
+            if (s_fan_open && !open) s_fan_open = false;   // the hovered cluster vanished (zoom/page changed)
+
+            if (open)
+            {
+                std::vector<const goblin::worldmap::Marker *> members;
+                if (open->pileIdx >= 0)
+                    s_qt.gather_pile(s_piles[open->pileIdx], members);
+                else
+                {
+                    // rebuild the coincident group at the open anchor (cheap; a handful of markers)
+                    const float K = (std::max)(6.0f, icoHalf);
+                    int bx = (int)std::floor(open->anchor.x / K), by = (int)std::floor(open->anchor.y / K);
+                    for (auto &sp : s_single_screen)
+                        if ((int)std::floor(sp.first.x / K) == bx && (int)std::floor(sp.first.y / K) == by)
+                            members.push_back(sp.second);
+                }
+                // Dedup identical members (same name/category/icon) → one icon + an ×N badge.
+                struct FE { const goblin::worldmap::Marker *m; int n; };
+                std::vector<FE> ents;
+                {
+                    std::unordered_map<uint64_t, size_t> seen;
+                    for (auto *m : members)
+                    {
+                        uint64_t k = ((uint64_t)(uint32_t)m->name_id << 32) ^
+                                     ((uint64_t)(uint32_t)m->category << 8) ^
+                                     ((uintptr_t)m->icon_key & 0xFFu);
+                        auto it = seen.find(k);
+                        if (it == seen.end()) { seen.emplace(k, ents.size()); ents.push_back({m, 1}); }
+                        else ents[it->second].n++;
+                    }
+                }
+                const int n_total = (int)ents.size();
+                constexpr int kFanMax = 40;
+                const int n = n_total > kFanMax ? kFanMax : n_total;
+                if (n >= 2)
+                {
+                    const ImVec2 c = open->anchor;
+                    const float spacing = 2.0f * icoHalf + 8.0f * uiScale;
+                    const float baseR = icoHalf * 2.4f;
+                    std::vector<ImVec2> pos(n);
+                    float max_r = baseR;
+                    if (n <= 12)
+                    {
+                        float r = spacing * n / 6.2831853f;
+                        if (r < baseR) r = baseR;
+                        max_r = r;
+                        for (int k = 0; k < n; ++k)
+                        { float a = -1.5707963f + 6.2831853f * k / n; pos[k] = ImVec2(c.x + r * std::cos(a), c.y + r * std::sin(a)); }
+                    }
+                    else
+                    {
+                        float r = baseR, a = -1.5707963f;
+                        for (int k = 0; k < n; ++k)
+                        { pos[k] = ImVec2(c.x + r * std::cos(a), c.y + r * std::sin(a)); max_r = (std::max)(max_r, r); a += spacing / r; r += (spacing / 6.2831853f * 1.35f) * (spacing / r); }
+                    }
+                    // Keep-open: close once the cursor leaves the fan's reach (glyph→leg→icon travel allowed).
+                    const float keepR = max_r + icoHalf + 24.0f * uiScale;
+                    float mdx = c.x - io.MousePos.x, mdy = c.y - io.MousePos.y;
+                    if (!s_force_spiderfy && mdx * mdx + mdy * mdy > keepR * keepR) s_fan_open = false;
+                    dl->AddCircleFilled(c, max_r + icoHalf + 6.0f * uiScale, IM_COL32(18, 22, 30, 150));
+                    for (int k = 0; k < n; ++k)
+                    {
+                        dl->AddLine(c, pos[k], IM_COL32(205, 195, 145, 180), 1.3f * uiScale);
+                        const goblin::worldmap::Marker *m = ents[k].m;
+                        goblin::worldmap::draw_marker_glyph(dl, *m, pos[k].x, pos[k].y, ctx.atlas_srv, nativeIcons, icoHalf);
+                        if (ents[k].n > 1)
+                        { char b[8]; std::snprintf(b, sizeof(b), "x%d", ents[k].n);
+                          dl->AddText(ImVec2(pos[k].x + icoHalf * 0.4f, pos[k].y - icoHalf), IM_COL32(255, 230, 150, 255), b); }
+                        // Hover a fanned icon → feed the shared accumulator (prio 2 wins) so the existing
+                        // tooltip + grace double-click-warp path (below) fires for it.
+                        float fdx = pos[k].x - io.MousePos.x, fdy = pos[k].y - io.MousePos.y;
+                        if (fdx * fdx + fdy * fdy < icoHalf * icoHalf * 2.0f)
+                        {
+                            hoverBestD = 0.f; hoverPrio = 2; hoverName = m->name_id; hoverCat = m->category;
+                            hoverV = ""; hoverRow = m->row_id; hoverDisc = m->discover_flag;
+                            hoverWx = m->worldX; hoverWz = m->worldZ; hoverArea = m->raw_area;
+                        }
+                    }
+                    if (n_total > n)
+                    { char b[16]; std::snprintf(b, sizeof(b), "+%d", n_total - n);
+                      dl->AddText(ImVec2(c.x + max_r, c.y), IM_COL32(235, 220, 200, 255), b); }
+                }
+            }
+        }
     }
     else
     {
