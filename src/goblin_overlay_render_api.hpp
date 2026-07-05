@@ -176,6 +176,8 @@ namespace goblin::overlay_api
     // D-far -1 MSB Y-cloud relief (whole-overworld, from parsed placement posY).
     GOBLIN_RENDER_API size_t far_relief_snapshot(std::vector<goblin::heightfield::Cell> &out);
     GOBLIN_RENDER_API float far_relief_step();
+    GOBLIN_RENDER_API void far_relief_build(int group, int cellSize);   // build the Y-cloud field for a vmap group
+    GOBLIN_RENDER_API int far_relief_built_group();
     GOBLIN_RENDER_API bool marker_world_pos(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz,
                           int &out_area, float &world_x, float &world_z,
                           bool conv_underground = false);

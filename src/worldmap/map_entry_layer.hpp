@@ -43,9 +43,10 @@ std::string far_relief_probe();
 // D-far -1 v0 — build the MSB Y-cloud ground-height field (overworld collectible posY → per-cell median
 // grid → heightfield::Cell[] with gradient normals). Consumed by the vmap hillshade (same as the near
 // raycast). cellSize in world units (default 128). RPC `far_relief [cell]`; snapshot for the renderer.
-std::string build_far_relief(int cellSize);
+std::string build_far_relief(int group, int cellSize);
 size_t far_relief_snapshot(std::vector<goblin::heightfield::Cell> &out);
 float far_relief_step();
+int far_relief_built_group();   // vmap group the current field was built for (-1 = none)
 
 // Recompute the per-category census (total collectible + looted) from the overlay's
 // OWN marker buckets — the same markers + collected detection the renderer grays — and

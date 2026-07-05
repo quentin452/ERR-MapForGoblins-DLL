@@ -3623,28 +3623,48 @@ std::string far_relief_probe()
 static std::mutex g_far_mtx;
 static std::vector<goblin::heightfield::Cell> g_far_relief;
 static float g_far_cell = 0.f;
+static int g_far_group = -1;   // vmap group the current field was built for (-1 = none)
 
-std::string build_far_relief(int cellSize)
+std::string build_far_relief(int group, int cellSize)
 {
     if (cellSize < 16) cellSize = 128;
+    if (group < 0 || group > 3) group = 0;
     std::lock_guard<std::mutex> lk(g_far_mtx);
     g_far_relief.clear();
     g_far_cell = 0.f;
     if (!g_parsed.valid)
-        return "err far_relief: disk parse not ready — be in-world / refresh_markers first";
+        return "err far_relief: disk parse not ready — be in-world / refresh_markers first";  // transient → no latch, retry
     const float cs = (float)cellSize;
 
-    // Bucket overworld (area 60) collectible Y into cells (worldX=gx*256+posX, no projection for area 60).
+    // Which raw placement areas belong to this vmap group (dimension). UG/DLC re-projected below.
+    auto in_group = [group](uint8_t a) -> bool {
+        switch (group) {
+            case 0: return a == 60;               // Base overworld
+            case 1: return a == 12;               // Base underground
+            case 2: return a == 61;               // DLC overworld
+            case 3: return a >= 40 && a <= 43;    // DLC underground
+        }
+        return false;
+    };
+
+    // Bucket collectible Y into cells in the UNIFIED marker frame. Overworld = gx*256+posX (direct);
+    // UG/DLC projected the SAME way markers build (marker_world_pos, conv_underground=true → legacy fold
+    // into overworld map-space). No live converter needed → builds without opening the native map. NB the
+    // vmap re-projects UG/DLC markers through the live VM converter at draw, so on those dimensions the
+    // cloud can sit slightly off the drawn markers (fold vs converter) — fine for a v0 eval; overworld is exact.
     std::unordered_map<uint64_t, std::vector<float>> byCell;
     for (const DiskCollectible &c : g_parsed.collectibles)
     {
-        if (c.area != 60) continue;
-        const float wx = c.gx * 256.f + c.posX, wz = c.gz * 256.f + c.posZ;
+        if (!in_group(c.area)) continue;
+        float wx, wz; int oa = 0;
+        if (group == 0) { wx = c.gx * 256.f + c.posX; wz = c.gz * 256.f + c.posZ; }
+        else if (!goblin::overlay_api::marker_world_pos(c.area, c.gx, c.gz, c.posX, c.posZ, oa, wx, wz, true))
+            continue;
         const int cx = (int)std::floor(wx / cs), cz = (int)std::floor(wz / cs);
         byCell[((uint64_t)(uint32_t)cx << 32) | (uint32_t)cz].push_back(c.posY);
     }
     if (byCell.empty())
-        return "err far_relief: 0 overworld collectible placements";
+    { g_far_group = group; return "err far_relief: 0 collectible placements for this group"; }  // definitive → latch
 
     // Per-cell robust height = median.
     std::unordered_map<uint64_t, float> medY;
@@ -3678,11 +3698,13 @@ std::string build_far_relief(int cellSize)
         gmin = (std::min)(gmin, y); gmax = (std::max)(gmax, y);
     }
     g_far_cell = cs;
+    g_far_group = group;   // success → latch (so the auto-build doesn't re-run every frame)
 
     char out[192];
-    std::snprintf(out, sizeof(out), "ok far_relief: %zu cells @%dpx, Y[%.0f..%.0f] (toggle Relief on the vmap)",
-                  g_far_relief.size(), cellSize, gmin, gmax);
-    spdlog::info("[FARRELIEF] built cloud field: {} cells @ {}u, Y[{:.1f}..{:.1f}]", g_far_relief.size(), cs, gmin, gmax);
+    std::snprintf(out, sizeof(out), "ok far_relief: group %d, %zu cells @%dpx, Y[%.0f..%.0f] (toggle Relief on the vmap)",
+                  group, g_far_relief.size(), cellSize, gmin, gmax);
+    spdlog::info("[FARRELIEF] built cloud field: group {}, {} cells @ {}u, Y[{:.1f}..{:.1f}]",
+                 group, g_far_relief.size(), cs, gmin, gmax);
     return out;
 }
 
@@ -3693,6 +3715,7 @@ size_t far_relief_snapshot(std::vector<goblin::heightfield::Cell> &out)
     return out.size();
 }
 float far_relief_step() { std::lock_guard<std::mutex> lk(g_far_mtx); return g_far_cell; }
+int far_relief_built_group() { std::lock_guard<std::mutex> lk(g_far_mtx); return g_far_group; }
 
 // Slice D reload gate (MFG_RenderIdle below): true while the detached disk-build worker is running.
 bool disk_build_running() { return g_disk_running.load(std::memory_order_acquire); }

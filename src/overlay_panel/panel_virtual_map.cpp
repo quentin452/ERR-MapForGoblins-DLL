@@ -1103,9 +1103,14 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         }
         else
         {
-            // D-far -1 v0: the MSB Y-cloud relief (whole-overworld, from parsed placement posY, RPC
-            // `far_relief`). Drawn UNDER the near raycast (below) so the exact near samples overdraw the
-            // cloud estimate where both exist. Cooler tint than the near field so cloud vs raycast reads apart.
+            // D-far -1 v0 auto-build: (re)build the MSB Y-cloud field for the ACTIVE group the first time
+            // Relief is shown and whenever the group (dimension) changes — so the 3 maps (overworld /
+            // underground / DLC) each get their own relief with no manual RPC. Host-side, ~ms; latched by
+            // built-group so it runs once per switch (a transient "parse not ready" leaves the latch → retries).
+            if (goblin::overlay_api::far_relief_built_group() != s_group)
+                goblin::overlay_api::far_relief_build(s_group, 128);
+            // D-far -1 v0: the MSB Y-cloud relief. Drawn UNDER the near raycast (below) so the exact near
+            // samples overdraw the cloud estimate where both exist. Cooler tint so cloud vs raycast read apart.
             {
                 static std::vector<goblin::heightfield::Cell> s_far;
                 goblin::overlay_api::far_relief_snapshot(s_far);
