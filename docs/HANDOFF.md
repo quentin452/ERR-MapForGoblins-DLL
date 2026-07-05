@@ -9,6 +9,40 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
+## ⇒ SESSION WRAP 2026-07-05 (late-4, Linux/Opus) — PRIORITY: revive overlay hot-reload (split drifted) + boss/grace bugs queued
+
+User wants to STOP the ~3-4min game-reboot per fix and revive the overlay hot-reload dev loop. Investigated
++ queued two marker bugs. NOT yet coded (diagnosis only this pass).
+
+- **★ Overlay hot-reload EXISTS + was Linux-validated (2026-07-02, `overlay_hot_reload_playwright_plan.md`)
+  but the split-build LINK is now BROKEN — drifted since.** `GOBLIN_OVERLAY_HOTRELOAD=ON` builds the draw
+  layer as a swappable `goblin_overlay_render.dll` (watcher auto-swaps ~1.3s, no restart; `reload_overlay`
+  RPC forces it). `build-linux-hotreload` exists. But `ninja MapForGoblins` there fails: **20 undefined
+  symbols** — host code added after 2026-07-02 calls render-side functions directly. TWO fix categories:
+  - **A — move to HOST + export** (stateful data/logic misfiled into render): `goblin_virtual_world.cpp`
+    (vworld registry — MUST be host so state survives reload), `goblin_add_collision.cpp`, `worldmap/
+    maptile.cpp`. Mark their public API `GOBLIN_RENDER_API` (= dllexport from host, `goblin_dll_export.hpp`)
+    so render imports via the `MapForGoblins.lib` it already links.
+  - **B — add loader exports** (defined in `map_entry_layer.cpp`/panel which STAY render = hot-reloadable):
+    `worldmap::rebuild_markers`, `build_far_relief`, `far_relief_probe`, `death_marker::{set,clear,tick}`,
+    `overlay::panel::virtual_map_service_pending_warp`. Host calls these → route through the loader's
+    GetProcAddress export table (7 fns; std::string returns cross the /MT boundary OK via the host-heap
+    override `goblin_render_new_override.cpp`, proven for loot_disk in the 2026-07-02 validation).
+  - **Payoff:** the frequently-edited files (`goblin_legacy_fold.cpp`, `panel_virtual_map.cpp`,
+    `map_entry_layer.cpp`, `map_renderer.cpp`, `grace_layer.cpp`) are ALL render-side → hot-reloadable once
+    resynced. Loop = rebuild ONLY `goblin_overlay_render` → copy DLL to `dll/offline/` → watcher swaps →
+    `refresh_markers` → re-test via RPC. Needs ER kept alive across cycles (launch detached, drive one-shot
+    RPC). **Full list:** `ninja -C build-linux-hotreload MapForGoblins 2>&1 | grep 'undefined symbol'`.
+  - **⚠ maintenance root cause:** the split has no CI/build check, so every new host↔render call silently
+    breaks it. After resync, add a `build-linux-hotreload` compile to the dev checklist / a VSCode task.
+- **Boss dedup bug (task #16, user-reported):** bosses of the same NAME collapse to one/first. Demi-Human
+  Chief should be x2 Coastal Cave + x1 Demi-Human Forest Ruins (3); Erdtree Avatar should be 7 (1 UG + 6 OW)
+  but ~4 show. Check `build_live_bosses` (`map_entry_layer.cpp`) + any name/entity dedup dropping duplicates.
+- **Grace story-flags — VERIFY FIRST (task #17):** before gating grace markers Royal/Ashen, confirm vanilla
+  ER actually DELETES old-state graces on the story flip. If `live_graces` (BonfireWarpParam) is already
+  state-correct (removed graces absent), gating would double-gate = wrong. Check whether the live source
+  includes not-yet-active/removed graces or is already current-state-only.
+
 ## ⇒ SESSION WRAP 2026-07-05 (late-3, Linux/Opus) — off-map "bottom-left" root causes + fixes
 
 User spotted a recurring symptom: **every off-map marker renders bottom-left**. Diagnosed (via the new
