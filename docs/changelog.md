@@ -132,6 +132,12 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   each marker's vertices. Only the ERR dial fades; user-drawn exclusion rectangles stay hard.
 
 ### Fixed
+- **Underground / DLC markers land in the right place on the Virtual World Map.** Base-underground
+  (Ainsel River / Siofra River / Deeproot Depths, incl. the Nameless Eternal City) and DLC markers used to
+  clump in the bottom-left corner of the vmap because it drew the pre-baked position, which under-/un-folds
+  those layers. The vmap now re-projects them through the same live engine converter the native map uses
+  (resident whenever the map is open), so they overlay their real regions — and the region-name toggles
+  gate the correct area. Overworld is unchanged.
 - **Overlay markers no longer punch through menus that open over the map.** When a submenu is
   stacked over the open world map (e.g. the fast-travel confirmation prompt), the overlay marker
   pass is now skipped so our post-present icons don't draw on top of it, via a live "a menu covers

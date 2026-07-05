@@ -132,6 +132,8 @@ namespace goblin::overlay_api
     GOBLIN_RENDER_API int virtual_map_locate(int32_t name_id, int group);
     // A9 dev/test: open the vmap item-search sidebar with a query (drives the UI list headlessly).
     GOBLIN_RENDER_API void virtual_map_item_search(const char *query);
+    // Dev/test: force-open the spiderfy fan on the largest visible pile (screenshot the geometry).
+    GOBLIN_RENDER_API void virtual_map_force_spiderfy(bool on);
     GOBLIN_RENDER_API void virtual_map_set_flip(bool flipX, bool flipZ);  // dev orientation calib
     GOBLIN_RENDER_API int virtual_map_get_group();
     GOBLIN_RENDER_API void request_save();

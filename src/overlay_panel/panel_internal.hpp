@@ -93,6 +93,8 @@ std::string virtual_map_tile_recon();
 int virtual_map_locate(int32_t name_id, int group);
 // A9 dev/test: open the vmap item-search sidebar + set its query (drives the UI list headlessly).
 void virtual_map_item_search(const char *query);
+// Dev/test: force-open the spiderfy fan on the largest visible pile (screenshot the geometry).
+void virtual_map_force_spiderfy(bool on);
 void virtual_map_service_pending_warp();  // POST-FRAME: execute a double-click-queued grace warp (safe pt)
 int dump_markers_csv(const char *path);  // export all markers → CSV (offline procedural-style prototyping)
 void virtual_map_set_view(float camX, float camZ, float zoom);  // dev/test: frame the canvas directly

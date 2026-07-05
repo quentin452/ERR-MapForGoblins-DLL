@@ -525,6 +525,15 @@ namespace goblin::debug_rpc
                     goblin::overlay_api::virtual_map_item_search(q.c_str());
                     return "ok vmap items query=\"" + q + "\"";
                 }
+                // vmap spiderfy [0|1] — dev/test: force-open the hover fan on the largest visible pile
+                // (headless hover is unreliable) to screenshot the spiderfy geometry.
+                if (arg == "spiderfy")
+                {
+                    std::string s = next_token(rest);
+                    bool on = (s != "0");
+                    goblin::overlay_api::virtual_map_force_spiderfy(on);
+                    return std::string("ok vmap spiderfy ") + (on ? "1" : "0");
+                }
                 // vmap locate <name_id> [group] — A9: centre the vmap on an item-search hit (test the
                 // click-to-locate path headlessly). name_id = FMG text id; group 0=OW 1=UG 2=DLC.
                 if (arg == "locate")
