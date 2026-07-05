@@ -10,6 +10,48 @@ Status: **DESIGN, not started (2026-07-05).** Captures the user's insight that t
    A greybox world = DATA (TOML) → realized by CODE (proc-mesh gen + Havok box collision) → drawn by the mod's
    own D3D12 backend. FromSoft's asset system is never touched → mod-agnostic + light by construction.
 
+## Architecture model — who renders what (the 2-bucket split + its walls)
+The clean split (confirmed with the user 2026-07-05):
+
+**Bucket 1 — a REAL ER map (existing dimension): reuse ER's own AEG assets** (engine-rendered, ER's photoreal
+style). The modder edits/places EXISTING assets.
+- **MOVE an existing AEG = SOLVED + LIVE-PROVEN** (`SetWorldMatrix` on `CSWorldGeomIns`, `move_asset` RPC,
+  durable + renders). The F1 World Editor already does the loot/lot side (repoint/clone/re-skin/save bundle).
+- **SPAWN/ADD a new AEG placement = RE-complete but NOT yet live-built** (`spawn_clone` — a multi-step ctor
+  BUILD on Proton; "no more RE, just the build"). Still the **MSB-write frontier**.
+- **⚠ "Move an AEG BETWEEN maps" ≈ SPAWN it in the target map** (an asset belongs to a streamed tile; putting
+  it in another map = place/spawn there). So inter-map falls back on the spawn frontier; **intra-map move is
+  the solid primitive**, inter-map is not free.
+
+**Bucket 2 — a CUSTOM (non-Base-ER) dimension: our system** (procedural 3D via `mesh3d` + Route-D
+`add_collision` box + our D3D12 backend). Fully mod-owned, no FromSoft asset system.
+
+**Hybrid (keep in mind, not the default):** our procedural objects placed in a REAL ER map = **case 1** (must
+align to ER geometry → needs the **w2s3d** matrix, currently blocked) OR use a real AEG instead. The clean split
+(real map → AEG, custom dim → ours) **avoids** this; the hybrid is possible but pays the w2s3d cost.
+
+**Travel between buckets:** `warp` (grace) + a reserved `mapId` for the custom dimension + the **active-world
+auto-follow** (`get_player_dimension_area`, wired 2026-07-05) that switches the vmap page on a crossing.
+
+### Enemies — ChrIns, NOT AEG (a separate, harder frontier)
+ER monsters are **`ChrIns`** (WorldChrMan), not AEG geometry — so the AEG move/spawn story does NOT apply; they
+sit behind their own un-RE'd walls:
+- **Spawning a real ER ChrIns into a CUSTOM map = un-RE'd** (live-enemy-spawn, separate from AEG-spawn). And
+  **combat/hitreg = un-RE'd**. ⇒ You cannot put a real, fighting ER monster in your custom dimension today.
+- **"Reuse an ER monster but render it in OUR style"** stacks a second wall on top:
+  1. Re-draw it ourselves in greybox = **job #3 scene-mirror = THE WALL** (needs the skinned mesh + the
+     per-frame Havok **skeleton pose** = thousands of bone transforms → infeasible).
+  2. A **global debug-wireframe flag (#2a)** would restyle ALL of ER's render incl. enemies IF it exists (the
+     `windows_debug_render_flag_re_prompt.md` scan) — global, not per-object, additive; free only if the flag exists.
+  3. **Hide ER's enemy mesh + draw a proxy:** we CAN read the enemy's live **position** (`windows_enemy_boss_
+     runtime_pos`) and draw a proxy capsule there — but NOT its animated pose (limbs), and hiding ER's per-object
+     render = **hard suppression** (the M5 problem, no cheap lever).
+- **⇒ Practical rule (matches the vision-doc 3-layer enemy model):** **custom-dimension enemies = procedural
+  dummies** (our 3D proxy drawn directly in OUR style + a mod behavior state machine, **no real combat**). Because
+  YOU draw them, there is nothing to "restyle" — you never reuse the ER monster. Reusing a real ER monster
+  (animated + restyled) in a custom map is NOT reachable (enemy-spawn wall + skeleton-mirror/suppression wall).
+  In a REAL ER map the real ChrIns are already there; restyling their look = the global #2a flag (if it exists).
+
 ## The two render backends (per object, `render.backend`)
 - **A — `imgui`** (2D draw-list, projected each frame via w2s3d): billboards / wireframe / labels. No shaders,
   flat, no depth (draws over ER geometry). Cheap. Best for **ESP markers on the real world**, not a walkable world.
