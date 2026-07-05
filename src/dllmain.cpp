@@ -26,6 +26,7 @@
 #include "goblin_sidecar.hpp"
 #include "goblin_custom_items.hpp"
 #include "goblin_world_bundle.hpp"
+#include "goblin_mod.hpp"
 #include "goblin_virtual_world.hpp"
 #include "goblin_inventory.hpp"
 #include "goblin_warp.hpp"
@@ -190,6 +191,9 @@ static void init_world_bundle()     { goblin::world_bundle::apply_boot(g_mod_fol
 // Virtual worlds (vision #1): load the saved mod-owned custom map pages (virtual_worlds.toml) so they
 // persist across sessions and show on the virtual map (panel_virtual_map). Data-only; no engine writes.
 static void init_virtual_worlds()   { goblin::vworld::load_boot(g_mod_folder); }
+// Mod manifest (mod_manifest_system_plan.md): one mod.toml declares the whole mod. Slice 1 = [mod]
+// metadata + [style] -> postfx. After the subsystems (it composes/overrides them); no mod.toml = no-op.
+static void init_mod()              { goblin::mod::load(g_mod_folder); }
 
 static void setup_mod()
 {
@@ -317,6 +321,7 @@ static void setup_mod()
         safe_init_step(&init_custom_items,    "custom_items::apply");
         safe_init_step(&init_world_bundle,    "world_bundle::apply_boot");
         safe_init_step(&init_virtual_worlds,  "vworld::load_boot");
+        safe_init_step(&init_mod,             "mod::load (manifest)");
         // Queue the live-refresh hook (FUN_140a82a80) — kept for the native-pin
         // suppression path; no-op until enabled.
         safe_init_step(&init_icon_tex_probe,  "install_icon_texture_probe");

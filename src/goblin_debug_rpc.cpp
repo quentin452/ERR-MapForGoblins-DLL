@@ -28,6 +28,7 @@
 #include "goblin_w2s.hpp"           // w2s_probe cmd — 3D world-to-screen camera calibration
 #include "goblin_r3d.hpp"           // r3d cmd — mod-owned D3D12 3D backend test cube
 #include "goblin_postfx.hpp"        // postfx cmd — greybox #2b full-screen restyle of ER's frame
+#include "goblin_mod.hpp"           // mod cmd — the mod.toml manifest (status/reload)
 #include "goblin_custom_markers.hpp" // death_mark cmd — the DropSoul death marker
 #include "goblin_add_collision.hpp"  // add_collision cmd — Route D walkable box (recon phase)
 #include "goblin_field_probe.hpp"  // arm_raw — serialize find-what-accesses (Phase 2)
@@ -1289,6 +1290,15 @@ namespace goblin::debug_rpc
                 if (!ok) { std::snprintf(b, sizeof(b), "err proj: converter unresolved (map never opened?) or declined"); return std::string(b); }
                 std::snprintf(b, sizeof(b), "ok proj area=%d grid=(%d,%d) -> u=%.2f v=%.2f page=%d", area, gx, gz, u, v, page);
                 return std::string(b);
+            }
+            // mod — the mod.toml manifest (mod_manifest_system_plan.md). `mod status` = what loaded;
+            // `mod reload` = re-parse + re-apply the mod folder's mod.toml (dev: edit + reload live).
+            if (cmd == "mod")
+            {
+                std::string a = next_token(rest);
+                if (a == "reload") { goblin::mod::reload(); return goblin::mod::status(); }
+                if (a == "status" || a.empty()) return goblin::mod::status();
+                return "err usage: mod status|reload";
             }
             // postfx — greybox job #2b: restyle ER's final frame via a full-screen post-process pass in the
             // present hook (no ER-shader RE). `postfx 0|1|toggle`, `postfx mode <1..4>` (1 grayscale, 2
