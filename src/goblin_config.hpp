@@ -333,6 +333,7 @@ namespace goblin
         // Marker clustering (v1). See goblin_config_schema [Clustering].
         extern GOBLIN_RENDER_API bool enableClustering;
         extern GOBLIN_RENDER_API bool clusterSpiderfy;  // hover a pile → fan its members out around it
+        extern GOBLIN_RENDER_API bool spiderfyHoldCtrl; // require Ctrl held to open the fan (anti-pan-pop)
         extern GOBLIN_RENDER_API bool clusterHard;  // hard = mixed-category piles; soft = per-category
         extern GOBLIN_RENDER_API uint8_t clusterThreshold;   // base cluster size; the FAR (clustered) size when distance-adaptive
         // Distance-adaptive clustering: near the player use a HIGH threshold (few

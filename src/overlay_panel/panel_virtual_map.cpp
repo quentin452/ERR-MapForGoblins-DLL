@@ -1453,7 +1453,10 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                 const bool fanned = goblin::config::clusterSpiderfy && s_fan_open &&
                                     s_fan_key == spiderfy_key(pl.cx, pl.cz, 1);
                 if (dx * dx + dy * dy < r * r && !fanned)
-                    ImGui::SetTooltip("%d %s", pl.count, tr("markers — zoom in to expand"));
+                    ImGui::SetTooltip("%d %s", pl.count,
+                        (goblin::config::clusterSpiderfy && goblin::config::spiderfyHoldCtrl)
+                            ? tr("markers — Ctrl+hover to expand, or zoom in")
+                            : tr("markers — zoom in to expand"));
             }
         }
         // Non-grace singles (region-gated), then graces ON TOP (separate viewport-culled loop). Collect
@@ -1521,7 +1524,10 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             {
                 float dx = fc.anchor.x - io.MousePos.x, dy = fc.anchor.y - io.MousePos.y;
                 const float hitR = 22.0f * uiScale;
-                if (dx * dx + dy * dy <= hitR * hitR) { s_fan_open = true; s_fan_key = fc.key; break; }
+                // Gate the OPEN on Ctrl (default) so panning/hovering the map doesn't pop fans as the
+                // cursor sweeps clusters; once open the keep-open logic holds it without Ctrl.
+                const bool mod_ok = !goblin::config::spiderfyHoldCtrl || io.KeyCtrl;
+                if (mod_ok && dx * dx + dy * dy <= hitR * hitR) { s_fan_open = true; s_fan_key = fc.key; break; }
             }
             // Resolve the open cluster + its members.
             const FanCluster *open = nullptr;
