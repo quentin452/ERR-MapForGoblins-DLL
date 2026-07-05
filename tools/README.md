@@ -38,7 +38,6 @@ Pipeline stages:
 2. `entity_index` — all MSBs → `msb_entity_index.json`
 3. `emevd_scan` — all EMEVDs → `emevd_lot_mapping.json` (scripted-item → entity mapping)
 4. `enrich_fallback` — upgrades fallback records in items_database with EMEVD-derived coords
-5. `generate_boss_list` → boss_list.json
 6. `generate_loot_massedit` → all Loot/Equipment/Key/Quest/Magic/Reforged .MASSEDIT
 7. `generate_pieces_massedit` → Rune/Ember Pieces .MASSEDIT
 8. `generate_material_nodes` → Material Nodes .MASSEDIT

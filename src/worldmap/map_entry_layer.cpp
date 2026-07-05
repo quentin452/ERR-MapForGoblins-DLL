@@ -333,7 +333,9 @@ void emit_lot_siblings(uint32_t baseLot,
 // Build the WorldBosses bucket LIVE from WorldMapPointParam field-boss rows (textId2==5100),
 // not from the bake. The live row is the authoritative source (correct position +
 // clearedEventFlagId + textId1 name + iconId); reading it kills per-ERR-version drift and the
-// boss_list.json matching anomalies (see windows_enemy_boss_runtime_pos_re_findings.md). All
+// matching anomalies of the old boss_list.json bake (DELETED 2026-07-06 — it was WMP-derived, not
+// authoritative; see windows_enemy_boss_runtime_pos_re_findings.md). Instances the native map omits
+// are completed from the live MSB enemy scan below. All
 // OTHER categories stay baked (NPCs are NpcParam-synthetic, loot is MSB/item-lot — no live WMP
 // source). NOTE: live rows are still in the dungeon-internal frame (area 10/31/…) like the bake,
 // so this does NOT change the dungeon-boss projection drift — same marker_world_pos path.

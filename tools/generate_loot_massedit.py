@@ -883,99 +883,10 @@ def main():
         print(f'  By area: {dict(sorted(areas.items()))}')
 
 
-    # ── Bosses category: from boss_list.json (vanilla 217 + MSB coords + text matching) ──
-    print('\n=== World - Bosses ===')
-
-    _boss_list_path = DATA_DIR / 'boss_list.json'
-    if _boss_list_path.exists():
-        with open(_boss_list_path, encoding='utf-8') as _f:
-            boss_list = json.load(_f)
-    else:
-        boss_list = []
-        print('  WARNING: boss_list.json not found')
-
-    lines = []
-    row_id = 9000000
-    boss_count = 0
-    text_matched = 0
-    for rec in sorted(boss_list, key=lambda r: (r['areaNo'], r.get('gridX', 0), r.get('gridZ', 0))):
-        area = rec['areaNo']
-        gx = rec.get('gridX', 0)
-        gz = rec.get('gridZ', 0)
-
-        if area in UNDERGROUND_AREAS:
-            disp = 'dispMask01'
-        elif area in DLC_AREAS:
-            disp = 'pad2_0'
-        else:
-            disp = 'dispMask00'
-
-        lines.append(f'param WorldMapPointParam: id {row_id}: iconId: = 374;')
-        lines.append(f'param WorldMapPointParam: id {row_id}: {disp}: = 1;')
-        lines.append(f'param WorldMapPointParam: id {row_id}: areaNo: = {area};')
-
-        if area in OVERWORLD_AREAS or area in DLC_AREAS or gx > 0:
-            lines.append(f'param WorldMapPointParam: id {row_id}: gridXNo: = {gx};')
-        if area in OVERWORLD_AREAS or area in DLC_AREAS or gz > 0:
-            lines.append(f'param WorldMapPointParam: id {row_id}: gridZNo: = {gz};')
-
-        if rec['x'] != 0.0 or rec['z'] != 0.0:
-            lines.append(f'param WorldMapPointParam: id {row_id}: posX: = {rec["x"]:.3f};')
-            if rec['y'] != 0.0:
-                lines.append(f'param WorldMapPointParam: id {row_id}: posY: = {rec["y"]:.3f};')
-            lines.append(f'param WorldMapPointParam: id {row_id}: posZ: = {rec["z"]:.3f};')
-
-        # textId1: enemy name via TutorialTitle (text-matched with vanilla PlaceName)
-        enemy_model = rec.get('enemyModel', '')
-        npc_param = rec.get('npcParamId', 0)
-        vanilla_place_name = rec.get('vanillaPlaceName', '')
-        tutorial_id = resolve_enemy_tutorial_id(enemy_model, npc_param, vanilla_place_name)
-        if vanilla_place_name and tutorial_id != resolve_enemy_tutorial_id(enemy_model, npc_param):
-            text_matched += 1
-        if tutorial_id > 0:
-            lines.append(f'param WorldMapPointParam: id {row_id}: textId1: = {tutorial_id + 900000000};')
-        elif rec.get('npcNameId', 0) > 0:
-            # Vanilla: standard boss name from NpcName (every HP-bar boss has one)
-            lines.append(f'param WorldMapPointParam: id {row_id}: textId1: = {rec["npcNameId"] + 700000000};')
-        else:
-            # Fallback: PlaceName ID from ERR WorldMapPointParam, else the
-            # generic BloodMsg word "boss" (vanilla, localized)
-            wmp_tid = rec.get('wmpTextId1', 0)
-            if wmp_tid > 0:
-                lines.append(f'param WorldMapPointParam: id {row_id}: textId1: = {wmp_tid};')
-            elif config.PROFILE != 'err':
-                lines.append(f'param WorldMapPointParam: id {row_id}: textId1: = {950000000 + 30006};')
-
-        # Kill flag for green checkmark AND hide-when-killed option
-        kill_flag = rec.get('killEventFlagId', 0)
-        cleared_flag = kill_flag if kill_flag > 0 else rec.get('clearedEventFlagId', 0)
-        if cleared_flag > 0:
-            lines.append(f'param WorldMapPointParam: id {row_id}: clearedEventFlagId: = {cleared_flag};')
-            # Also set textDisableFlagId1 — C++ config chooses which to use:
-            # green checkmark (clearedEventFlagId) or hide killed (textDisableFlagId1)
-            lines.append(f'param WorldMapPointParam: id {row_id}: textDisableFlagId1: = {cleared_flag};')
-
-        # textId2: location name for dungeons — nearest-grace lookup
-        loc_id = resolve_location_id_at(
-            rec.get('map', ''),
-            float(rec.get('x', 0.0)),
-            float(rec.get('y', 0.0)),
-            float(rec.get('z', 0.0)),
-        )
-        if loc_id > 0:
-            lines.append(f'param WorldMapPointParam: id {row_id}: textId2: = {loc_id};')
-            if cleared_flag > 0:
-                lines.append(f'param WorldMapPointParam: id {row_id}: textDisableFlagId2: = {cleared_flag};')
-
-        lines.append(f'param WorldMapPointParam: id {row_id}: selectMinZoomStep: = 1;')
-        row_id += 1
-        boss_count += 1
-
-    massedit_path = OUT_DIR / 'World - Bosses.MASSEDIT'
-    with open(massedit_path, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(lines) + '\n')
-    print(f'  Written {boss_count} entries ({text_matched} text-matched) to {massedit_path.name}')
-
+    # ── Bosses: REMOVED 2026-07-06. boss_list.json deleted (it was a WorldMapPointParam-derived
+    # bake, NOT authoritative). Boss markers are sourced LIVE at runtime from WorldMapPointParam +
+    # the MSB enemy scan (src/worldmap/map_entry_layer.cpp build_live_bosses); the dead
+    # World-Bosses.MASSEDIT it produced is gone. ────────────────────────────────────────────
 
     # ── Great Runes: dropped by story bosses ──
     print('\n=== Key - Great Runes ===')

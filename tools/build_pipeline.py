@@ -214,12 +214,6 @@ STAGES = [
           script='enrich_fallback_with_emevd.py',
           also_scripts=['config.py']),
 
-    Stage('generate_boss_list',
-          inputs=[REGULATION, MSB_DIR, MSGBND, EVENT_DIR],
-          outputs=[DATA / 'boss_list.json'],
-          script='generate_boss_list.py',
-          also_scripts=['extract_all_items.py'] + COMMON),
-
     Stage('generate_loot_massedit',
           inputs=[REPO / 'data' / 'enemy_bloodmsg_mapping.json',
                   DATA / 'items_database.json',
@@ -228,14 +222,12 @@ STAGES = [
                   DATA / 'goods_sorcery_ids.json',
                   DATA / 'goods_incantation_ids.json',
                   DATA / 'goods_spirit_ash_ids.json',
-                  DATA / 'boss_list.json',
                   DATA / 'enemy_tutorial_mapping.json',
                   DATA / 'tutorial_title_ids.json',
                   DATA / 'tutorial_title_names.json'],
           outputs=[MASSEDIT_OUT / 'Loot - Consumables.MASSEDIT',
                    MASSEDIT_OUT / 'Equipment - Armaments.MASSEDIT',
                    MASSEDIT_OUT / 'Quest - Progression.MASSEDIT',
-                   MASSEDIT_OUT / 'World - Bosses.MASSEDIT',
                    DATA / 'loot_lot_linkage.json',
                    DATA / 'item_icon_table.json'],
           script='generate_loot_massedit.py',
@@ -262,7 +254,6 @@ STAGES = [
           # param; emits the map_data stub, name-alias table, and legacy-conv header.
           inputs=[REPO / 'data' / 'items_database.json',
                   REPO / 'data' / 'npc_name_text_map.json',
-                  REPO / 'data' / 'boss_list.json',
                   DATA / 'WorldMapLegacyConvParam.json'],
           outputs=[GENERATED_CPP / 'goblin_map_data.cpp'],         # Phase-2 empty no-bake stub
           script='generate_data.py'),
