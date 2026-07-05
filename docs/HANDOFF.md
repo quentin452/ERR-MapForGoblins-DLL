@@ -414,6 +414,18 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   `active_world` half** — auto-set the active world from PlayerDim + re-key the relief/item-search/player-dot
   gates off "engine-backed" (not `active_world==0`) for when a WALKABLE custom world exists. Detail:
   `docs/plans/virtual_world_multi_world_design.md` Decision 2.
+- **★ Virtual-world 3D backend + procedural objects — DESIGN 2026-07-05 (`docs/plans/virtual_world_3d_backend_plan.md`).**
+  User insight: the greybox/virtual worlds (vision #4 job #1) need NOT be pure-ImGui-2D — a **mod-owned D3D12 3D
+  backend** (reusing the device/queue/Present hook we already hold) rendering **procedural** geometry wins twice:
+  **real 3D** (meshes/shading/depth) + **zero heavy-asset loading** (geometry generated from tiny TOML params →
+  no FLVER/MSB/streaming/VFS → **sidesteps the create-new-content RE frontier**). Custom 3D is NOT locked to the
+  7 primitives: tiers = primitives → **CSG/composite** (covers ~90% of greybox = stacked boxes) → generators
+  (extrude polygon / lathe / heightfield / spline-sweep) → inline verts+tris → custom named C++ generators, all
+  no-mesh-file. Objects TOML schema (core + `render.backend = imgui|mesh3d`) drafted; 3D unifies collision+render
+  from one `size`. **Case split:** overlay-on-real-world (case 1) needs the w2s3d matrix (blocked on the render-
+  rebase origin); a **standalone dev-dimension (case 2) builds its own camera from player pos+yaw → NO w2s3d →
+  off the critical path.** Have: `add_collision` + D3D12 hook + registry + player pos/yaw + warp. Need: the 3D
+  render backend + proc-mesh lib + objects TOML/realizer.
 - **ER Linux/Proton fps deficit + ER frame-bottleneck profiling — INVESTIGATED 2026-07-05, no fix found.**
   Symptom: same desktop (RTX 3060 + i5-10400F, Wayland/KDE) does **60fps on Windows 10** but **30-45fps + stutter
   (dips to 22) on Linux/Proton, even VANILLA in the prologue**. Full investigation in

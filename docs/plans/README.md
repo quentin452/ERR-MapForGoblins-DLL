@@ -10,6 +10,7 @@ or `docs/memory/`.)
 
 | Plan | Status |
 |------|--------|
+| [virtual_world_3d_backend_plan.md](virtual_world_3d_backend_plan.md) — mod-owned D3D12 3D backend + procedural (no-mesh) objects for walkable greybox worlds; ImGui-2D vs real-3D backends, the proc-3D track (primitives→CSG→generators→inline→custom), case1/case2 w2s3d split | DESIGN 2026-07-05, not started. Wins: real 3D + zero heavy-asset loading (sidesteps MSB/FLVER frontier). Case-2 (dev-dimension) needs NO w2s3d. Have: add_collision + D3D12 hook + registry; need: the 3D backend + proc-mesh lib + objects TOML |
 | [feat_quests_implementation_plan.md](feat_quests_implementation_plan.md) — quest browser + runtime QuestNpcLayer | Phase 1 landed `feat/quest-npc-layer`, builds clean, NOT runtime-verified; demo NPC entity_id/progress_flag unsourced (0 pins until then) |
 | [dx_bugs_backlog_plan.md](dx_bugs_backlog_plan.md) — DX bug/QoL backlog (PRs A–E) | A/B/C/E done (verified in code + changelog 2026-07-01); only D (in-game pause) open, needs RE spike first |
 | [spatial_grid_opti_plan.md](spatial_grid_opti_plan.md) — spatial grid: clustering + viewport-cull perf | DONE (both halves merged; full persistent-grid step deemed unnecessary by measurement) |
