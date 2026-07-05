@@ -1,9 +1,12 @@
 # Streamer thread + per-frame injection point for ADD-AEG (pivot 2) — RE findings (static, Ghidra, 2026-07-05)
 
-Status: **THREAD WALL SOLVED + validated LIVE (2026-07-05, see "Live acceptance run" below).** The
-`FUN_1406d31f0` hook fires per-frame on the registrar's own thread with no deadlock — but the raw registrar
-drain FAULTS; the open follow-up is routing through `FUN_1406d4e80`. Original static finding: delivers the
-always-per-frame hook on the registrar's OWN thread, the engine's
+Status: **THREAD WALL SOLVED + by-id spawn request ACCEPTED, validated LIVE (2026-07-05).** The
+`FUN_1406d31f0` hook fires per-frame on the registrar's own thread (same TID as the streamer, no deadlock);
+the drain calls the native by-id helper `FUN_1406d4e80(p1step, aegId, worldPos)` and the engine returns a
+nonzero handle with no fault. LAST GAP: the accepted request has not yet been observed to become a live
+rendered geom instance (`geom_stats` flat) — the streamer state-machine build-out. See the "Live RE loop
+part 2" section. Original static finding: delivers the always-per-frame hook on the registrar's OWN thread,
+the engine's
 native "request AEG by id at position" helper, and the cause of `FUN_1406a5080`'s thread-boundness. Answers
 `windows_geom_spawn_thread_re_prompt.md`. Imagebase `0x140000000`; `query.java` on `D:\ghidra_proj2\ER`.
 
@@ -80,9 +83,33 @@ detour drains). Cold-boot `mfg run --boot`, in-world, `spawn_asset AEG099_090` /
   block-resolved context its real callers (`FUN_1406d6260`→`FUN_1406d4e80`) build first.
 - **NEXT wall:** route the drain through the by-id helper **`FUN_1406d4e80(blockStreamerState, aegId, worldPos)`**
   (deliverable 3), which resolves the player's block + computes `worldPos - blockOrigin` before calling the
-  registrar. Unknowns to pin by hooking `FUN_1406d4e80` during legit per-frame calls and logging its args:
-  `blockStreamerState` (streamer sub-object — candidate `*(DAT_143d69ba8+0x1e8)`), `worldPos` (player world
-  pos, float3), `aegId` (`AEG099_090` → 99090 via `aegId/1000, aegId%1000`).
+  registrar.
+
+### Live RE loop 2026-07-05 (part 2) — by-id helper drain WORKS; the request→instance servicing is the last gap
+Diagnosed the raw-registrar fault by capturing what the ENGINE does, then reproducing it:
+- **Thread ruled out.** Logged `GetCurrentThreadId()` in both our `FUN_1406d31f0` drain and a capture hook on
+  the registrar `FUN_1406a5080`. The streamer's legit registrar calls AND our drain are **the same TID (352 /
+  340 across boots)**. So the `FUN_1406d31f0` hook IS on the registrar's own thread — the thread wall is
+  genuinely passed. (present=deadlock / worker=fault still hold; this hook is neither.)
+- **Asset name ruled out.** Captured legit registrar calls near First Step: names `AEG095_002 / AEG099_204 /
+  AEG095_003 / AEG099_20x`, param_1 usually `== reqMgr` (`[singleton+0x30]`), sometimes a per-block mgr
+  (`reqMgr ± offset`). Replaying those EXACT names through the raw registrar on the same thread STILL faults
+  (`ok=false`). So the raw `FUN_1406a5080` is **not a valid cold entry** regardless of name/param_1 — it
+  assumes per-call block/desc context its callers set up.
+- **✅ The by-id helper works.** `FUN_1406d4e80(state, aegId, worldPos)` with **`state` = `FUN_1406d31f0`'s
+  param_1** (the value passed to our `hk_step`), `aegId` parsed from the name (`AEG095_002`→95002),
+  `worldPos` = `get_player_world_pos`: returns **`ok=true`, nonzero handle**, no fault, for every name
+  (incl. `AEG099_090`). Tried 5 candidate `state` pointers; `p1step` is accepted on the first try. This is the
+  correct native ADD-AEG entry.  → implemented as the drain in `goblin_geom_spawn.cpp`.
+- **⏳ OPEN — request ≠ rendered instance yet.** After 9 by-id spawns, `geom_stats` total is **unchanged**
+  (16130→16130, identical class histogram). The request is accepted but does not (yet) materialize as a live
+  counted `CSWorldGeom` instance, and nothing new is visible on screen (spawns land at the player's exact feet
+  too). The request→instance build-out is the streamer state machine (`FUN_1406c6050(req,4)` → proximity step
+  `FUN_140699170`, which earlier RE flagged as gated). NEXT: advance/drive that state transition (or confirm
+  whether the instance exists in an un-enumerated class / wrong block-local position from a world↔block frame
+  mismatch in `worldPos`).
+
+### Two implementation bugs fixed en route (both would silently no-op the hook)
 
 ### Two implementation bugs fixed en route (both would silently no-op the hook)
 1. **The `FUN_1406d31f0` prologue AOB above is NOT unique** — live health check = MULTI (3 matches) and its

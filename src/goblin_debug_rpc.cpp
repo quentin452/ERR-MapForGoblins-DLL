@@ -416,7 +416,7 @@ namespace goblin::debug_rpc
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp coords warp_local warp_xyz we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
-                       " | mfg_build er_base er_version proj mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset add_collision hf_probe hf_probe_present hf_sample hf_shape_probe far_relief_probe far_relief w2s_probe"
+                       " | mfg_build er_base er_version proj mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset spawn_cap4e80 spawn_capreg add_collision hf_probe hf_probe_present hf_sample hf_shape_probe far_relief_probe far_relief w2s_probe"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
             if (cmd == "status")
@@ -1742,6 +1742,25 @@ namespace goblin::debug_rpc
                               (unsigned long long)r.req, (unsigned long long)r.reqMgr,
                               r.req ? "" : " (req=0)");
                 return std::string(b);
+            }
+            // spawn_cap4e80 — arm a read-only capture hook on the native by-id spawn helper FUN_1406d4e80
+            // to RE the OPEN drain-fault wall: logs live (state, aegId, worldPos) + state↔singleton relation
+            // each time the streamer calls it. Then WARP/MOVE to force block streaming and read [CAP4e80]
+            // log lines. RE: docs/re/windows_geom_spawn_thread_re_findings.md "NEXT wall".
+            if (cmd == "spawn_cap4e80")
+            {
+                bool ok = goblin::geom_spawn::arm_byid_capture();
+                return ok ? std::string("ok spawn_cap4e80 armed FUN_1406d4e80 — now warp/move; grep log [CAP4e80]")
+                          : std::string("err spawn_cap4e80: arm failed (in-world? eldenring.exe base?)");
+            }
+            // spawn_capreg — arm a read-only capture on the registrar FUN_1406a5080 to log the legit
+            // (param_1, name) the engine calls it with during streaming (the by-id helper never fires).
+            // Warp/move to trigger; grep log [CAPREG]. RE: windows_geom_spawn_thread_re_findings.md.
+            if (cmd == "spawn_capreg")
+            {
+                bool ok = goblin::geom_spawn::arm_registrar_capture();
+                return ok ? std::string("ok spawn_capreg armed FUN_1406a5080 — now warp/move; grep log [CAPREG]")
+                          : std::string("err spawn_capreg: arm failed (in-world? AOB?)");
             }
             // spawn_clone <dx> <dy> <dz> [go] — ADD a new geom placement (the last MSB-write primitive):
             // clone a live dynamic geom via the engine's Dynamic ctor + a freshly-built pose descriptor,

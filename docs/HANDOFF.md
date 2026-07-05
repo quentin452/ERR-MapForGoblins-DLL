@@ -453,12 +453,18 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   fixed en route: (a) the finding's `FUN_1406d31f0` prologue AOB is NOT unique (3 matches, first = wrong fn
   er+0x3e6bb0) → hook by RVA directly, no AOB in the health table; (b) lazy install must use
   `modutils::hook_now` (immediate `MH_EnableHook`), not `hook()` (queued for the init-time `MH_ApplyQueued`
-  that already ran) — else the detour never fires. **NEXT (open):** the raw `FUN_1406a5080(reqMgr, name)` drain
-  **FAULTS** (`step serviced ok=false req=0`, SEH-caught, no crash) — the registrar needs the block-resolved
-  context its real callers build. Route the drain through the native by-id helper `FUN_1406d4e80(state, aegId,
-  worldPos)` instead; capture its exact args (blockStreamerState = streamer sub-obj at `singleton+0x1e8`?,
-  worldPos = player pos, aegId = 99090 for `AEG099_090`) by hooking it during legit per-frame calls, then
-  replay in the drain. That closes runtime ADD-AEG.
+  that already ran) — else the detour never fires.
+  **★ BY-ID SPAWN REQUEST ACCEPTED — LIVE 2026-07-05 (part 2).** The raw `FUN_1406a5080(reqMgr, name)` drain
+  FAULTS even on the correct thread (proven: our drain + the streamer's legit registrar calls share the SAME
+  TID; replaying the streamer's OWN captured names still faults) — the raw registrar isn't a valid cold entry.
+  Switched the drain to the native by-id helper **`FUN_1406d4e80(state=p1step, aegId, worldPos)`** (state =
+  `FUN_1406d31f0`'s param_1; aegId parsed from `AEG###_###`; worldPos = `get_player_world_pos`): the engine
+  returns **`ok=true`, nonzero handle, no fault** for every name. Diagnostic RPC verbs added: `spawn_capreg`
+  (capture registrar args) / `spawn_cap4e80`. **NEXT (open, last gap):** the accepted request is NOT yet a live
+  rendered instance — `geom_stats` total is unchanged (16130→16130) after 9 spawns, nothing visible. The
+  request→instance build-out is the streamer state machine (`FUN_1406c6050(req,4)` → proximity step
+  `FUN_140699170`, flagged gated). Drive that transition (or check for an un-enumerated class / a world↔block
+  `worldPos` frame mismatch) to make it render. That's what remains to fully close runtime ADD-AEG.
 - **★ r3d DEBUG-RENDER TOOL — DONE + LIVE-VERIFIED 2026-07-05 (`a9dc674`).** r3d generalised from the test cube
   to **world-anchored debug boxes at arbitrary coords** (`r3d box <x> <y> <z> [size]` / `r3d clear`) via the ER
   camera — to SEE an invisible mesh / entity / loot at its real world pos (verified: 2 boxes beside+above the

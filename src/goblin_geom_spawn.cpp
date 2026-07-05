@@ -15,6 +15,7 @@
 
 #include "modutils.hpp"
 #include "re_signatures.hpp"
+#include "goblin_inject.hpp"   // get_player_world_pos (worldPos for the by-id spawn helper)
 
 namespace
 {
@@ -41,6 +42,48 @@ namespace
     // (incl. the 5th, stack-passed) and returns the engine's al.
     using StepFn = char(__fastcall *)(void *, void *, uint8_t, uint8_t, uint8_t);
     StepFn g_step_orig = nullptr;
+
+    // ── native by-id spawn helper capture (RE the NEXT wall: the raw registrar drain FAULTS) ──────────────
+    // FUN_1406d4e80(blockStreamerState, uint aegId, float* worldPos) is the engine's own "request AEG by id
+    // at position" call (resolves the player's block, builds L"AEG###_###", worldPos-blockOrigin, then
+    // registrar). We can't derive blockStreamerState statically, so CAPTURE it: hook FUN_1406d4e80 and log
+    // its live args + how param_1 relates to the singleton, while the streamer legitimately calls it (warp →
+    // block load). RE: docs/re/windows_geom_spawn_thread_re_findings.md "NEXT wall".
+    constexpr uintptr_t BYID_SPAWN_RVA = 0x6d4e80;   // FUN_1406d4e80(state, aegId, worldPos)
+    using ByIdFn = void *(__fastcall *)(void *state, uint32_t aegId, float *worldPos);
+    ByIdFn g_byid_orig = nullptr;
+    std::atomic<bool> g_byid_cap_installed{false};
+    ByIdFn g_byid_fn = nullptr;   // resolved FUN_1406d4e80 for the drain to CALL (not the capture trampoline)
+
+    // SEH-guarded call of the by-id helper FUN_1406d4e80(state, aegId, worldPos). out = returned handle
+    // (0 = engine declined); returns false on a fault (bad state pointer).
+    __declspec(noinline) bool call_byid(ByIdFn fn, void *state, uint32_t aegId, float *wp, void *&out)
+    {
+        __try { out = fn(state, aegId, wp); return true; }
+        __except (EXCEPTION_EXECUTE_HANDLER) { out = nullptr; return false; }
+    }
+
+    // Parse "AEG###_###" -> aegId (grp1*1000 + grp2), matching the engine's swprintf(L"AEG%03u_%03u",
+    // aegId/1000, aegId%1000). Returns false if the name isn't in that shape.
+    bool parse_aeg_id(const wchar_t *name, uint32_t &id_out)
+    {
+        if (!name) return false;
+        // expect A E G d d d _ d d d
+        if (name[0] != L'A' || name[1] != L'E' || name[2] != L'G') return false;
+        uint32_t g1 = 0, g2 = 0;
+        for (int k = 3; k < 6; ++k) { if (name[k] < L'0' || name[k] > L'9') return false; g1 = g1 * 10 + (name[k] - L'0'); }
+        if (name[6] != L'_') return false;
+        for (int k = 7; k < 10; ++k) { if (name[k] < L'0' || name[k] > L'9') return false; g2 = g2 * 10 + (name[k] - L'0'); }
+        id_out = g1 * 1000 + g2;
+        return true;
+    }
+
+    // The by-id helper FUN_1406d4e80 does NOT fire on normal streaming (live 2026-07-05 — a warp produced 0
+    // [CAP4e80] lines). Normal proximity streaming calls the registrar FUN_1406a5080 DIRECTLY. So capture
+    // the REGISTRAR's legit args instead: this reveals what param_1 actually is when the engine calls it
+    // (block vs reqMgr) — the crux of why our raw reqMgr call faults.
+    EnsureAssetReqFn g_reg_orig = nullptr;
+    std::atomic<bool> g_reg_cap_installed{false};
 
     bool rpm(const void *addr, void *out, size_t n)
     {
@@ -79,14 +122,18 @@ namespace
     }
 
     // Per-frame reqMgr-update detour (FUN_1406d31f0): run orig, then drain ONE queued spawn on THIS
-    // (game main-update) thread — the registrar's own context. reqMgr arrives here as param_1, but we
-    // still resolve it via the singleton to keep the direct-call path identical.
-    char __fastcall hk_step(void *reqMgr, void *time, uint8_t p3, uint8_t p4, uint8_t p5)
+    // (game main-update) thread. p1step = FUN_1406d31f0's param_1 (= DAT_143d69ba8 singleton per the RE).
+    // The RAW registrar FUN_1406a5080(reqMgr, name) FAULTS even here (same TID as the streamer, correct
+    // arg) — it needs per-call block/desc context. So drive the by-id helper FUN_1406d4e80(state, aegId,
+    // worldPos), which resolves the player's block itself. `state` isn't statically known, so try candidate
+    // pointers derived from p1step/singleton (SEH-guarded) and log which one the engine accepts.
+    char __fastcall hk_step(void *p1step, void *time, uint8_t p3, uint8_t p4, uint8_t p5)
     {
-        char ret = g_step_orig(reqMgr, time, p3, p4, p5);
+        char ret = g_step_orig(p1step, time, p3, p4, p5);
         static std::atomic<uint64_t> fires{0};
         if (fires.fetch_add(1, std::memory_order_relaxed) == 0)
-            spdlog::info("[SPAWNASSET] hk_step FIRED (first) — main-update thread reached");
+            spdlog::info("[SPAWNASSET] hk_step FIRED (first) — TID={} p1step={:p} (FUN_1406d31f0 thread)",
+                         GetCurrentThreadId(), p1step);
         std::wstring name;
         {
             std::lock_guard<std::mutex> lk(g_qmtx);
@@ -94,13 +141,72 @@ namespace
             name = std::move(g_queue.front());
             g_queue.pop_front();
         }
-        uint64_t sing = 0, mgr = 0;
-        if (resolve_mgr(sing, mgr)[0] || !mgr || !g_ensure_fn) return ret;
-        void *req = nullptr;
-        bool ok = call_ensure(g_ensure_fn, (void *)mgr, name.c_str(), req);
-        spdlog::info("[SPAWNASSET] step serviced -> ok={} req={:p} (reqMgr=0x{:x})", ok, req,
-                     (unsigned long long)mgr);
+        // Drive the by-id helper FUN_1406d4e80(state=p1step, aegId, worldPos). state = FUN_1406d31f0's
+        // param_1 was proven live (2026-07-05): the FIRST candidate, engine returns a nonzero handle, no
+        // fault (the raw registrar faulted here — it needs the block context this helper builds).
+        uint32_t aegId = 0;
+        if (!parse_aeg_id(name.c_str(), aegId))
+        {
+            spdlog::warn("[SPAWNASSET] step: name not AEG###_### — skipping by-id drain");
+            return ret;
+        }
+        if (!g_byid_fn) { spdlog::warn("[SPAWNASSET] step: FUN_1406d4e80 unresolved"); return ret; }
+        float px = 0, py = 0, pz = 0;
+        bool gotpos = goblin::get_player_world_pos(px, py, pz);
+        float wp[3] = {px, py, pz};
+        void *h = nullptr;
+        bool ok = call_byid(g_byid_fn, p1step, aegId, gotpos ? wp : nullptr, h);
+        spdlog::info("[SPAWNASSET] step serviced via FUN_1406d4e80 -> ok={} handle={:p} aegId={} "
+                     "pos=({:.1f},{:.1f},{:.1f}) TID={}",
+                     ok, h, aegId, wp[0], wp[1], wp[2], GetCurrentThreadId());
         return ret;
+    }
+
+    // Capture detour on FUN_1406d4e80: log the live (state, aegId, worldPos) + how `state` relates to the
+    // singleton, so the drain can reproduce the call. Pass-through (read-only observation).
+    void *__fastcall hk_byid_capture(void *state, uint32_t aegId, float *worldPos)
+    {
+        static std::atomic<int> n{0};
+        int i = n.fetch_add(1, std::memory_order_relaxed);
+        if (i < 16)
+        {
+            uint64_t sing = 0, mgr = 0;
+            resolve_mgr(sing, mgr);
+            uint64_t s1e8 = 0, ds1e8 = 0;
+            if (sing) { s1e8 = sing + 0x1e8; rpm((const void *)s1e8, &ds1e8, sizeof(ds1e8)); }
+            float wp[3] = {0, 0, 0};
+            bool gotwp = worldPos && rpm(worldPos, wp, sizeof(wp));
+            spdlog::info("[SPAWNASSET][CAP4e80] #{} state={:p} aegId={} (AEG{:03}_{:03}) worldPos={} "
+                         "({:.1f},{:.1f},{:.1f}) | singleton=0x{:x} reqMgr=0x{:x} sing+0x1e8=0x{:x} "
+                         "*(sing+0x1e8)=0x{:x}",
+                         i, state, aegId, aegId / 1000, aegId % 1000, (void *)worldPos,
+                         gotwp ? wp[0] : 0.f, gotwp ? wp[1] : 0.f, gotwp ? wp[2] : 0.f,
+                         (unsigned long long)sing, (unsigned long long)mgr, (unsigned long long)s1e8,
+                         (unsigned long long)ds1e8);
+        }
+        return g_byid_orig(state, aegId, worldPos);
+    }
+
+    // Capture detour on the registrar FUN_1406a5080(param_1, name): log param_1 + the L"AEG..." name it is
+    // legitimately called with, and how param_1 relates to the singleton/reqMgr. Pass-through.
+    void *__fastcall hk_reg_capture(void *p1, const wchar_t *name)
+    {
+        static std::atomic<int> n{0};
+        int i = n.fetch_add(1, std::memory_order_relaxed);
+        if (i < 24)
+        {
+            uint64_t sing = 0, mgr = 0;
+            resolve_mgr(sing, mgr);
+            // narrow the wide name for logging (ASCII AEG names)
+            char nm[32] = {};
+            if (name)
+                for (int k = 0; k < 31 && name[k]; ++k) nm[k] = (char)name[k];
+            spdlog::info("[SPAWNASSET][CAPREG] #{} TID={} param_1={:p} name='{}' | reqMgr=0x{:x} "
+                         "p1==reqMgr:{} p1-reqMgr=0x{:x}",
+                         i, GetCurrentThreadId(), p1, nm, (unsigned long long)mgr,
+                         ((uint64_t)p1 == mgr), (unsigned long long)((uint64_t)p1 - mgr));
+        }
+        return g_reg_orig(p1, name);
     }
 
     bool ensure_hook()
@@ -111,6 +217,7 @@ namespace
         g_ensure_fn = (EnsureAssetReqFn)goblin::sig::resolve_func_aob(
             goblin::sig::ENSURE_ASSET_REQUEST_FN, er, ENSURE_ASSET_REQUEST_RVA, "ENSURE_ASSET_REQUEST");
         if (!g_ensure_fn) return false;
+        g_byid_fn = (ByIdFn)(er + BYID_SPAWN_RVA);   // FUN_1406d4e80 by-id spawn helper (RVA-direct)
         // Hook by RVA directly: the FUN_1406d31f0 prologue AOB is NOT unique (matches 3 sites, first is a
         // different function) — AOB-first would hook the wrong one (live 2026-07-05). RVA is correct for
         // THIS build; re-find a unique AOB before shipping (rva_aob_hardening_backlog.md). Same posture as
@@ -134,6 +241,52 @@ namespace
 
 namespace goblin::geom_spawn
 {
+    bool arm_byid_capture()
+    {
+        if (g_byid_cap_installed.load()) return true;
+        uintptr_t er = (uintptr_t)GetModuleHandleA("eldenring.exe");
+        if (!er) return false;
+        void *target = (void *)(er + BYID_SPAWN_RVA);   // RVA-direct (no unique AOB yet)
+        try
+        {
+            modutils::hook_now(target, reinterpret_cast<void *>(&hk_byid_capture),
+                               reinterpret_cast<void **>(&g_byid_orig));
+        }
+        catch (const std::exception &e)
+        {
+            spdlog::error("[SPAWNASSET] byid capture hook failed: {}", e.what());
+            return false;
+        }
+        g_byid_cap_installed = true;
+        spdlog::info("[SPAWNASSET] byid capture hooked FUN_1406d4e80 @ {:p} (rva er+{:#x}) — warp to trigger "
+                     "block streaming; see [CAP4e80] lines", target, BYID_SPAWN_RVA);
+        return true;
+    }
+
+    bool arm_registrar_capture()
+    {
+        if (g_reg_cap_installed.load()) return true;
+        uintptr_t er = (uintptr_t)GetModuleHandleA("eldenring.exe");
+        if (!er) return false;
+        void *target = goblin::sig::resolve_func_aob(
+            goblin::sig::ENSURE_ASSET_REQUEST_FN, er, ENSURE_ASSET_REQUEST_RVA, "ENSURE_ASSET_REQUEST");
+        if (!target) return false;
+        try
+        {
+            modutils::hook_now(target, reinterpret_cast<void *>(&hk_reg_capture),
+                               reinterpret_cast<void **>(&g_reg_orig));
+        }
+        catch (const std::exception &e)
+        {
+            spdlog::error("[SPAWNASSET] registrar capture hook failed: {}", e.what());
+            return false;
+        }
+        g_reg_cap_installed = true;
+        spdlog::info("[SPAWNASSET] registrar capture hooked FUN_1406a5080 @ {:p} — warp/move to trigger; see "
+                     "[CAPREG] lines", target);
+        return true;
+    }
+
     SpawnResult resolve_req_mgr()
     {
         SpawnResult r;
