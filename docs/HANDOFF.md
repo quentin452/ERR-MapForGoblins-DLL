@@ -414,6 +414,16 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   `active_world` half** — auto-set the active world from PlayerDim + re-key the relief/item-search/player-dot
   gates off "engine-backed" (not `active_world==0`) for when a WALKABLE custom world exists. Detail:
   `docs/plans/virtual_world_multi_world_design.md` Decision 2.
+- **★ Greybox job #2b (restyle ER's render) — PROTOTYPED + LIVE-VERIFIED 2026-07-05 (`55afc49`).** The CHEAP
+  path to restyling ER's own render (vs the hard #2c shader/PSO-override the user was weighing): a full-screen
+  post-process pass in the present hook — copy backbuffer → temp SRV → full-screen style shader → backbuffer,
+  BEFORE our r3d+ImGui so the overlay stays crisp. `goblin_postfx.{hpp,cpp}`, RPC `postfx 0|1|toggle | mode
+  <1..4> | strength <f>` (1 grayscale, 2 posterize, 3 edge, 4 edge+desat), off by default. Zero ER-shader RE,
+  engine-agnostic. Screenshots: grayscale + posterize visibly restyle ER's whole frame, minimap/HUD full-colour
+  on top, no crash. **⇒ #2c (RE ER's shader system) is now only needed IF a post-process look proves
+  insufficient** — start from #2b. (#2a debug-flag scan `windows_debug_render_flag_re_prompt.md` still the
+  free-if-it-exists option.) Follow-ups: TOML-drive the mode/strength/colour; tune edge strength; maybe a
+  depth-aware pass later (needs ER's depth target). Note: this restyles the WHOLE frame globally, not per-object.
 - **★ Virtual-world 3D backend — STEP 1 DONE + LIVE-VERIFIED 2026-07-05 (`42039da`).** The mod-owned D3D12 3D
   backend works: our own pipeline (root sig + runtime HLSL + cube VB/IB + root-constant MVP) draws a spinning
   greybox wireframe cube INTO ER's swapchain via the present hook + device/queue/command-list the overlay already
