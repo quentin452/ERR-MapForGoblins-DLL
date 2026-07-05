@@ -230,6 +230,55 @@ int virtual_map_locate(int32_t name_id, int group)
     return n;
 }
 
+// TRIAGE the markers the vmap drops as "hors map": same predicate as the QT build — origin-zero (0,0) or
+// wildly out-of-frame (|coord| > 40000). Reports WHICH objects + WHICH ER map (raw area) + category + reason
+// to the [OFFMAP] log, so a bad source/projection can be tracked to its dimension. Reads the marker layers'
+// STORED worldX/worldZ (marker_world_pos, the build projection) — so overworld is exact; UG/DLC are the fold
+// (the vmap re-projects those via the live converter at draw, so a few UG/DLC edge cases can differ). RPC.
+std::string virtual_map_offmap_probe()
+{
+    auto implausible = [](float x, float z) {
+        return (x == 0.f && z == 0.f) || x < -40000.f || x > 40000.f || z < -40000.f || z > 40000.f;
+    };
+    size_t total = 0, off = 0, zero = 0, oob = 0;
+    std::map<int, int> byArea, byCat;   // raw ER area -> count, category -> count
+    std::vector<std::string> samples;
+    for (auto *L : overlay_layers())
+    {
+        if (!L) continue;
+        for (const goblin::worldmap::Marker &m : L->markers())
+        {
+            ++total;
+            if (!implausible(m.worldX, m.worldZ)) continue;
+            ++off;
+            const bool z0 = (m.worldX == 0.f && m.worldZ == 0.f);
+            if (z0) ++zero; else ++oob;
+            byArea[m.raw_area]++; byCat[m.category]++;
+            if (samples.size() < 25)
+            {
+                std::string nm = m.name_id >= 0 ? goblin::overlay_api::lookup_text_utf8(m.name_id) : std::string();
+                const char *cl = goblin::overlay_api::category_label(m.category);
+                char b[192];
+                std::snprintf(b, sizeof(b), "'%s' area%d grid(%d,%d) [%s] w(%.0f,%.0f) %s",
+                              nm.c_str(), m.raw_area, m.raw_gx, m.raw_gz, cl ? cl : "?",
+                              m.worldX, m.worldZ, z0 ? "ZERO" : "OOB");
+                samples.push_back(b);
+            }
+        }
+    }
+    spdlog::info("[OFFMAP] {} off-map of {} markers ({} origin-zero, {} out-of-range)", off, total, zero, oob);
+    { std::string s; for (auto &kv : byArea) { char b[24]; std::snprintf(b, sizeof(b), " area%d:%d", kv.first, kv.second); s += b; }
+      spdlog::info("[OFFMAP] by raw ER area (which map):{}", s.empty() ? " (none)" : s.c_str()); }
+    { std::string s; for (auto &kv : byCat) { char b[32]; const char *cl = goblin::overlay_api::category_label(kv.first);
+        std::snprintf(b, sizeof(b), " %s:%d", cl ? cl : "?", kv.second); s += b; }
+      spdlog::info("[OFFMAP] by category:{}", s.empty() ? " (none)" : s.c_str()); }
+    for (auto &s : samples) spdlog::info("[OFFMAP]   {}", s);
+    char out[192];
+    std::snprintf(out, sizeof(out), "ok offmap: %zu off-map of %zu markers (%zu origin-zero, %zu out-of-range) — see [OFFMAP] log",
+                  off, total, zero, oob);
+    return out;
+}
+
 // Dev orientation calibration: set world→screen axis signs. flipX/flipZ toggle each axis relative to the
 // minimap default (+X, -Z). Lets us match the native map live without a rebuild per guess.
 void virtual_map_set_flip(bool flipX, bool flipZ)

@@ -535,6 +535,10 @@ namespace goblin::debug_rpc
                     goblin::overlay_api::virtual_map_force_spiderfy(on);
                     return std::string("ok vmap spiderfy ") + (on ? "1" : "0");
                 }
+                // vmap offmap — triage the markers dropped as "hors map" (origin-zero / out-of-frame):
+                // which objects, which ER map (raw area), which category, and why → the [OFFMAP] log.
+                if (arg == "offmap")
+                    return goblin::overlay_api::virtual_map_offmap_probe();
                 // vmap relief [0|1] — toggle the terrain-relief hillshade (near raycast + D-far -1 cloud),
                 // so cloud-relief vs the native map ART tile can be A/B screenshotted at the same framing.
                 if (arg == "relief")
