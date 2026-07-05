@@ -48,6 +48,11 @@ Complex bugs — resolved and open — with the durable root-cause/fix takeaway.
   not ours; only investigate when `fault_module` is MapForGoblins.dll. → [er-shutdown-crash-noise](er-shutdown-crash-noise.md)
 
 ## Open
+- **Warp to a non-grace id strands the player at (0,0,0)** [open, low — recoverable] — `warp <id>` with an
+  id that isn't a real/unlocked grace teleports to a void cell instead of no-op (`ok` ≠ valid dest). Fixed
+  by a valid warp. id-validation NOT feasible yet: the working warp id `1042362951` matches neither the
+  captured `rowId` nor `bonfireEntityId` of any live grace (contradicts [[vmap-grace-warp-entity-id]]) —
+  needs RE of the true warp-id↔BonfireWarpParam field. → [warp-invalid-id-strands-player](warp-invalid-id-strands-player.md)
 - **Native-row live refresh** [open, minor] — our overlay markers refresh live every frame, but the
   legacy native section/grace-pin toggles that flip `areaNo` still only apply on map reopen (needs
   CSWorldMapPointMan rebuild RE). Does **not** affect the overlay marker path. → [thread8-mapopen-bottleneck-re](thread8-mapopen-bottleneck-re.md)

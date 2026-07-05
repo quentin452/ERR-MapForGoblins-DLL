@@ -80,6 +80,13 @@ bool to_grace(int32_t grace_id, int32_t offset)
         return false;
     }
 
+    // NB: id-validation against the live BonfireWarpParam was ATTEMPTED (2026-07-05) but is NOT feasible
+    // with the current data — a valid warp id (e.g. 1042362951 = First Step) matches NEITHER the captured
+    // rowId nor bonfireEntityId (which read as 8-digit 10001950-style values). The true warp-id↔param
+    // mapping (ERR remaps graces) needs its own RE before a whitelist can gate bad ids. Until then, warping
+    // to a non-grace id strands the player at local=(0,0,0)/map-unresolved (recoverable — a valid warp
+    // fixes it). See docs/memory/bugs/. The load watchdog below still catches a HUNG warp.
+
     // Live CSLuaEventManager, guarded (the singleton may not exist before the world loads).
     void *lem = nullptr;
     SIZE_T got = 0;
