@@ -1407,7 +1407,11 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     float sh = nl > 1e-4f ? (c.nx * Lx + c.ny * Ly + c.nz * Lz) / nl : 0.6f;
                     sh = sh < 0.20f ? 0.20f : (sh > 1.10f ? 1.10f : sh);   // ambient floor + gentle clip
                     auto ch = [sh](float base) { int v = (int)(base * sh + 0.5f); return v < 0 ? 0 : (v > 255 ? 255 : v); };
-                    dl->AddRectFilled(p0, p1, IM_COL32(ch(120), ch(132), ch(110), 220));
+                    // Sea-tagged cells (underwater seabed) render water-blue; land uses the terrain tone.
+                    if (c.sea)
+                        dl->AddRectFilled(p0, p1, IM_COL32(ch(40), ch(96), ch(150), 220));
+                    else
+                        dl->AddRectFilled(p0, p1, IM_COL32(ch(120), ch(132), ch(110), 220));
                     ++s_relief_drawn;
                 }
             }

@@ -25,6 +25,19 @@ using CastRayFn = int (*)(void *, uint32_t, float *, float *, float *, float *, 
 constexpr uintptr_t CASTRAY_RVA   = 0xc70360;
 constexpr uintptr_t PHYSWORLD_RVA = 0x3d76060;   // CS::PhysWorld FD4Singleton static slot (instance ptr)
 constexpr uint32_t  FILTER_GROUND = 0x5e;        // walkable-ground / map query type
+// M1 — vertical cast window WIDEN. The down-cast starts kCastAbove over the player and spans kCastDepth
+// down. Was 2000/4000 (±2000 around the player) → terrain well above/below (Liurnia cliffs, Siofra depths)
+// fell outside the window = within-block MISSES. Widened (biased downward: valleys/caves are the common
+// miss). Tradeoff of a higher start: it can catch an overhang roof before the true ground — acceptable for
+// a coarse relief hillshade. Tune live if spurious high patches show under bridges/city geometry.
+constexpr float kCastAbove = 3000.f;
+constexpr float kCastDepth = 10000.f;
+// M1 — sea-tag. filter 0x5e skips the water VOLUME but still hits the SEABED beneath it at a low Y. A hit
+// whose groundY sits under this level = underwater seabed → classify the cell as sea (water-blue) rather
+// than trying to "fix" the water skip. PROVISIONAL/DORMANT: sentinel -1e30 tags nothing until a live
+// shoreline `hf_probe` gives the real sea Y — then flip this one constant to activate it (render branch is
+// already wired in panel_virtual_map.cpp).
+constexpr float kSeaLevelY = -1e30f;
 
 CastRayFn g_cast = nullptr;
 void **g_physworld_slot = nullptr;
@@ -147,7 +160,7 @@ void diag_ctx(float px, float py, float pz)
     {
         if (!c.ctx || reinterpret_cast<uintptr_t>(c.ctx) < 0x10000) { spdlog::info("[HFDIAG] {} ctx={} (skip)", c.name, c.ctx); continue; }
         RayHit h{};
-        bool ok = cast_with_ctx(c.ctx, px, py + 2000.f, pz, 4000.f, FILTER_GROUND, h);
+        bool ok = cast_with_ctx(c.ctx, px, py + kCastAbove, pz, kCastDepth, FILTER_GROUND, h);
         spdlog::info("[HFDIAG] {} ctx={} -> hit={} y={:.2f} nrm=({:.2f},{:.2f},{:.2f})",
                      c.name, c.ctx, ok, h.pt[1], h.nrm[0], h.nrm[1], h.nrm[2]);
     }
@@ -249,7 +262,7 @@ bool start_sample()
     // CONTROL: cast at the exact player local (the D2.1-probe condition) to confirm the cast still
     // works from this path/session before the grid loop.
     RayHit ctl{};
-    bool cok = cast_with_ctx(g_run_ctx, lx, ly + 2000.f, lz, 4000.f, FILTER_GROUND, ctl);
+    bool cok = cast_with_ctx(g_run_ctx, lx, ly + kCastAbove, lz, kCastDepth, FILTER_GROUND, ctl);
     spdlog::info("[HEIGHTFIELD] sample CONTROL @player-local: hit={} y={:.2f}", cok, ctl.pt[1]);
     return true;
 }
@@ -266,16 +279,17 @@ void step_sample()
         const float lz = g_local0z + (cwz - g_world0z);
         RayHit h{};
         Cell c{cwx, cwz, 0.f, 0.f, 1.f, 0.f, false};
-        bool got = cast_with_ctx(g_run_ctx, lx, g_local0y + 2000.f, lz, 4000.f, FILTER_GROUND, h);
+        bool got = cast_with_ctx(g_run_ctx, lx, g_local0y + kCastAbove, lz, kCastDepth, FILTER_GROUND, h);
         if (g_qi < 3)
             spdlog::info("[HEIGHTFIELD] DBG cell{} world=({:.0f},{:.0f}) local=({:.1f},{:.1f}) "
                          "yhi={:.1f} -> hit={} y={:.2f} nrm=({:.2f},{:.2f},{:.2f})",
-                         g_qi, cwx, cwz, lx, lz, g_local0y + 2000.f, got, h.pt[1], h.nrm[0], h.nrm[1], h.nrm[2]);
+                         g_qi, cwx, cwz, lx, lz, g_local0y + kCastAbove, got, h.pt[1], h.nrm[0], h.nrm[1], h.nrm[2]);
         if (got)
         {
             c.groundY = h.pt[1];
             c.nx = h.nrm[0]; c.ny = h.nrm[1]; c.nz = h.nrm[2];
             c.hit = true;
+            c.sea = (c.groundY < kSeaLevelY);   // M1 sea-tag (dormant until kSeaLevelY is calibrated live)
             ++g_hits;
         }
         g_accum.push_back(c);
@@ -309,7 +323,7 @@ void tick_game_thread()
         if (goblin::get_player_world_pos(px, py, pz))
         {
             RayHit h{};
-            if (cast_down(px, py + 2000.f, pz, 4000.f, FILTER_GROUND, h))
+            if (cast_down(px, py + kCastAbove, pz, kCastDepth, FILTER_GROUND, h))
                 spdlog::info("[HEIGHTFIELD] probe @player({:.1f},{:.1f},{:.1f}): GROUND y={:.2f} "
                              "(Δfoot={:.2f}) nrm=({:.3f},{:.3f},{:.3f}) frac={:.3f}",
                              px, py, pz, h.pt[1], h.pt[1] - py, h.nrm[0], h.nrm[1], h.nrm[2], h.dist);
@@ -352,7 +366,7 @@ void tick_present()
         if (goblin::get_player_world_pos(px, py, pz))
         {
             RayHit h{};
-            cast_down(px, py + 2000.f, pz, 4000.f, FILTER_GROUND, h);   // populate the ctx's last hit
+            cast_down(px, py + kCastAbove, pz, kCastDepth, FILTER_GROUND, h);   // populate the ctx's last hit
             void *ctx = resolve_ctx();
             uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
             spdlog::info("[HFSHAPE] cast hit={} y={:.2f} ctx={} — scanning ctx for hknp shape vtables", h.hit, h.pt[1], ctx);
@@ -406,7 +420,7 @@ void tick_present()
         return;
     }
     RayHit h{};
-    bool ok = cast_down(px, py + 2000.f, pz, 4000.f, FILTER_GROUND, h);
+    bool ok = cast_down(px, py + kCastAbove, pz, kCastDepth, FILTER_GROUND, h);
     if (ok)
         spdlog::info("[HEIGHTFIELD] PRESENT probe @player({:.1f},{:.1f},{:.1f}): GROUND y={:.2f} "
                      "(Δfoot={:.2f}) nrm=({:.3f},{:.3f},{:.3f}) frac={:.3f} — PRESENT-THREAD GAMEPLAY CAST WORKS",

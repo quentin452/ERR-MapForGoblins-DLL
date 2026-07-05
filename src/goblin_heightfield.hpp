@@ -34,6 +34,7 @@ struct Cell
     float groundY;     // ground height at the cell (LOCAL-frame Y ≈ world height; Y is not tiled)
     float nx, ny, nz;  // surface normal
     bool hit;
+    bool sea = false;  // M1 sea-tag: hit seabed below the sea-level heuristic → render water-blue, not land.
 };
 
 // Cast a downward ray from (x, y_high, z) spanning `depth` world units down, in the cast's LOCAL frame.

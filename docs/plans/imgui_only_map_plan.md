@@ -30,7 +30,7 @@ Two independent tracks; the user confirmed **Track 1 first**:
 
 | M | Milestone | Maps to | RE it needs |
 |---|---|---|---|
-| M1 | **Cheap wins, zero new RE** | gamepad ImGui nav (feed the already-polled XInput `DAT_1430b92e0` into `ImGuiConfigFlags_NavEnableGamepad`); heightfield vertical-window widen + sea-tag | none |
+| M1 | **Cheap wins, zero new RE** — ✅ CODE DONE 2026-07-06 (needs live verify): (a) **gamepad nav already wired** — `NavEnableGamepad` set + `ImGui_ImplWin32_UpdateGamepads` polls + the XInput hook's `caller_is_us` check feeds ImGui real pad while zeroing the game's (input_gamepad.cpp); no code needed, verify in-game. (b) **heightfield cast window WIDENED** ±2000→(+3000/−10000) via `kCastAbove`/`kCastDepth` (goblin_heightfield.cpp) — fewer within-block misses. (c) **sea-tag PLUMBED** — `Cell.sea` + classify hits below `kSeaLevelY` + water-blue render branch (panel_virtual_map.cpp); DORMANT (sentinel -1e30) until a live shoreline `hf_probe` calibrates the sea Y (then flip 1 const). | none |
 | M2 | **Content parity** | Track A rows + D2 heightfield (UNBLOCKED — present-thread cast works, `d3ca993`) + tiles; far-terrain OPTIONAL for full-map coverage | `far_terrain_heightmap_re_prompt.md` (optional) |
 | M3 | ✅ **USABLE — "our map shows"** | `world_map_open()` → vmap **cover opaque** (accept the native draw cost for now), mouse+kb | none (open is state-based → already remap/pad-agnostic) |
 | M4 | **Nav parity** | warp-on-click (done), close, region switch, **gamepad nav** | `windows_keybinding_config_re_prompt.md` (remap-aware triggers); gamepad-nav itself = M1, no decode |
