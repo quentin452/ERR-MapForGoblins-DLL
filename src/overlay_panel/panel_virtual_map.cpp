@@ -93,6 +93,15 @@ namespace
     bool s_qt_proj_incomplete = false;   // a UG/DLC marker couldn't live-project (converter not up) → retry
     int  s_qt_proj_retries = 0;          // bounded rebuild retries while the converter warms up
     bool s_force_spiderfy = false;       // dev/test: force-open the spiderfy fan on the largest pile
+    bool s_fan_open = false;             // spiderfy: a cluster's hover-fan is open
+    uint64_t s_fan_key = 0;              // world-quantized identity of the open fan (sticky across rebuilds)
+    // Quantized world-space identity for a spiderfy cluster (tag 1 = pile, 2 = coincident singles).
+    inline uint64_t spiderfy_key(float wx, float wz, uint64_t tag)
+    {
+        uint64_t qx = (uint64_t)(int64_t)std::floor(wx / 8.0f) & 0xffffffffu;
+        uint64_t qz = (uint64_t)(int64_t)std::floor(wz / 8.0f) & 0xffffffffu;
+        return (tag << 62) ^ (qx << 30) ^ qz;
+    }
     uint64_t s_warp_pending = 0;   // grace rowId to warp to; serviced at the next frame's top (not mid-draw)
     int s_warp_offset = 0;          // added to the grace entity id before LuaWarp; 0 = entity id direct (ground truth; CT's -1000 was wrong)
     bool s_fit_requested = false;  // one-shot: on next draw, frame the selected group's markers
@@ -1381,7 +1390,10 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             if (hovered)
             {
                 float dx = ps.x - io.MousePos.x, dy = ps.y - io.MousePos.y;
-                if (dx * dx + dy * dy < r * r)
+                // Suppress the "zoom in to expand" hint when THIS pile's spiderfy fan is open (it IS expanded).
+                const bool fanned = goblin::config::clusterSpiderfy && s_fan_open &&
+                                    s_fan_key == spiderfy_key(pl.cx, pl.cz, 1);
+                if (dx * dx + dy * dy < r * r && !fanned)
                     ImGui::SetTooltip("%d %s", pl.count, tr("markers — zoom in to expand"));
             }
         }
@@ -1412,11 +1424,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         {
             struct FanCluster { ImVec2 anchor; uint64_t key; int pileIdx; };  // pileIdx>=0 → gather from QT
             std::vector<FanCluster> clusters;
-            auto qkey = [](float wx, float wz, uint64_t tag) -> uint64_t {
-                uint64_t qx = (uint64_t)(int64_t)std::floor(wx / 8.0f) & 0xffffffffu;
-                uint64_t qz = (uint64_t)(int64_t)std::floor(wz / 8.0f) & 0xffffffffu;
-                return (tag << 62) ^ (qx << 30) ^ qz;
-            };
+            auto qkey = [](float wx, float wz, uint64_t tag) -> uint64_t { return spiderfy_key(wx, wz, tag); };
             // Piles big enough on screen to be worth fanning (else "zoom in to expand" suffices).
             for (int i = 0; i < (int)s_piles.size(); ++i)
             {
@@ -1439,8 +1447,6 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     }
             }
 
-            static bool s_fan_open = false;
-            static uint64_t s_fan_key = 0;
             // Dev/test (vmap spiderfy 1): precise headless hover is unreliable, so force-open the fan on the
             // LARGEST visible pile to screenshot the geometry. No effect in normal use (flag off).
             if (s_force_spiderfy && !clusters.empty())
@@ -1521,6 +1527,15 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     const float keepR = max_r + icoHalf + 24.0f * uiScale;
                     float mdx = c.x - io.MousePos.x, mdy = c.y - io.MousePos.y;
                     if (!s_force_spiderfy && mdx * mdx + mdy * mdy > keepR * keepR) s_fan_open = false;
+                    // MODAL absorb: the fan is drawn on top, so inside its backdrop it must OWN the hover —
+                    // clear whatever base marker/pile UNDER it set in the accumulator, so their tooltip/warp
+                    // can't leak through the gaps between fanned icons. Only a fanned icon (below) re-sets it.
+                    const float absorbR = max_r + icoHalf + 6.0f * uiScale;
+                    if (mdx * mdx + mdy * mdy <= absorbR * absorbR)
+                    {
+                        hoverBestD = 1e18f; hoverPrio = -1; hoverName = -1; hoverCat = -1;
+                        hoverV.clear(); hoverRow = 0; hoverDisc = 0;
+                    }
                     dl->AddCircleFilled(c, max_r + icoHalf + 6.0f * uiScale, IM_COL32(18, 22, 30, 150));
                     for (int k = 0; k < n; ++k)
                     {
