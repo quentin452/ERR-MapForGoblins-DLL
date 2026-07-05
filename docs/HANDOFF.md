@@ -9,6 +9,24 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
+## ⇒ SESSION WRAP 2026-07-05 — custom-asset/collision RE + far-terrain relief plan (static Ghidra, Windows)
+
+RE-only session (Windows Ghidra `D:\ghidra_proj2\ER`), all committed, local master ahead of origin. Landed:
+- **Custom-asset creation options A–D** (`docs/re/custom_asset_creation_options_re_findings.md`): walkable
+  greybox needs NO authoring (Route D = Havok `hknpBoxShape`); a new AEG id DOES stream (name-resolved VFS);
+  B (buffer register) DEAD; C (primitive w/ collision) = the Hit layer is model-name-driven ⇒ collapses to D.
+- **`hknpWorld::addBody` = a COMMAND, not a slot** (`docs/re/hknpworld_addbody_slot_re_findings.md`): full
+  opcode map + recipe (`FUN_1418aabf0` allocateBody → `FUN_1418a9ff0` addBody) + `hknpBodyCinfo` layout
+  (+0x00 shape/+0x28 motionType/+0x30 pos/+0x40 quat). **`add_collision` IMPLEMENTED + live-proven by the
+  Linux agent** (9/9). Remaining: real box builder `FUN_141916c30`(AABB,radius,cfg) — probe borrows a live shape.
+- **Far-terrain elevation SCOPED** (`docs/re/far_terrain_heightmap_re_findings.md`): NO heightmap texture
+  exists; terrain = FLVER/`.mapbnd`; the walkable-ground truth = **`hkxpwv` map collision =
+  `hknpCompressedMeshShape`** (verified §5b). `WorldMapPieceParam` ruled out (2D reveal rect, no Y).
+- **PLAN: `docs/plans/far_terrain_relief_plan.md`** (far-field companion to `heightfield_relief_plan.md`):
+  whole-map relief via OFFLINE `hkxpwv` collision bake (community tooling, no in-DLL Havok parser) → base
+  heightfield + incremental override (authored `.toml` = free; third-party mod = hash-detect + re-derive).
+  **First brick = D-far 0 (offline baker for the overworld), not started.**
+
 ## ⇒ SESSION WRAP 2026-07-04 (evening) — custom markers + death marker + minimap edge fix
 
 All committed, local master ahead of origin. Full status: `docs/plans/custom_markers_plan.md`.
