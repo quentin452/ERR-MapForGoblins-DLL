@@ -89,7 +89,20 @@ User wants to STOP the ~3-4min game-reboot per fix and revive the overlay hot-re
   GROUPED "Demi-Human Chief**s**" row. The native ER map is itself selective (marks 4 of the 7 Avatars) and
   groups the Chiefs into one icon — we match it. Showing all boss INSTANCES (7 Avatars, un-grouped Chiefs)
   would be a FEATURE: source bosses from enemy placements (the loot enemy-join already resolves them — e.g.
-  it found 13 Night's Cavalry entities) + dedup + name-resolve. NOT needed for native parity. (Also re-proved
+  it found 13 Night's Cavalry entities) + dedup + name-resolve. **★ USER WANTS IT (2026-07-05): "7 Avatar but
+  item searcher shows 4".** Confirmed BOTH baked sources have only 4 Erdtree Avatars (`WorldMapPointParam` +
+  `data/boss_list.json`, same 4 area60 locations grid 43,33/33,43/38,48/52,56, model c4810); the missing 3 —
+  incl. the UNDERGROUND one — are absent from both, so they must come from the LIVE MSB enemy scan
+  (`disk_enemies`: model in the part `name` e.g. `c4810_9000` + `npcParamId` + pos, all instances). **FEATURE
+  PLAN (enemy-sourced boss supplement — mod-agnostic/runtime, NOT started):** (1) boss-model set — prefer a
+  RUNTIME signal (NpcParam boss flag / defeat-flag bind) for mod-agnosticism, else the vanilla model
+  whitelist from `boss_list.json` as an additive fallback layer; (2) scan `disk_enemies` for those models;
+  (3) resolve each model→name (`npcParamId`→NpcParam.nameId→FMG, or `data/npc_name_text_map.json`:
+  904810600/601/602="Erdtree Avatar"); (4) dedup vs `WorldMapPointParam` boss markers by position (a c4810
+  near an existing "Erdtree Avatar" marker = same boss); (5) emit uncovered ones via `push_marker`
+  (Source::Live, WorldBosses). Add to `build_live_bosses` in `map_entry_layer.cpp` (render→hot-reloadable).
+  Verify: `vmap find "Erdtree Avatar"` → 7. NOT needed for native parity, but the user asked for full coverage.
+  (Also re-proved
   the hot-reload loop here: added `[BOSSDIAG]` to `map_entry_layer.cpp`, hot-swapped render `gen0→gen1` live,
   read the log, removed it — no reboot. Persistent-game harness caveat: the keepalive loop exited when
   foreground `mfg rpc` calls raced its `ping` — gate the keepalive on real liveness, don't break on one ping.)
