@@ -79,6 +79,35 @@ This is a **strategic fork**, not a mechanical next step:
   elevation; see the table). So no cheap coarse source exists; the fork is genuinely #1 (FLVER) vs #4
   (visual color-tile backdrop) vs #5 (shelve).
 
+## 5b. Collision-source verification (2026-07-05) — the RIGHT bake source (no false relief)
+Verified via RTTI + loader decompile, to settle "bake from collision, not render FLVER, to avoid false
+relief" (props/decoration/multi-layer). Result: **the map terrain collision IS on disk as a parseable
+`hknpCompressedMeshShape`, and it's the semantically correct source** — but the parse effort is *comparable*
+to FLVER, not clearly less (earlier "simpler" was too optimistic).
+
+- **Disk container = `hkxpwv`** (ER's map-collision format): `HkxpwvResCap@CS` / `HkxpwvRepositoryImp`
+  (ctors er+0xc844f0 / er+0xc83d70). (Sibling loaders: `Geomhkxbnd*` = asset/geom collision `.hkxbnd`;
+  `Hkx*` + `HkxbhdMultiMountFileCap` + `HkxResCapDeleterForHavokSerializeData` = generic Havok serialize-data
+  `.hkxbhd`/`.hkxbdt`.)
+- **On-disk serialization** = Havok tagfile → **`hknpPhysicsSceneData`** (er+0x2ef0c40) → `hknpPhysicsSystemData`
+  (er+0x2ee9610) → shapes + **`hknpMaterialLibrary`** (er+0x2ee36b0, gives the walkable/material filter).
+- **The shape** = **`hknpCompressedMeshShape`** (vtable er+0x2eeb908) with `hknpCompressedMeshShapeInternals`
+  = **quantized vertices + `hkcdStaticTree` BVH + triangle indices**. Offline decode = dequantize verts
+  (per-section offset+scale) + read triangle indices.
+
+**Why collision beats render-FLVER for this:** it IS walkable ground by construction (no AEG props, no
+decoration, no multi-layer ambiguity → **no false relief**), it's plain triangle soup (no UV/bones/skin/LOD),
+and `hknpMaterialLibrary` filters water/non-ground for free. It's also the SAME data the near-field raycast
+hits (`hknpCompressedMeshShape`) → near↔far consistency. Disk `hkxpwv` exists at full detail even where far
+collision isn't STREAMED at runtime (why the raycast misses it) → whole-map coverage offline.
+
+**Effort honesty + the key shortcut:** parsing a Havok tagfile + dequantizing a compressed mesh is real work,
+~on par with FLVER — BUT it's **community-solved** (SoulsFormats HKX / HKLib) and the **base bake is OFFLINE**,
+so you can produce the base heightfield in a BUILD STEP with existing tooling (or a Blender ER-collision
+import) — **no in-DLL Havok parser needed for the base.** An in-DLL parser is only needed to re-derive
+*overridden* tiles at runtime (rare — mods seldom reshape terrain), and can be deferred/optional.
+**⇒ Recommended source: `hkxpwv` map collision (offline bake) + the live raycast for the near field.**
+
 ## 6. Anchors
 ```
 terrain model instance     CSMapModelIns@CS        vt 0x2b32da8 (ctors 0x9ef530/0x9ef4a0)
@@ -87,6 +116,10 @@ FLVER draw path            FlverRepository / FlverResCap / CSFlverDrawSystem 0x2
 map-screen piece param     WorldMapPieceParam@CS   vt 0x2a5a328 (cheap-probe for elevation, option #3)
 water height (sea level)   GXWaterHeightMap@GXSR 0x30370b0 (ctor 0x1b78960); GXWaveTerrain 0x303a1a0
 near-field raycast (pairs) FUN_140c70360, ctx=*(*(er+0x3d76060)+0x98), filter 0x5e  (loaded-only)
+map collision (bake src)   hkxpwv: HkxpwvResCap@CS 0x2b94c40 (ctor 0xc844f0) / HkxpwvRepositoryImp 0x2b94a78
+  on-disk root             hknpPhysicsSceneData 0x2ef0c40 -> hknpPhysicsSystemData 0x2ee9610 + hknpMaterialLibrary 0x2ee36b0
+  shape                    hknpCompressedMeshShape vt 0x2eeb908 (Internals: quantized verts + hkcdStaticTree BVH + tri indices)
+  sibling loaders          Geomhkxbnd* (asset collision .hkxbnd); Hkx*/HkxbhdMultiMountFileCap (.hkxbhd/.hkxbdt Havok serialize)
 ```
 Cross-ref: `windows_terrain_raycast_heightfield_re_findings.md` (near field), `maptile.cpp` /
 `windows_worldmap_tile_rect_reach_re_findings.md` (color tiles), README #4 (FLVER frontier).
