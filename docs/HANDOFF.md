@@ -1185,3 +1185,21 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
 - i18n: `overlay_language = auto` reads the WINE prefix locale under Proton (usually `en_US` even on a
   French desktop) — French users should set it explicitly. Avoid `œ` in translations (outside the
   merged font ranges, use "oe"). Keep label translations ≲ English+20% (panel caps at 840px).
+
+## ⇒ SESSION WRAP 2026-07-06 (Linux/Opus) — two subagent scoping reports (DX + pipeline) queued for next session
+
+Two read-only Sonnet subagents ran at session end; findings banked here (NOT yet actioned).
+
+**★ vmap/minimap player DX (3 real bugs, all RENDER-side = hot-reloadable):**
+1. **Player blue circle not zoom-aware** — `panel_virtual_map.cpp:2033` `AddCircleFilled(pp, hh*0.9f, blue)`, `hh=16*uiScale`; `uiScale` is DPI-only, no link to `s_zoom` → constant-px blob over the character when zoomed in. Fix: taper/skip the halo (:2033) + fallback dot (:2053-54) past a zoom threshold.
+2. **Player z-order wrong on vmap** — player draws :2004-2058 but custom pins (:2062) + death marker (:2079) + region labels draw AFTER → cover the player (comment :2060 wrongly claims "on top"). Minimap already draws player last (correct). Fix: move the player block after the custom-pins/death-marker block.
+3. **Minimap settings invisible while vmap open** — `map_renderer.cpp:2541` hard-returns (no minimap) when vmap/native map open; no override. Tweaking minimap sliders = no feedback (worse once settings merge into vmap). Fix: `panel_settings.cpp:242` CollapsingHeader-open → a `minimap_settings_focused()` flag → `map_renderer.cpp:2541` guard `… && !minimap_settings_focused()` (force-draw minimap over vmap while its settings open).
+
+**★ build_pipeline.py dead-stage audit (cleanup-scoping):**
+- SAFE DELETE (confirmed dead, no Stage + no consumer): `generate_{gestures,hero_tomb_statues,hostile_npcs,imp_statues,kindling_spirits_massedit,maps,material_nodes,paintings,pieces_massedit,seal_puzzles,spirit_springs,stakes,summoning_pools}.py`, `extract_seal_puzzles.py`, + NEW `generate_model_aliases.py` and its ORPHANED uncompiled output `src/generated/goblin_model_aliases.{hpp,cpp}` (not in CMakeLists). Likely also `extract_rune_positions.py` (superseded), `extract_err_collectibles.py` (write-only output).
+- CACHE BUG (like boss_list): `generate_data` stage declares stale unread inputs (`items_database.json`, `npc_name_text_map.json`, `WorldMapLegacyConvParam.json`) AND omits its REAL input `data/categories.json` → editing categories.json won't invalidate the cache. Fix the inputs list.
+- `generate_loot_massedit`: 3 `.MASSEDIT` outputs + `loot_lot_linkage.json` are DEAD (write-only, 0 readers); `item_icon_table.json` LIVE only for offline QA (`taxonomy_classifier`/`unplaced_items`/`_validate_taxonomy_map`). The stage comment (:247-248) + `docs/plans/baked_data_full_removal_plan.md:118-122` are STALE (claim compiled artifacts that no longer exist) — update them.
+- HUMAN CALL: is the offline taxonomy-QA tooling worth keeping 5 upstream stages alive (extract_goods_categories/tutorial_codex/items/enrich_fallback + massedit)? `extract_placename_dump` only feeds manual tools now.
+- INVERSE GAP (not dead — undocumented MANUAL regen): `build_{name_regions,major_regions,region_anchors,tile_tabs}.py`, `extract_map_name_regions.py`, `generate_quest_gates.py`, `extract_quest_npcs.py`, `generate_overlay_icons.py` produce COMPILED files but have NO Stage → run manually + output committed. Worth a tooling memory note.
+
+Both are clean next-session tasks. DX fixes are quick + hot-reloadable; the pipeline cleanup is a deliberate sweep (safe-deletes + the generate_data cache fix first, then the human-call decisions).
