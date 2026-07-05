@@ -29,6 +29,7 @@
 #include "goblin_worldmap_probe.hpp"   // get_live_view() for the marker prototype
 #include "goblin_heightfield.hpp"      // tick_present() — heightfield present-thread probe (D2.2)
 #include "goblin_w2s.hpp"              // draw_present() — 3D world-to-screen debug dot (present-thread)
+#include "goblin_r3d.hpp"              // mod-owned D3D12 3D backend — test cube into the swapchain
 #include "goblin_custom_markers.hpp"   // death_marker::tick() — mirror the native GameDataMan bloodstain
 #include "goblin_map_data.hpp"         // generated::MAP_ENTRIES (graces for Phase 1)
 #include "worldmap/grace_layer.hpp"      // goblin::worldmap::GraceLayer
@@ -1981,6 +1982,13 @@ namespace
             g_command_list->ResourceBarrier(1, &barrier);
 
             g_command_list->OMSetRenderTargets(1, &frame.rtv_handle, FALSE, nullptr);
+            // Mod-owned 3D backend (goblin_r3d): draw our real 3D into the swapchain BEFORE ImGui, so ImGui
+            // overlays on top. Self-gates off by default (RPC `r3d 1`). ImGui re-binds all state after, so our
+            // PSO/root-sig/topology changes here don't disturb it. RTV already bound above; no depth (step 1).
+            {
+                ImVec2 ds3 = ImGui::GetIO().DisplaySize;
+                goblin::r3d::draw_test_cube(g_device, g_command_list, ds3.x, ds3.y);
+            }
             g_command_list->SetDescriptorHeaps(1, &g_srv_heap);
             ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), g_command_list);
 

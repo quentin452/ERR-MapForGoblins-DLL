@@ -270,6 +270,7 @@ set(GOBLIN_HOST_SOURCES
   src/goblin_load_watchdog.cpp
   src/goblin_heightfield.cpp
   src/goblin_w2s.cpp
+  src/goblin_r3d.cpp
   src/dllmain.cpp)
 
 # Slice C: real two-target split when ON. Host does NOT link the render DLL (loaded at runtime
@@ -352,6 +353,7 @@ target_link_libraries( MapForGoblins
   imgui
   d3d12
   dxgi
+  d3dcompiler  # goblin_r3d.cpp — runtime HLSL compile for the mod-owned 3D backend (same as ImGui's DX12 backend)
   dinput8
   dxguid
   dbghelp
