@@ -118,9 +118,10 @@ from parity — Track A is real BUILD work, not just a checklist. This IS the go
   LOW-PRIORITY polish for that exact-coincident case only; the general overlapping case is handled.
 - **Perf follow-ups (the big bottleneck is GONE — `177c73c`, vmap.markers 4.08→0.51 ms).** Minor, for
   later, none blocking: (1) QT rebuild is a ~17 ms one-time spike on group change — build incrementally or
-  off-thread only if it's ever felt; (2) `region_gated` is applied to singles at draw but the QT is NOT
-  rebuilt on a region toggle, and PILES ignore region gating (a hidden region still counts in a pile) —
-  rebuild-on-toggle or gate piles if it matters; (3) cache each visible single's draw recipe (icon UV +
+  off-thread only if it's ever felt; (2) ✅ **FIXED 2026-07-05** — `region_gated` markers are now excluded at
+  QT BUILD time and a region-enabled fingerprint (`s_qt_region_mask`) is folded into the rebuild key, so a
+  region-name toggle rebuilds the index → PILES de-count hidden regions too (was: singles hid but piles still
+  counted them); (3) cache each visible single's draw recipe (icon UV +
   state) instead of recomputing `draw_marker_glyph` per frame — small now that only the visible subset
   draws; (4) relief draws per-cell quads (`vmap.relief`) — a single texture would scale better at big
   grids; (5) the grace sidebar reads `read_event_flag` per grace per frame (~438) — throttle if needed.
