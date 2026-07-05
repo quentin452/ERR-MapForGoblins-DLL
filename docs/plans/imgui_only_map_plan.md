@@ -201,6 +201,25 @@ Original spec (a grace LIST menu, not just clicking dots on the canvas), so the 
   ImGui nav (M1, no RE); remap-aware action triggers = `windows_keybinding_config_re_prompt.md`.
 - **C3:** collapse surfaces — delete the native-map marker-draw path (`proto` branch), retire the
   native-pin suppression knobs, flip the minimap gate from `world_map_open()` to `virtual_map_open()`.
+- **✅ CONVERTER RESIDENCY under the cull — VERIFIED SAFE (2026-07-05).** The vmap's underground/DLC
+  projection (Fork 2) + the whole live-projection path depend on the engine `WorldMapViewModel` converter
+  (`worldmap_probe::project`). **The M5 cull does NOT break it:** (a) the recommended draw-removal is the
+  **D3D12 `RSSetScissorRects` empty-clip** (commit `2208332`), which hides PIXELS at rasterize but KEEPS the
+  menu update/logic tick → the Dialog+VM stay live — strictly LESS teardown than a full map close; (b)
+  `find_view_model()` CACHES the VM (`static s_vm`) and it PERSISTS past a full close, proven by
+  `tools/rpc_tests/test_converter_residency.py` (`proj` RPC returns IDENTICAL u,v with the map fully closed,
+  du=0.0). So culling the draw is safe for projection. When the scissor toggle is RPC-exposed, extend that
+  test to toggle it between the two `proj` calls (belt-and-suspenders).
+- **★ ENDGAME data cleanup — REMOVE the BAKED LegacyConv once the vmap owns the surface.** With the live
+  converter proven resident even map-closed/culled, the mod no longer needs the **baked** `LEGACY_CONV` table
+  (`src/generated/goblin_legacy_conv.hpp`) + its nearest-base-point fallback in
+  `goblin_world_position.cpp::project_dungeon_row_to_overworld` — that fallback is the source of the area-12
+  sub-region mis-fold + the DLC-UG gap (the Fork 2 residual few tiles). Prime-directive win (runtime/disk
+  over baked): route ALL underground/DLC projection through `worldmap_probe::project` (live regulation
+  `WorldMapLegacyConvParam`), delete the baked table + the `LEGACY_CONV` scan branch, and keep only a
+  circle/at-raw fallback for the pre-first-map-open warm-up window. Gate: after M5 (vmap is the sole surface,
+  so the converter is guaranteed resolved before any draw the user sees). Tracked here so the baked snapshot
+  doesn't ossify.
 - **GATE:** C1-cull / C3 only after Track A (parity) is all-green.
 
 ---

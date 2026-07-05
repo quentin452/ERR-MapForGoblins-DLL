@@ -410,7 +410,7 @@ namespace goblin::debug_rpc
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp coords warp_local warp_xyz we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
-                       " | mfg_build er_base er_version mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset add_collision hf_probe hf_probe_present hf_sample hf_shape_probe"
+                       " | mfg_build er_base er_version proj mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset add_collision hf_probe hf_probe_present hf_sample hf_shape_probe"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
             if (cmd == "status")
@@ -1210,6 +1210,26 @@ namespace goblin::debug_rpc
                 char b[192];
                 std::snprintf(b, sizeof(b), "ok hp_probe A=(%d/%d) B=(%d/%d) picked=%s(%d/%d) resolved=%d",
                               ac, am, bc, bm, got ? "yes" : "no", cur, mx, (int)ok);
+                return std::string(b);
+            }
+            // proj <area> <gx> <gz> [px] [pz] — call the LIVE engine converter worldmap_probe::project
+            // (raw area/grid/pos → map-space u,v + page). Test primitive for converter RESIDENCY: it must
+            // keep returning the same valid u,v AFTER the native map closes (the VM is cached + persists) —
+            // the property Fork 2's underground projection AND the M5 native-draw cull depend on. err if the
+            // VM isn't resolved yet (map never opened this session) or project declines.
+            if (cmd == "proj")
+            {
+                std::string as = next_token(rest), gxs = next_token(rest), gzs = next_token(rest),
+                            pxs = next_token(rest), pzs = next_token(rest);
+                int area = 0, gx = 0, gz = 0; float px = 0.f, pz = 0.f;
+                try { area = std::stoi(as); gx = std::stoi(gxs); gz = std::stoi(gzs);
+                      if (!pxs.empty()) px = std::stof(pxs); if (!pzs.empty()) pz = std::stof(pzs); }
+                catch (...) { return "err usage: proj <area> <gx> <gz> [px] [pz]"; }
+                float u = 0.f, v = 0.f; int page = -1;
+                bool ok = goblin::worldmap_probe::project(area, gx, gz, px, pz, u, v, page);
+                char b[128];
+                if (!ok) { std::snprintf(b, sizeof(b), "err proj: converter unresolved (map never opened?) or declined"); return std::string(b); }
+                std::snprintf(b, sizeof(b), "ok proj area=%d grid=(%d,%d) -> u=%.2f v=%.2f page=%d", area, gx, gz, u, v, page);
                 return std::string(b);
             }
             // mfg_build — FRESHNESS GUARD. Returns the compile time of THIS RPC translation unit
