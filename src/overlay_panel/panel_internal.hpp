@@ -91,6 +91,8 @@ std::string virtual_map_load_resident();
 std::string virtual_map_tile_recon();
 // A9: centre the vmap on an item-search hit (name_id on page group&3). Returns instances found (0 = no-op).
 int virtual_map_locate(int32_t name_id, int group);
+// A9 dev/test: open the vmap item-search sidebar + set its query (drives the UI list headlessly).
+void virtual_map_item_search(const char *query);
 void virtual_map_service_pending_warp();  // POST-FRAME: execute a double-click-queued grace warp (safe pt)
 int dump_markers_csv(const char *path);  // export all markers → CSV (offline procedural-style prototyping)
 void virtual_map_set_view(float camX, float camZ, float zoom);  // dev/test: frame the canvas directly

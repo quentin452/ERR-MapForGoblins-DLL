@@ -171,7 +171,9 @@ zoom `+0x380`). Results — the §3 offsets are PARTLY WRONG for this runtime la
   as empty/self-linked). ⇒ **No resident `WorldMapTile` objects populate in this state** — the tile streamer
   doesn't fill the tree here (possibly gated on the ART actually being drawn/streamed, which may not run the
   same way under this Proton/headless drive).
-**⇒ A3 (textured tile placement) is BLOCKED on a fresh RE pass**, two sub-questions: (a) the CORRECT
+**⇒ RE prompt written: `windows_worldmap_tile_resident_reach_re_prompt.md`** (hands Windows/Ghidra the
+exact question, with the primary hypothesis below). **⇒ A3 (textured tile placement) is BLOCKED on that
+pass**, two sub-questions: (a) the CORRECT
 tile-map offset inside the 0x110 `WorldMapTiledLayer` (candidates `+0x50` / `+0xc8`; dump a layer whose map
 is NON-empty — need a state where tiles ARE resident); (b) WHAT makes tiles resident (zoom tier? region
 dwell? the ART draw path?). Ghidra: re-check `WorldMapTile` ctor `FUN_1409df560`'s caller

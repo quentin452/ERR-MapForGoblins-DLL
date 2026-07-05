@@ -130,6 +130,8 @@ namespace goblin::overlay_api
     // A9: centre the vmap on an item-search hit (name_id on page group&3). Returns instances found (0 =
     // no-op). Lets the F1 item search locate onto the vmap, not just the native ER map.
     GOBLIN_RENDER_API int virtual_map_locate(int32_t name_id, int group);
+    // A9 dev/test: open the vmap item-search sidebar with a query (drives the UI list headlessly).
+    GOBLIN_RENDER_API void virtual_map_item_search(const char *query);
     GOBLIN_RENDER_API void virtual_map_set_flip(bool flipX, bool flipZ);  // dev orientation calib
     GOBLIN_RENDER_API int virtual_map_get_group();
     GOBLIN_RENDER_API void request_save();

@@ -515,6 +515,16 @@ namespace goblin::debug_rpc
                 // archive-name↔runtime-cell (deferred texture-fetch). Read-only; needs the ER map open+moved.
                 if (arg == "tile_recon")
                     return "ok vmap tile_recon " + goblin::overlay_api::virtual_map_tile_recon();
+                // vmap items [query] — A9: open the vmap item-search sidebar + set its query (drives the
+                // same list the UI builds; lets a headless driver screenshot a populated search).
+                if (arg == "items")
+                {
+                    std::string q = rest;   // rest of the line = the query (may contain spaces)
+                    // trim a single leading space left by tokenizing
+                    if (!q.empty() && q[0] == ' ') q.erase(0, 1);
+                    goblin::overlay_api::virtual_map_item_search(q.c_str());
+                    return "ok vmap items query=\"" + q + "\"";
+                }
                 // vmap locate <name_id> [group] — A9: centre the vmap on an item-search hit (test the
                 // click-to-locate path headlessly). name_id = FMG text id; group 0=OW 1=UG 2=DLC.
                 if (arg == "locate")

@@ -25,10 +25,10 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
-- **Item search locates on the Virtual World Map.** Searching for an item (F1 "Find item / object") and
-  clicking a result now centres the mod's own map on it — not just the native ER map. Works with the
-  Virtual World Map as the open surface (native map closed), switching to the item's page and framing it.
-  One step closer to the vmap fully replacing the native map.
+- **Item search on the Virtual World Map.** The mod's own map now has its own item-search sidebar
+  (`Items` toggle): type a name, get results grouped per map/page with counts, click to centre the map on
+  it — no native ER map needed. The F1 "Find item / object" search also locates onto the vmap now. One
+  step closer to the vmap fully replacing the native map.
 - **Custom collision bodies (dev, Route D walkable greybox).** The DLL can now inject a STATIC Havok
   collision body into the live world (`add_collision` RPC, staged: resolve → cinfo dump → `go`), proven
   end-to-end with the heightfield raycast oracle (down-ray hits the new body's top; persists in the

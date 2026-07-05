@@ -67,6 +67,9 @@ namespace
     // them too). Right-click the canvas near empty space to drop one; near an existing pin to delete it.
     bool s_show_custom = false;        // custom-marker list sidebar toggle
     float s_custom_w = 250.0f;         // its resizable width
+    bool s_show_item_search = false;   // A9: item-search sidebar (locate items ON the vmap, no native map)
+    float s_items_w = 260.0f;          // its resizable width
+    char s_item_filter[64] = "";       // file-scope so a dev RPC (vmap items <q>) can drive it for tests
     int s_custom_seq = 1;              // auto-name counter
     char s_grace_filter[64] = "";   // grace-list search box
     // Grace list cache (rebuilt on open / Refresh; discovered-state re-read live per visible row).
@@ -147,6 +150,15 @@ void virtual_map_request_fit() { s_fit_requested = true; }
 void virtual_map_request_focus() { s_focus_player = true; }
 void virtual_map_set_group(int g) { if (g >= 0 && g < 4) s_group = g; }
 int virtual_map_group() { return s_group; }
+
+// A9 dev/test: open the vmap item-search sidebar and set its query (drives the same list the UI builds).
+// Lets a headless driver populate + screenshot the search without ImGui clicks. Empty query just opens it.
+void virtual_map_item_search(const char *query)
+{
+    s_show_item_search = true;
+    std::snprintf(s_item_filter, sizeof(s_item_filter), "%s", query ? query : "");
+    s_open = true;
+}
 
 // A9: locate an item-search hit on the vmap. Centre the canvas on the centroid of every Base-ER marker
 // with this name on this page (group&3), switch to that page, zoom in if we were far out, and open the
@@ -580,6 +592,8 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     ImGui::SameLine();
     ImGui::Checkbox(tr("Custom"), &s_show_custom);  // our own player-placed markers (right-click to drop)
     ImGui::SameLine();
+    ImGui::Checkbox(tr("Items"), &s_show_item_search);  // A9: search + locate items on the vmap itself
+    ImGui::SameLine();
     // 1024u extent = the ACCURATE zone: the world→cast-local transform is a translation captured at the
     // player, valid only near the player's physics chunk (ER recenters the frame across tiles) — 1024u
     // holds ~75% hits vs ~36% at 2048u where far cells cast in the wrong frame. Full coverage = accumulate
@@ -797,6 +811,88 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         ImGui::EndChild();
         ImGui::EndChild();
         vsplitter("##graces_split", s_graces_w, 180.0f, 520.0f);
+    }
+
+    // Item-search sidebar (A9): search PLACED item markers by name and click to locate on THIS canvas —
+    // the vmap-native equivalent of the F1 item search, so search works with the vmap as the sole surface
+    // (no native ER map needed). Rebuilds the hit list only when the query changes (name lookups cached).
+    if (s_show_item_search && active_world == 0)
+    {
+        struct IHit { std::string label; int32_t name_id; int group; int count; };
+        static std::vector<IHit> s_ihits;
+        static std::string s_ihits_q = "\x01";   // sentinel ≠ "" so an empty box builds once (clears list)
+
+        ImGui::BeginChild("##item_sidebar", ImVec2(s_items_w, 0.0f), true);
+        ImGui::Text(tr("Item search"));
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::InputTextWithHint("##ifilter", tr("item name (2+ chars)"), s_item_filter, sizeof(s_item_filter));
+
+        if (std::string(s_item_filter) != s_ihits_q)
+        {
+            s_ihits_q = s_item_filter;
+            s_ihits.clear();
+            if (s_ihits_q.size() >= 2)
+            {
+                std::unordered_map<int32_t, std::string> loc_cache, en_cache;
+                std::map<int64_t, int> hitc;                 // (name_id<<2 | group) -> instance count
+                for (auto *L : overlay_layers())
+                {
+                    if (!L) continue;
+                    for (const goblin::worldmap::Marker &m : L->markers())
+                    {
+                        if (m.name_id < 0) continue;
+                        auto li = loc_cache.find(m.name_id);
+                        if (li == loc_cache.end())
+                        {
+                            li = loc_cache.emplace(m.name_id,
+                                                   goblin::overlay_api::lookup_text_utf8(m.name_id)).first;
+                            en_cache.emplace(m.name_id,
+                                             goblin::overlay_api::lookup_name_en_disk_utf8(m.name_id));
+                        }
+                        const std::string &loc = li->second;
+                        const std::string &en = en_cache[m.name_id];
+                        if (loc.empty() && en.empty()) continue;
+                        if (!matches_all_tokens(loc + " " + en, s_item_filter)) continue;
+                        const int g = m.group & 3;
+                        const int64_t k = ((int64_t)m.name_id << 2) | g;
+                        if (hitc[k]++ == 0)
+                        {
+                            std::string label = loc.empty() ? en : loc;
+                            if (!en.empty() && en != label) label += " (" + en + ")";
+                            s_ihits.push_back({label, m.name_id, g, 0});
+                        }
+                    }
+                }
+                for (auto &h : s_ihits) h.count = hitc[((int64_t)h.name_id << 2) | h.group];
+                std::sort(s_ihits.begin(), s_ihits.end(), [](const IHit &a, const IHit &b) {
+                    int c = a.label.compare(b.label);
+                    return c != 0 ? c < 0 : a.group < b.group;
+                });
+            }
+        }
+
+        if (std::string(s_item_filter).size() < 2)
+            ImGui::TextDisabled("%s", tr("type 2+ characters"));
+        else if (s_ihits.empty())
+            ImGui::TextDisabled("%s", tr("no item matches"));
+        else
+            ImGui::TextDisabled(tr("%d result(s) — click to locate"), (int)s_ihits.size());
+
+        ImGui::BeginChild("##ilist");
+        for (const IHit &h : s_ihits)
+        {
+            char row[224];
+            std::snprintf(row, sizeof(row), "%s  (x%d) - %s##ih%d", h.label.c_str(), h.count,
+                          (h.group >= 0 && h.group < 4) ? kGroupNames[h.group] : "?", h.name_id);
+            if (ImGui::Selectable(row))
+                virtual_map_locate(h.name_id, h.group);   // centre the canvas on the hit + switch page
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip(tr("click: centre the map on it (%s)"),
+                                  (h.group >= 0 && h.group < 4) ? kGroupNames[h.group] : "?");
+        }
+        ImGui::EndChild();
+        ImGui::EndChild();
+        vsplitter("##items_split", s_items_w, 180.0f, 520.0f);
     }
 
     // Custom-marker LIST sidebar (#2) — the DX answer to "where's my custom marker?": each shows which map
