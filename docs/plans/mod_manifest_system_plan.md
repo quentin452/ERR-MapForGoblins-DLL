@@ -42,8 +42,12 @@ strength = 1.0
 ## Slices
 1. **✅ STARTED 2026-07-05:** `goblin_mod.{hpp,cpp}` — parse `mod.toml`, `[mod]` metadata + `[style]`→postfx at
    boot; RPC `mod status|reload`. Proves the manifest drives a real subsystem end-to-end. Backward-compatible.
-2. Manifest OWNS the load order: delegate `[worlds]/[bundle]/[items]` to their loaders from `mod::load` (retire
-   the standalone `init_*` boot calls; a missing section = skip). One declarative boot.
+2. **✅ DONE + live-verified 2026-07-05 (`bcaf829`).** Manifest OWNS the load order: `mod::load` orchestrates
+   `custom_items → world_bundle → vworld → [style]` in the required order, replacing the three standalone
+   `init_*` dllmain calls with one `init_mod` at the same boot position. No mod.toml = load everything
+   (backward-compat, proven: `mod status` = "loaded: items bundle worlds", the persisted vworld restored,
+   alive); a section with `enabled=false` is skipped; `mod reload` re-applies `[style]` only (re-running the
+   boot-only sub-loaders live is unsafe).
 3. `[[object]]` realizer: proc-mesh gen (primitives → CSG → …) + `add_collision` box, drawn by r3d. Depends on
    the proc-mesh library (`virtual_world_3d_backend_plan.md` step 3).
 4. Named **style presets** (`[style.greybox]`, `[style.noir]`) a mod picks; per-world style overrides.
