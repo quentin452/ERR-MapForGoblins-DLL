@@ -434,6 +434,20 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   insufficient** — start from #2b. (#2a debug-flag scan `windows_debug_render_flag_re_prompt.md` still the
   free-if-it-exists option.) Follow-ups: TOML-drive the mode/strength/colour; tune edge strength; maybe a
   depth-aware pass later (needs ER's depth target). Note: this restyles the WHOLE frame globally, not per-object.
+- **★ ADD-AEG (pivot 2) — BLOCKED on the injection thread; RE prompt written 2026-07-05 (`a9dc674`).** Runtime
+  spawn of a real ER AEG asset (engine-rendered, the "unified render" path). Pivot 2 fully RE'd + reqMgr resolves
+  live, but `FUN_1406a5080` (registrar) can't be called from the mod: **present=deadlock, worker-thread=fault
+  (game-thread-bound), the 2 proximity-streamer steps don't fire (gated)** — 4 attempts, all recorded in
+  `windows_geom_spawn_pivot2_re_findings.md §live-4-attempts`. The **deferred-queue scaffolding is ready**
+  (`goblin_geom_spawn.cpp`: `spawn_asset` queues; swap `STREAMER_STEP_RVA` once the target is known). NEXT = the
+  Windows RE **`windows_geom_spawn_thread_re_prompt.md`**: identify the streamer's main-update thread + a reliable
+  always-per-frame injection point (CSSystemStep execute / world-update tick / hook the registrar to learn its
+  thread). Meanwhile the r3d debug tool covers visualisation.
+- **★ r3d DEBUG-RENDER TOOL — DONE + LIVE-VERIFIED 2026-07-05 (`a9dc674`).** r3d generalised from the test cube
+  to **world-anchored debug boxes at arbitrary coords** (`r3d box <x> <y> <z> [size]` / `r3d clear`) via the ER
+  camera — to SEE an invisible mesh / entity / loot at its real world pos (verified: 2 boxes beside+above the
+  player). The debugging-rendering use the user chose (over pushing ADD-AEG); future: viz invisible entities/loot/
+  should-have-a-mesh objects.
 - **★ Virtual-world 3D backend — STEPS 1+2 DONE + LIVE-VERIFIED 2026-07-05 (`42039da`, `28eabb3`).** The mod-owned
   D3D12 3D backend works (`goblin_r3d.{hpp,cpp}`, RPC `r3d 0|1|toggle`, off by default): our own pipeline draws a
   greybox wireframe cube INTO ER's swapchain via the present hook + device/queue the overlay already holds.

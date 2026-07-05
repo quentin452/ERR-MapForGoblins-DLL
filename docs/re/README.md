@@ -55,7 +55,12 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
    `BlockData+0x18b`; and the move-init CORRUPTION risk is solved (rebuild `param_4` via the driver's own
    builder `thunk_FUN_144cbdae7`, don't alias the source). Remaining = a multi-step BUILD (code
    `spawn_clone` on Proton: build args → `FUN_1406b9880` into a self-alloc 0x5b0 → SetWorldMatrix-offset),
-   not more RE. This is the last brick of the MSB-write wall for GEOM placement.
+   not more RE. This is the last brick of the MSB-write wall for GEOM placement. **ALT: ADD via pivot 2
+   (asset-request path) is fully RE'd + reqMgr resolves live, but `FUN_1406a5080` is game-thread-bound —
+   present=deadlock, worker=fault, the proximity-streamer steps don't fire (4 live attempts,
+   `windows_geom_spawn_pivot2_re_findings.md §live-4-attempts`). The one wall left = a reliable per-frame
+   main-update-thread injection point → `windows_geom_spawn_thread_re_prompt.md` (deferred-queue scaffolding
+   ready in `goblin_geom_spawn.cpp`).**
 2. **ESD / talk scripts (EzState) — mostly unmapped.** Merchant shop↔NPC join, dialogue, talk-driven
    logic need an EzState bytecode evaluator (shelved after a spike — see
    `docs/plans/merchant_item_search_plan.md` Slice 3).
