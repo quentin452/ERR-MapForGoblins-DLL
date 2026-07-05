@@ -9,6 +9,32 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
+## ⇒ SESSION WRAP 2026-07-06b (Windows/Opus) — native-name plan: LIVE recon done, GATE still open, handed to Linux
+
+Continued the native-enemy-name plan with **live external-RPM recon** on the running game (Windows box,
+user-launched ER 2.6.2.0, in-world at Gatefront, FR). Findings →
+`docs/re/windows_enemy_name_hud_feed_re_findings.md`. No code shipped; this is a handoff to the Linux
+daily-build box (better here — in-DLL FWA proven + fresh DLL).
+
+- **✅ Confirmed LIVE** (was offline `strings` only): `01_000_fe.gfx` field-HUD movie is loaded from the
+  ACTIVE install (`MovieView`/`MovieData` + disk path `mod\menu\01_000_fe.gfx`); `EnemyTag_ColorText_12`
+  is the name TextField (`/Text_0`); the 8 `EnemyTag0..7`+`M0EnemyTag0` instances are live. **★ The name
+  is fed as Scaleform HTML via SetTextHTML** — found both the HTML source buffer
+  (`<FONT LETTERSPACING='0'>Sentinelle de l'Arbre</FONT>`) and the UTF-16 TextField content, in the movie's
+  heap arena. (All addrs session-specific — re-scan per boot.)
+- **❓ GATE Q1 STILL OPEN** (behavioral): does VANILLA show the tag when fed? Not tested → do NOT delete the
+  ImGui path yet.
+- **🔬 Pause answer:** find-what-**writes** does NOT trigger while paused (the write instruction doesn't run;
+  value is already resident). find-what-**reads** may (render still draws the frozen frame). So: pause =
+  locate+arm; UNPAUSE + refresh the name = trigger a write capture.
+- **🚧 Two small DLL gaps to fix FIRST (Linux):** `mem_fwa`'s write-watch already works (`make_dr7`
+  `0b01`), but (1) there's **no disarm verb** so the single FWA slot wedged on a stale `@geom` probe this
+  session → add `mem_fwa off`/force-rearm (host-only); (2) the hit log hardcodes "READ" even for writes
+  (`goblin_field_probe.cpp:138`) → thread `write_only` to the label.
+- **➡ NEXT (Linux):** land those 2 DLL gaps → rebuild/restart → near a NAMED enemy, re-scan the HTML-source
+  buffer live → `mem_fwa <buf> 4 w`, UNPAUSED, refresh the name → `[FWA]` RIP + caller chain = the engine
+  name-feed hook → author AOB. Then answer Q1 on vanilla.
+
 ## ⇒ SESSION WRAP 2026-07-06 (Linux/Opus) — enemy-name source SOLVED (=ERR Scaleform HUD) + font accents fixed; native-name plan queued
 
 Long debug of the "enemy name drawn twice" report. Landed fixes + a scoped plan; local master ahead of origin.

@@ -3,6 +3,20 @@
 Windows does normal repo work too; its special role is **runtime RE** with the live game and Windows-only
 tooling. Prefer Windows for anything that needs a running `eldenring.exe`.
 
+## ⚠ Two standing Windows rules (user, 2026-07-06)
+
+1. **The Windows deployed DLL is routinely STALE vs Linux.** Linux is the daily-built, daily-played dev
+   box; the Windows install's `MapForGoblins.dll` can lag it by days/commits. So on Windows **never assume
+   the running DLL has recent code** — check `python tools/mfg.py rpc mfg_build` (built= time) before
+   RPC-verifying anything, and expect that any NEW verb you need is likely absent until you rebuild →
+   redeploy → **restart** the game. (Observed 2026-07-06: exe up + in-world, but DLL was `Jul 5`.)
+2. **On Windows, runtime RE = EXTERNAL RPM (`ReadProcessMemory`), not the in-DLL boot flow.** The
+   `mfg.py --boot` / `GameSession` automation is **Linux/Proton-hardcoded** (me3 CLI paths, wine prefix,
+   `pkill -x`) and does NOT boot/kill the game on Windows — the user launches ER here. Drive live inspection
+   with the external RPM scanner path (`tooling/rpm-live-memory-tooling.md`; RTTI→heap→match, e.g.
+   `scratchpad/GfxScan.cs`), attaching to the user-launched `eldenring.exe`. RPC still works read-only for
+   attach-mode verbs, but new/live-poke RE goes through external RPM.
+
 ## Windows-only / Windows-preferred
 
 - Ghidra (project reuse + `query.java`/`rtti_index`). → `tooling/ghidra-re-tooling.md`, `tooling/ghidra-worldmap-re.md`

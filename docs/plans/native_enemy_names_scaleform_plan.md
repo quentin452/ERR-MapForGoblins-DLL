@@ -1,6 +1,11 @@
 # Native Scaleform enemy names (replace the ImGui overlay path)
 
-**Status:** SCOPED 2026-07-06, not started. RE-gated. Game was down at scoping time (no live probe yet).
+**Status:** SCOPED 2026-07-06, RE-gated. **Live recon done 2026-07-06 (Windows)** →
+`docs/re/windows_enemy_name_hud_feed_re_findings.md`: `01_000_fe.gfx` + `EnemyTag_ColorText_12`
+(TextField `/Text_0`) confirmed LOADED LIVE from the active install, and the name is fed as **Scaleform
+HTML via SetTextHTML** (`<FONT LETTERSPACING='0'>name</FONT>`). GATE Q1 still OPEN. Next = capture the
+name-feed WRITE site on Linux (needs a `mem_fwa off` disarm verb added first — the single FWA slot wedged
+on a stale probe this session; write-watch itself already works).
 
 ## Goal
 
