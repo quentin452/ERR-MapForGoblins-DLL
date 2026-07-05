@@ -32,6 +32,21 @@ The framework tracks an **active world id** (default = base ER). Source of truth
   still in some ER mapId, but the framework's active world decides which world's map+markers to show.
 The virtual page reads the active-world id and renders that world.
 
+**⚠ FOLLOWUP (when worlds become walkable) — reconcile `active_world`, `s_group` and PlayerDim.** Today the
+vmap uses THREE separate axes that only coincide because custom worlds are marker-only:
+- `active_world` (`vworld::active()`) — which world's DATA is shown (0 = Base ER). Gates relief / item-search
+  / ER markers / player-dot on `== 0` (correct: a marker-only custom world has no ER terrain/coords).
+- `s_group` — which dimension PAGE is displayed (0 OW / 1 UG / 2 DLC-OW / 3 DLC-UG). MANUAL selector.
+- **PlayerDim** — the player's physical dimension (`get_player_dimension_area()`, RE'd; goblin_world_position.cpp).
+  Used for the player-dot (`pgroup == s_group`) + focus-player.
+While custom worlds aren't walkable, the player is ALWAYS in real ER ⇒ `active_world == 0` ⟺ "the player's
+world", so the gates are correct. Once a walkable custom world exists (reserved mapId, per Decision 1), these
+diverge: `active_world != 0` while the player is PHYSICALLY in that custom dimension → the `active_world == 0`
+gates must instead key off "is the active world engine-backed / does it own ER-frame data", and PlayerDim
+should drive the active-world auto-set (mapId→world). Also a standalone enhancement (nice even before walkable
+worlds): auto-follow `s_group` to PlayerDim so the vmap page switches to UG/DLC when the player crosses
+dimensions (today only the one-shot "focus player" does that). Both are RE'd already — just wiring.
+
 ## Decision 3 — Open with "M" (the game map key), not F1
 Production UX: the virtual world map is what **M** shows when the active world is a custom world, NOT a
 separate dev window.
