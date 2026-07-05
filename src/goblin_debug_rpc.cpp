@@ -1306,7 +1306,22 @@ namespace goblin::debug_rpc
                     return goblin::dbgrender::probe_write(v) ? "ok dbgrender wrote" : "err dbgrender write failed";
                 }
                 if (a == "read" || a.empty()) return goblin::dbgrender::probe_read();
-                return "err usage: dbgrender_probe read|set <val>";
+                if (a == "findhk") return goblin::dbgrender::find_hkdbg();
+                if (a == "dump")
+                {
+                    uintptr_t rva = 0; size_t len = 0x80;
+                    try { rva = std::stoull(next_token(rest), nullptr, 0); std::string ls = next_token(rest); if (!ls.empty()) len = std::stoull(ls, nullptr, 0); }
+                    catch (...) { return "err usage: dbgrender_probe dump <rva> [len]"; }
+                    return goblin::dbgrender::dump(rva, len);
+                }
+                if (a == "poke8")
+                {
+                    uintptr_t rva = 0; unsigned val = 0;
+                    try { rva = std::stoull(next_token(rest), nullptr, 0); val = std::stoul(next_token(rest), nullptr, 0); }
+                    catch (...) { return "err usage: dbgrender_probe poke8 <rva> <byte>"; }
+                    return goblin::dbgrender::poke8(rva, (uint8_t)val) ? "ok poked" : "err poke failed";
+                }
+                return "err usage: dbgrender_probe read|dump <rva> [len]|findhk|poke8 <rva> <b>|set <val>";
             }
             // mod — the mod.toml manifest (mod_manifest_system_plan.md). `mod status` = what loaded;
             // `mod reload` = re-parse + re-apply the mod folder's mod.toml (dev: edit + reload live).

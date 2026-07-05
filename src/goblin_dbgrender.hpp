@@ -12,4 +12,10 @@ namespace goblin::dbgrender
     std::string probe_read();          // dump DAT_143d85b18 + the live hknpWorld ptr, classified
     bool probe_write(uint64_t value);  // SEH write DAT_143d85b18 (guarded)
     uint64_t last_read();
+
+    std::string dump(uintptr_t rva, size_t len);   // hex dump er+rva (read-only; inspect a struct)
+    std::string find_hkdbg();                       // locate the CSHkDebugDisp instance + dump its head
+    // Flip byte at er+rva to `val` (SEH). For the bounded enable hunt: only flip currently-0 bytes.
+    bool poke8(uintptr_t rva, uint8_t val);
+    uint8_t peek8(uintptr_t rva);
 }

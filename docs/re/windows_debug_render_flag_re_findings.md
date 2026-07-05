@@ -69,6 +69,22 @@ REFUSED to write 1 — that would have clobbered a live pointer → deref crash.
    pinning it statically (Windows) is safer.
 3. The retained **`CSDbgMenuStep`** (dev menu) — enabling it may expose the draw toggles as menu entries.
 
+## ⛔ BOUNDED LINUX SCAN attempt 2026-07-05 — hit two walls, hand the exact enable to Windows RE
+Extended `dbgrender_probe` (dump / findhk / poke8) for a bounded live hunt. Two blockers:
+1. **`findhk` (a full-address-space scan for the `CSHkDebugDisp` vtable er+0x2b92230) FROZE the game** — it runs
+   synchronously on the present/RPC thread, so the ~8 GB walk blocks the present loop → freeze (`alive=false`).
+   Same failure class as the Windows agent's external-RPM global scan. A heap-object-by-vtable find is inherently
+   a broad scan → not safe to run synchronously here.
+2. The debug-disp **context @ er+0x3d85c50** (DAT_143d85b18's target) is a **pointer-heavy struct**
+   (`0x…77d1ae0`, `0x…8985bf0`, a null qword, `0x…9442c40`), no obvious bool enable — and it's the entity
+   debug-DISP context, NOT the Havok collision path. Blind byte-flipping in physics/debug structs = crash risk.
+
+**⇒ The bounded Linux scan is disproven as a safe/high-confidence path.** The exact enable (the hknpWorld
+"debug display enabled" bit / the `CSHkDebugDisp` handler enable / the work-path sub-flag) should be **pinned
+STATICALLY in Ghidra (Windows)** — the agent already has the handler + step. Then the shipped Linux tooling
+(`dbgrender_probe dump/poke8`, `goblin_dbgrender.cpp`) does a **surgical single-byte flip** at the RE'd offset
+(safe, no scan). NB `findhk` is a dev footgun (freezes) — keep it off unless made async/bounded.
+
 ## Verdict
 - **Collision wireframe / in-game collision view → GO-likely** via the retained `CSHkDebugDisp`
   (`hkDebugDisplayHandler`) enable + `CSDbgDispStep`'s `DAT_143d85b18` gate. In-engine, no VDB version lock,
