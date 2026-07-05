@@ -66,8 +66,17 @@ the panel by STATE instead — deterministic, no coordinate guessing, no focus r
 
 The RPC input commands (`key`/`type`/`mouse_move`/`mouse_click`/`mouse_drag`/`mouse_wheel`) now
 SUSPEND themselves while the human is actively driving, so scripted SendInput can't fight the user's
-own kb/mouse. Gated on `[Debug] rpc_auto_idle` (default true; the 1500ms user-active window + 300ms
+own kb/mouse. Gated on `[Debug] rpc_auto_idle` (default true; the 1500ms user-active window + 700ms
 per-injection guard are hardcoded calibration). Driver implications:
+
+- **⚠ FALSE-POSITIVE FIX (2026-07-05):** headless/bg scripted input used to false-suspend right after
+  `load_save` — two causes, both fixed. (1) The per-injection guard was 300ms but our own key's WM_INPUT
+  raw echo lands ~390ms later under Proton → escaped the guard → counted as user activity → the next
+  scripted key within 1500ms was suspended (a burst stalled; `load_save` only survived via its ~3s
+  inter-key sleeps). Guard bumped 300→700ms. (2) **Mouse MOVEMENT no longer moves the idle clock** —
+  ~151 phantom WM_MOUSEMOVE per headless boot (our recenter + Proton/Wine) were the real test-breaker;
+  only genuine key/click now suspends. Diagnose with the new **`idlediag`** verb (per-source clock-mover
+  tally). Verified: a 6× rapid `key` burst right after `load_save` = 0/6 suspended (was 6/6).
 
 - **`status` fields:** `user_idle_ms=` (age of the last real user input; 99999 = none/idle) and
   `rpc_input_idle=` (1 while input injection is suspended). Non-input RPC — status, screenshot, set,

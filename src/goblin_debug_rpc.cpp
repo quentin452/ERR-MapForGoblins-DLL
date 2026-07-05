@@ -77,7 +77,14 @@ namespace goblin::debug_rpc
         // without holding the RPC off for long after the human stops.
         constexpr unsigned long long kUserIdleWindowMs = 1500;
         // How long each SendInput's WM echo is discounted from user-activity (see mark_rpc_injection).
-        constexpr unsigned kInjectionGuardMs = 300;
+        // MUST exceed the WM_INPUT raw-packet echo latency of our OWN injected key — measured ~390ms
+        // under Proton/Wine (see input_wndproc.cpp hk_wndproc comment). At the old 300ms the echo landed
+        // AFTER the guard expired → note_user_input() logged it as genuine user activity → the next
+        // scripted key within kUserIdleWindowMs (1500ms) was falsely suspended, stalling any rapid RPC
+        // script (load_save only survived because its ~3s inter-key sleeps outrun the 1500ms window).
+        // 700ms covers the echo + margin; since each send_vk/jiggle re-arms from its OWN call time and
+        // the guard only ever extends, a held key's KEYUP echo (hold_ms + ~390) is covered too.
+        constexpr unsigned kInjectionGuardMs = 700;
 
         void note_command(const std::string &request, const std::string &reply)
         {
@@ -412,13 +419,29 @@ namespace goblin::debug_rpc
             // help — one-line verb list (the client reads a single reply line, so no embedded \n).
             // Full usages + caveats: docs/memory/tooling/rpc-commands.md. Keep in sync when adding a cmd.
             if (cmd == "help" || cmd == "?")
-                return "ok commands: help ping status open_f1 f1_tab vmap vworld assets_probe maptile_probe pause set screenshot dumpmenu reload_overlay"
+                return "ok commands: help ping status idlediag open_f1 f1_tab vmap vworld assets_probe maptile_probe pause set screenshot dumpmenu reload_overlay"
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp coords warp_local warp_xyz we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
                        " | mfg_build er_base er_version proj mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset spawn_cap4e80 spawn_capreg add_collision hf_probe hf_probe_present hf_sample hf_shape_probe far_relief_probe far_relief w2s_probe"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
+            if (cmd == "idlediag")
+            {
+                // Why does rpc_input_idle false-fire with no human present? Report the per-source
+                // tally of what MOVES the auto-idle clock (poll twice over a gap — the source whose
+                // counter climbs while idle is the culprit) + the current idle age/gate.
+                unsigned s[4]{};
+                goblin::input::idle_diag_snapshot(s);
+                const unsigned long long idle = goblin::input::ms_since_user_input();
+                char b[224];
+                std::snprintf(b, sizeof(b),
+                              "ok idlediag recorded[wm_input_kbd=%u wm_mousemove=%u legacy=%u] "
+                              "guard_dropped=%u | idle_ms=%llu auto_idle=%d suspended=%d",
+                              s[0], s[1], s[2], s[3], idle, goblin::config::rpcAutoIdle ? 1 : 0,
+                              (goblin::config::rpcAutoIdle && idle < kUserIdleWindowMs) ? 1 : 0);
+                return std::string(b);
+            }
             if (cmd == "status")
             {
                 bool hot =

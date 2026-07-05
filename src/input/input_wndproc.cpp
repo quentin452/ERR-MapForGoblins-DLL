@@ -46,13 +46,31 @@ std::atomic<unsigned> g_wndproc_lbdown_while_open{0};
 std::atomic<ULONGLONG> g_last_user_input_tick{0};
 std::atomic<ULONGLONG> g_rpc_injection_guard_until{0};
 
-void note_user_input()
+// [IDLEDIAG] per-source tally of note_user_input — to find why rpc_input_idle false-fires when no
+// human is present. Index: 0 WM_INPUT-kbd raw packet, 1 WM_MOUSEMOVE (legacy), 2 legacy WM_KEY/click;
+// 3 = guard-dropped (our own echo). src 1 is TALLIED but no longer moves the clock (see below).
+std::atomic<unsigned> g_note_src[4]{};
+
+// Returns true when the activity RECORDED (moved the auto-idle clock), false otherwise.
+bool note_user_input(int src)
 {
     const ULONGLONG now = GetTickCount64();
     // Drop activity that is really our own RPC injection echoing back through the wndproc.
     if (now < g_rpc_injection_guard_until.load(std::memory_order_relaxed))
-        return;
+    {
+        g_note_src[3].fetch_add(1, std::memory_order_relaxed);
+        return false;
+    }
+    if (src >= 0 && src < 3) g_note_src[src].fetch_add(1, std::memory_order_relaxed);
+    // Mouse MOVEMENT alone does NOT move the idle clock: it doesn't fight scripted KEY injection, and
+    // it is generated spuriously by our own cursor recenter + Proton/Wine during load — measured ~151
+    // phantom moves per headless boot, the actual cause of rpc_input_idle false-firing in tests (a key
+    // scripted right after load_save landed inside the 1.5s window of the last phantom move). Only
+    // genuine key/click activity (a human demonstrably typing/clicking) suspends RPC input. The ini
+    // rpc_auto_idle switch still disables the whole gate.
+    if (src == 1) return false;
     g_last_user_input_tick.store(now, std::memory_order_relaxed);
+    return true;
 }
 
 LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
@@ -72,7 +90,7 @@ LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             rh.dwType == RIM_TYPEKEYBOARD)
         {
             g_wm_keydown_total.fetch_add(1, std::memory_order_relaxed);
-            note_user_input();  // NOLEGACY gameplay: raw packets are the only kb signal
+            note_user_input(0);  // NOLEGACY gameplay: raw packets are the only kb signal
         }
     }
 
@@ -140,7 +158,7 @@ LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         {
             set_last_input_was_gamepad(false);
             set_gamepad_active_streak(0);
-            note_user_input();  // a real mouse move (not our own recenter)
+            note_user_input(1);  // a real mouse move (not our own recenter)
         }
         break;
     case WM_LBUTTONDOWN: case WM_LBUTTONUP:
@@ -152,7 +170,7 @@ LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         // still on mouse/kb right now, regardless of what the pad happens to report.
         set_last_input_was_gamepad(false);
         set_gamepad_active_streak(0);
-        note_user_input();  // real click/wheel/keypress — RPC auto-idle signal
+        note_user_input(2);  // real click/wheel/keypress — RPC auto-idle signal
         // [KBDIAG] raw arrival count, independent of menu_open()/consumption — see the
         // g_diag_wm_char/g_diag_wm_keydown declaration comment.
         if (msg == WM_CHAR)
@@ -270,5 +288,12 @@ unsigned long long ms_since_user_input()
     if (last == 0) return ~0ull;  // no user input observed yet this session
     const ULONGLONG now = GetTickCount64();
     return now > last ? (now - last) : 0ull;
+}
+
+// [IDLEDIAG] snapshot the per-source note_user_input tally: out = {wm_input_kbd, wm_mousemove,
+// legacy_key/click, guard_dropped}. Poll twice over a gap to see which source moves the clock.
+void idle_diag_snapshot(unsigned out[4])
+{
+    for (int i = 0; i < 4; ++i) out[i] = g_note_src[i].load(std::memory_order_relaxed);
 }
 } // namespace goblin::input

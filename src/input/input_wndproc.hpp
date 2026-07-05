@@ -30,4 +30,6 @@ unsigned diag_wndproc_lbdown_while_open_load();
 // human is driving. Returns ~0ull (huge) when no user input has been seen yet.
 void mark_rpc_injection(unsigned ms);
 unsigned long long ms_since_user_input();
+// [IDLEDIAG] out = {wm_input_kbd, wm_mousemove, legacy_key/click, guard_dropped} — see .cpp.
+void idle_diag_snapshot(unsigned out[4]);
 } // namespace goblin::input

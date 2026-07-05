@@ -44,6 +44,7 @@ change; keep this doc in sync when you add a command.
 | `ping` | `ping` | Liveness of the listener (**not** the game — a frozen game still answers; gate on real liveness). |
 | `mfg_build` | `mfg_build` | **Freshness guard.** Compile time of the RPC unit → detects a STALE DLL. `ping` answers even from an old DLL; `mfg_build` reveals the actual build. **Check this before RPC-verifying new code** (a rebuild needs a game RESTART/hot-reload — a redeploy alone keeps the old DLL resident). |
 | `status` | `status` | Panel/map/pause/focus/hotreload state: `panel= hotreload= gen= reload_pending= map_open= menucover= paused= kbseen= fg= user_idle_ms= rpc_input_idle=`. |
+| `idlediag` | `idlediag` | Why `rpc_input_idle` fires: per-source tally of what moves the auto-idle clock — `recorded[wm_input_kbd= wm_mousemove= legacy=] guard_dropped= | idle_ms= auto_idle= suspended=`. Poll twice over a gap; a counter climbing while idle = the culprit. NB mouse-move is now TALLIED but no longer moves the clock (phantom moves during headless boot were false-suspending scripted input — only key/click suspends). |
 | `open_f1` | `open_f1 [0\|1\|toggle]` | Open/close/toggle the F1 overlay panel. |
 | `pause` | `pause [0\|1\|toggle]` | Pause/unpause the game (PauseTheGame branch; `err` if unresolved). |
 | `set` | `set <ini_key> <value>` | Set a config ini key LIVE (same keys as `MapForGoblins.ini`). |
