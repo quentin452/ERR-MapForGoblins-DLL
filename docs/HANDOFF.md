@@ -283,6 +283,14 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
 
 ## Open / next items
 
+- **Off-map markers = area-11 grid(5,0) fold to (0,0) — followup fix (2026-07-05, triaged via `vmap offmap`).**
+  `virtual_map_offmap_probe` (RPC `vmap offmap`) found ALL 57 off-map-dropped markers (of 9794) are
+  origin-zero AND all in raw ER **area 11 (Leyndell) grid(5,0)** — Leyndell/Ashen-Capital graces + loot
+  (Elden Throne, Queen's Bedchamber, Star Fist, Erdtree's Favor +2, Golden Seed, Smithing Stone [7], …).
+  So one broken fold tile: area-11 grid(5,0) projects to (0,0) instead of folding onto the overworld Leyndell
+  (the m35 Ashen→11→60 legacy fold path). Fix = make that tile fold correctly (check `goblin::legacy_fold`
+  for an area-11 grid(5,0) row / the chained-dst; these may be Ashen-Capital placements with a default/
+  unresolved MSB position). Re-run `vmap offmap` to confirm 0 after.
 - **vmap `active_world` / `s_group` / PlayerDim reconciliation — followup for WALKABLE worlds (2026-07-05).**
   The vmap gates relief / item-search / player-dot on `active_world == 0` (Base-ER data). Correct TODAY
   because custom worlds are marker-only so the player is always in real ER — but once a walkable custom world
