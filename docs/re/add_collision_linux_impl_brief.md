@@ -25,20 +25,22 @@ addBody(bodyMgr, &id, 1, addMode, actMode)   // FUN_1418a9ff0  (computes AABB + 
 `bodyMgr+0x28`. The engine calls these two handlers DIRECTLY (no command dispatcher) — see the CS flush
 `FUN_140c72c20` — so our DLL can too.
 
-## 1. PREREQUISITE — map `hknpBodyCinfo` first (one Ghidra pass on Windows, ~10 min)
-The ONE thing static RE hasn't pinned is the **cinfo field layout** (which offset is `shape`, `position`,
-`orientation`, `motionType`, `qualityId`, `mass`). Do this BEFORE coding, else you're poking blind. Decompile
-on `D:\ghidra_proj2\ER` (`query.java`):
-- **`FUN_141911210`** (cinfo init) — its stores reveal the default fields + struct size.
-- **`FUN_141878cf0`** (`hknpBoxShape` ctor) — its args (half-extents vec, convex radius) + what it returns.
-- **`FUN_14167eb10`** (the template's `cinfo.position/shape` writer) + re-read `FUN_1418a3080` — cross-map
-  which cinfo offset each template store targets (`+0x50` pos/shape, `+0x80` orientation, `flags|=0x100`).
-- **`FUN_1418aabf0`** (allocateBody) — confirm arg order `(bodyMgr, hknpBodyId* out, hknpBodyCinfo* cinfo)`
-  and that it reads `cinfo.shape` / `cinfo.motionType`.
-Deliver a `hknpBodyCinfo` offset table into `hknpworld_addbody_slot_re_findings.md`. **A cheaper fallback if
-Ghidra stalls:** live-recon — after calling `FUN_141911210` on a scratch buffer, dump 0x100 bytes; then find
-a real static body in `bodyMgr+0x28` (0xb0 stride) and diff a known-good body's header to learn the shape/
-motion/flags offsets. Either way, don't guess the layout.
+## 1. PREREQUISITE — map `hknpBodyCinfo` — ✅ DONE (2026-07-05)
+Resolved in `hknpworld_addbody_slot_re_findings.md` §6 (Ghidra + the recon dumps). **The cinfo layout is
+pinned; the box-shape creation is the only nuance left.** For the coder:
+- **Fill only 3 fields for a static walkable box:** `cinfo+0x00 = shape` (the box ptr), `cinfo+0x30 = position`
+  (vec4 xyz), optional `cinfo+0x40 = orientation` (quat, identity default). **Leave `cinfo+0x28` (motionType)
+  = 0 for STATIC** and everything else at its `FUN_141911210(&cinfo)` default (id/motion auto-allocate;
+  mass=-1 ignored for static). NB the brief's earlier "+0x50 pos / +0x80 orient" hint was WRONG — it's
+  **+0x30 pos / +0x40 orient** (good thing we didn't guess).
+- **`allocateBody` = `FUN_1418aabf0(bodyMgr, hknpBodyId* out, hknpBodyCinfo* cinfo)`** (confirmed arg order).
+- **Box shape is NOT a one-liner:** `FUN_141878cf0` is a BARE ctor (no dimensions). The dimensioned builder is
+  `FUN_141916c30(self, float aabb[8]{min.xyzw,max.xyzw}, float convexRadius, BuildCfg* cfg)` — half-extents
+  (hx,hy,hz) ⇒ `min={-hx,-hy,-hz,0}, max={hx,hy,hz,0}`. `cfg` (param_4) is a build-options struct that still
+  needs a small map (copy from caller `FUN_141881880`, or zero + set minimal flags and validate live).
+- **First-probe shortcut (recommended):** skip the box builder — reuse an EXISTING shape ptr from a live body
+  (recon `body[0]+0x60`), refcount-bump it into `cinfo+0x00`, and prove the alloc→add→broadphase→`hf_probe`
+  loop end-to-end. Swap in a real box (via `FUN_141916c30` + the cfg map) once the loop is confirmed.
 
 ## 2. New files — mirror `goblin_geom_spawn` + `goblin_heightfield`
 `src/goblin_add_collision.{hpp,cpp}`, namespace `goblin::add_collision`. Header shape (copy the staged

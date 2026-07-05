@@ -129,7 +129,45 @@ And **`FUN_140c72c20`** (a CS per-frame flush) shows the batch shape: collect pe
    (static bodies may need `updateBroadphase` opcode `0x2f` / `commitAddBodies` `0x30` after — check if
    `FUN_1418a9ff0` already broadphase-inserts, which the decomp suggests it does).
 
-## 6. Anchors (er-relative, imagebase 0x140000000, this ERR build)
+## 6. `hknpBodyCinfo` layout + box-shape creation (2026-07-05) — closes the last add_collision gap
+Answers `hknpbodycinfo_layout_re_prompt.md`. Mapped by correlating the init `FUN_141911210` (defaults),
+`allocateBody` `FUN_1418aabf0` (which cinfo offsets it READS = ground truth), and the Linux `add_collision
+recon` dumps. **Struct ≈ 0xA0 bytes.**
+
+| off | field | type | init default | set for a STATIC box? |
+|-----|-------|------|--------------|-----------------------|
+| **+0x00** | **shape** | `hkRefPtr<hknpShape>` | null | **YES → the box shape ptr** (refcounted) |
+| +0x08 | flags | u32 | 0 | optional — the char-proxy template sets bit `0x100`; a static box works without it |
+| +0x16 | qualityId | u8 | 0xff | leave (0xff = default) |
+| **+0x28** | **motionType** | u8 | 0 | **leave 0 = STATIC** (nonzero → a motion is allocated = dynamic/keyframed) |
+| **+0x30** | **position** | vec4 | (0,0,0,0) | **YES → world/local position (xyz)** |
+| **+0x40** | **orientation** | quat | (0,0,0,1) | leave identity, or set a quat (xyzw) |
+| +0x50 / +0x60 | mass-frame / inertia | vec4×2 | 0 | leave (motion-only; static ignores) |
+| +0x70 | mass | float | -1.0 | leave (-1 = auto-from-shape; static ignores) |
+| +0x88 | collisionFilterInfo / materialId | u16 | 0xffff | optionally set a collision filter |
+| +0x8c | reservedBodyId | u32(24-bit) | 0xffffff | leave (0xffffff = auto-allocate) |
+| +0x90 | reservedMotionId | u32 | 0x7fffffff | leave (0x7fffffff = none; static needs no motion) |
+
+**Minimal static walkable box = set ONLY `+0x00 shape`, `+0x30 position`, (opt `+0x40 orientation`), leave
+`+0x28`=0 and every other field at its `FUN_141911210` default.** `allocateBody` then auto-allocates the id,
+skips the motion block (static), and finalizes a collidable body. (Recon confirms the defaults: `+0x30`
+all-zero = origin, `+0x40` = identity quat with `1.0f@+0x4C`, `+0x70=-1.0f`, `+0x88/+0x8c/+0x90` sentinels.)
+
+**Box-shape creation — NOT a one-liner (corrects the prompt/brief):**
+- `FUN_141878cf0(self, ?)` = **bare default** `hknpBoxShape` ctor — stamps the vtable, **sets NO dimensions**
+  (~0xA0 B; base `hknpConvexPolytopeShape` via `FUN_1418793f0`). Not usable alone.
+- `FUN_141916c30(hknpBoxShape* self, float aabb[8] /*min.xyzw, max.xyzw*/, float convexRadius, BuildCfg* cfg)`
+  = **build a box from an AABB.** For half-extents (hx,hy,hz) centred at origin: `min={-hx,-hy,-hz,0}`,
+  `max={hx,hy,hz,0}`; `convexRadius` ~0.05. `cfg` (param_4) is a build-options struct it reads (`+0x04`
+  shrink-by-radius, `+0x11` build-mass-props, `+0x34/+0x38` scale/density, `+0x40` optional transform ptr,
+  `+0x4d` a flag) — **cfg still needs a small map** (copy it from the caller `FUN_141881880`, or memset-zero +
+  set the minimal flags and validate live).
+- **Pragmatic shortcut for the FIRST smoke test:** skip box construction — grab an EXISTING shape ptr from a
+  live body (recon `body[0]+0x60` = shape ptr), bump its refcount, and put it in `cinfo+0x00`. This proves the
+  `allocateBody → addBody → broadphase → hf_probe` loop works before you invest in the box builder + cfg. You
+  get whatever shape that body had, placed at your cinfo position — fine to confirm collision is live.
+
+## 6b. Anchors (er-relative, imagebase 0x140000000, this ERR build)
 ```
 hknpWorld vtable            er+0x2eedc78  (RTTI .?AVhknpWorld@@)  = command-dispatcher primary vtable
  slot 7 execCommand         FUN_141931ed0 (er+0x1931ed0)  switch(opcode) -> per-op handler on *(this+0x18)
@@ -138,6 +176,9 @@ addBody (opcode 1 handler)  FUN_1418a9ff0 (er+0x18a9ff0)  (bodyMgr, hknpBodyId* 
 allocateBody (inferred)     FUN_1418aabf0 (er+0x18aabf0)  (bodyMgr, hknpBodyId* out, hknpBodyCinfo* cinfo)
 cinfo init                  FUN_141911210 (er+0x1911210)
 create+add template         FUN_1418a3080 (er+0x18a3080)  (hknpCharacterProxy body creation)
+hknpBodyCinfo init          FUN_141911210 (er+0x1911210)  ~0xA0 B; layout in §6
+hknpBoxShape ctor (bare)    FUN_141878cf0 (er+0x1878cf0)  NO dims; base FUN_1418793f0 (hknpConvexPolytopeShape)
+hknpBoxShape build-from-AABB FUN_141916c30 (er+0x1916c30) (self, float aabb[8]{min,max}, float radius, BuildCfg* cfg); cfg caller FUN_141881880
 CS per-frame flush          FUN_140c72c20 (er+0xc72c20)   removeBody FUN_1418b0630 + addBody FUN_1418a9ff0, no dispatcher
 removeBody (opcode 3)       FUN_1418b0630 (er+0x18b0630)
 setBodyShape (opcode 0x16)  FUN_14188bec0 ;  setBodyTransform (0x06) FUN_14188c090
