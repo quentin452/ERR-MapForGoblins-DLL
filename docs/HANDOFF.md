@@ -50,6 +50,21 @@ User wants to STOP the ~3-4min game-reboot per fix and revive the overlay hot-re
     fns), collapsing ~18 exports into 1 (much less wiring, but refactors the rich per-verb arg parsing in
     debug_rpc). Recommend (2) for the vmap surface + per-fn for the ~3 stragglers. **All committed as a WIP
     checkpoint; the default single-DLL build (the shipped/used one) links + runs unaffected.**
+  - **★ CHOSEN = generic dispatch + DE-RISKED (2026-07-05).** Verified **15 of 16 `virtual_map_*` are
+    DEBUG_RPC-ONLY**; only `virtual_map_locate` is also render-called (`panel_search.cpp`, itself render → can
+    call `panel::virtual_map_locate` directly). The debug_rpc `vmap` block (`goblin_debug_rpc.cpp:501-651`)
+    calls ONLY `overlay_api::virtual_map_*` (panel forwards) — no host-only deps. Clean continuation:
+    (1) add `std::string vmap_rpc_command(const std::string &rest)` in `panel_virtual_map.cpp` = the 501-651
+    body with `overlay_api::virtual_map_` → local `virtual_map_` (all defined in that file; watch name deltas:
+    `is_open`→`virtual_map_open()`bool&, `dump_markers`→`dump_markers_csv`) + a local `next_token`;
+    (2) export `MFG_VmapCommand(rest,out,cap)` + `call_vmap_command` (both loader branches, like the 4 done);
+    (3) debug_rpc `vmap` block → `return …::call_vmap_command(rest);`;
+    (4) DELETE the 15 debug-only `overlay_api::virtual_map_*` wrappers + `..._api.hpp` decls; repoint
+    `panel_search.cpp` locate → `panel::virtual_map_locate`;
+    (5) then per-fn loader-export the remaining stragglers the link surfaces (`overlay::request_f1_tab`,
+    `worldmap::far_relief_snapshot`, + re-build to flush the next wave — errorlimit capped display at 20);
+    (6) build BOTH, iterate to clean link, deploy both DLLs, boot once, validate `reload_overlay` (gen++,
+    no crash). Keep the DEFAULT build green at every commit.
 - **Boss dedup bug (task #16, user-reported):** bosses of the same NAME collapse to one/first. Demi-Human
   Chief should be x2 Coastal Cave + x1 Demi-Human Forest Ruins (3); Erdtree Avatar should be 7 (1 UG + 6 OW)
   but ~4 show. Check `build_live_bosses` (`map_entry_layer.cpp`) + any name/entity dedup dropping duplicates.
