@@ -96,6 +96,7 @@ inline constexpr CategoryMetaRow CATEGORY_META[] = {
     {"World - Elevators"            , "World"},  // WorldElevator
     {"World - Smithing Tables"      , "World"},  // WorldSmithingTable
     {"Loot - Farmable Drops"        , "Loot"},  // WorldFarmableCollectible
+    {"Loot - Other"                 , "Loot"},  // Uncategorised
 };
 
 inline constexpr int CATEGORY_META_COUNT = static_cast<int>(sizeof(CATEGORY_META) / sizeof(CATEGORY_META[0]));

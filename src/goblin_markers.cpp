@@ -268,7 +268,7 @@ static const char *type_name(uint16_t type)
 // The static_assert ties the generated table to the enum: adding a Category without a
 // categories.json row (or vice versa) is a compile error, not a silent "?".
 static_assert(generated::CATEGORY_META_COUNT ==
-                  static_cast<int>(generated::Category::WorldFarmableCollectible) + 1,
+                  static_cast<int>(generated::Category::Uncategorised) + 1,
               "data/categories.json out of sync with the Category enum — run "
               "tools/generate_categories.py");
 

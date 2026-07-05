@@ -107,3 +107,9 @@
     // drops the notable-loot pass currently skips. Live, no bake. (WorldFarmableEnemy was dropped —
     // marking every respawning mob floods the map with no clean boss filter.)
     WorldFarmableCollectible,
+    // TERMINAL catch-all — MUST stay LAST (every 'Category::…) + 1' count idiom points here).
+    // Any pickup MFG's live taxonomy can't classify (cat < 0) is routed here instead of being
+    // draw-skipped, so no marker silently vanishes — critical for mod-agnostic support (a non-ERR
+    // mod's items may not match any ER taxonomy cell). No glyph: it resolves the loot's OWN native
+    // item icon (TIER_ITEM, per-marker item_icon_id), falling to a plain circle only on a real miss.
+    Uncategorised,

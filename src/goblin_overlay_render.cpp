@@ -92,7 +92,7 @@ void goblin::overlay::request_f1_tab(int idx) { g_requested_tab = idx; }
         static std::vector<wm::MarkerLayer *> s_layers;  // pointers into the above
         if (s_layers.empty())
         {
-            const int N = static_cast<int>(gen::Category::WorldFarmableCollectible) + 1;
+            const int N = static_cast<int>(gen::Category::Uncategorised) + 1;
             const int graces = static_cast<int>(gen::Category::WorldGraces);
             const int quest_npc = static_cast<int>(gen::Category::WorldQuestNPC);
             s_cat.reserve(N); // reserve → no realloc, so the pointers below stay valid

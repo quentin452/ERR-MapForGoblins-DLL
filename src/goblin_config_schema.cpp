@@ -47,7 +47,7 @@ namespace goblin::config
     // "true"/"false" defaults live on the B(...) entries below); the zero-init
     // here is just a sane fallback before load_config() runs.
     static constexpr int NUM_CATEGORIES =
-        static_cast<int>(goblin::generated::Category::WorldFarmableCollectible) + 1;
+        static_cast<int>(goblin::generated::Category::Uncategorised) + 1;
     bool showCategory[NUM_CATEGORIES] = {};
 
     bool hideKilledBosses = false;
@@ -455,6 +455,7 @@ namespace
                 B("show_rune_arcs", showCategory[static_cast<int>(Cat::LootRuneArcs)], "false", "Rune Arcs (buffs for active Great Rune)"),
                 B("show_dragon_hearts", showCategory[static_cast<int>(Cat::LootDragonHearts)], "false", "Dragon Hearts (for Dragon Communion incantations)"),
                 B("show_farmable_drops", showCategory[static_cast<int>(Cat::WorldFarmableCollectible)], "false", "Farmable enemy drops: enemies that RESPAWN and drop a notable farm target (Smithing Stones, Golden Runes, Gloveworts). Off by default."),
+                B("show_other", showCategory[static_cast<int>(Cat::Uncategorised)], "true", "Uncategorised pickups: any placed item MFG's live taxonomy couldn't sort into a category (unbaked / non-ERR-mod items). On by default so nothing silently vanishes; each shows its own item icon (or a circle). Turn off to hide them."),
             }},
 
             {"Magic", nullptr, false, {

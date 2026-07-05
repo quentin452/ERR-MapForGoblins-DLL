@@ -43,7 +43,11 @@ namespace goblin::worldmap
 {
 namespace
 {
-constexpr int NUM_CAT = static_cast<int>(goblin::generated::Category::WorldFarmableCollectible) + 1;
+constexpr int NUM_CAT = static_cast<int>(goblin::generated::Category::Uncategorised) + 1;
+// Terminal catch-all: any loot pass whose live taxonomy returns no category (cat < 0) routes the
+// marker HERE instead of dropping it, so no pickup silently vanishes (mod-agnostic — a non-ERR mod's
+// items may match no ER taxonomy cell). Glyph-less → resolves the loot's own item icon, else a circle.
+constexpr int kUncategorised = static_cast<int>(goblin::generated::Category::Uncategorised);
 
 std::array<std::vector<Marker>, NUM_CAT> g_buckets;
 
@@ -79,7 +83,8 @@ std::unordered_map<uint32_t, EntityPos> g_entity_pos;
 // aggregated by reason across all passes (each pass adds its local filtered counts at its log line).
 // "shown vs skipped" visibility — the inverse of [COVERAGE]. Reset at the top of build_buckets_impl.
 struct SkipTally {
-    int unclassified = 0;   // item type genuinely unknown → no category bucket
+    int unclassified = 0;   // lot resolved NO item (key <= 0) → phantom/empty award, correctly NOT drawn
+    int catchall = 0;       // RESOLVED item with no taxonomy category → routed to Uncategorised "Other" (DRAWN)
     int dedup = 0;          // already placed by another pass (treasure-dup / (entity,lot) / pos dedup)
     int no_anchor = 0;      // no lot / no positionable MSB entity to place it
     int by_design = 0;      // intentionally suppressed: rune/ember GEOM-tracked, anti-flood clutter,
@@ -312,7 +317,7 @@ void emit_lot_siblings(uint32_t baseLot,
             int scat = goblin::overlay_api::item_marker_category(skey);
             bool slc = false;
             if (scat < 0) { scat = goblin::overlay_api::classify_item_live(skey); slc = (scat >= 0); }
-            if (scat < 0 || scat >= NUM_CAT) { ++out.unclassified; watch_lot(sub, "skip-sibling", "unclassified"); continue; }
+            if (scat < 0 || scat >= NUM_CAT) { ++out.unclassified; scat = kUncategorised; watch_lot(sub, "catchall-sibling", "unknown→Other"); }
             from::paramdef::WORLD_MAP_POINT_PARAM_ST sd = at;
             push_marker(/*row_id=*/sub, sd, scat, sub, /*lotType=*/st.tbl, Source::DiskMSB, slc);
             covered.insert(sub);
@@ -461,7 +466,7 @@ static void build_disk_loot_markers(const std::vector<DiskTreasure> &treasures,
                                      std::unordered_map<uint32_t, uint32_t> &lot_tile)
 {
     GOBLIN_BENCH("build.disk_loot");
-    int emitted = 0, unclassified = 0;
+    int emitted = 0, unclassified = 0, catchall = 0;
     // All Treasure base lots (the lotId each MSB Treasure carries @td+0x10), built up front so
     // the sibling walk below can stop a chain at the next treasure base regardless of emit order.
     std::unordered_set<uint32_t> bases;
@@ -492,9 +497,9 @@ static void build_disk_loot_markers(const std::vector<DiskTreasure> &treasures,
         if (c < 0) { c = goblin::overlay_api::classify_item_live(key); lc = (c >= 0); }  // live fallback (any mod / unbaked item)
         if (c < 0 || c >= NUM_CAT)
         {
-            ++unclassified;  // item type genuinely unknown → no bucket
-            watch_lot(t.lotId, "skip-treasure", "unclassified");
-            continue;
+            if (key <= 0) { ++unclassified; watch_lot(t.lotId, "skip-treasure", "no-item"); continue; }  // phantom lot
+            ++catchall; c = kUncategorised;  // resolved item, no category → Other bucket (retained)
+            watch_lot(t.lotId, "catchall-treasure", "unknown-item→Other");
         }
         push_marker(/*row_id=*/t.lotId, d, c, t.lotId, /*lotType=*/1, Source::DiskMSB, lc);
         covered.insert(t.lotId);
@@ -527,7 +532,8 @@ static void build_disk_loot_markers(const std::vector<DiskTreasure> &treasures,
                  "{} sibling-unclassified)",
                  emitted, sib.emitted, (int)covered.size(), unclassified, sib.runeember,
                  sib.unclassified);
-    g_skip.unclassified += unclassified + sib.unclassified;
+    g_skip.unclassified += unclassified;                 // phantom lots (key<=0), correctly skipped
+    g_skip.catchall += catchall + sib.unclassified;      // resolved-but-uncategorised items → Other (drawn)
     g_skip.by_design += sib.runeember;
 }
 
@@ -549,7 +555,7 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
                                            std::unordered_set<std::string> &out_gather_keys)
 {
     GOBLIN_BENCH("build.disk_collectibles");
-    int emitted = 0, no_lot = 0, unclassified = 0, dup = 0, piece_emitted = 0, clutter_skip = 0;
+    int emitted = 0, no_lot = 0, unclassified = 0, dup = 0, piece_emitted = 0, clutter_skip = 0, catchall = 0;
     uint64_t next_rt = 0;  // running index for synthetic runtime geom row_ids (pieces)
     std::vector<goblin::collected::RuntimeEntry> rt_entries;  // pieces to register for graying
     const bool verbose = (*goblin::overlay_api::cfg_diagLootPos_ptr());
@@ -642,7 +648,7 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
         int cat = goblin::overlay_api::item_marker_category(key);
         bool lc = false;
         if (cat < 0) { cat = goblin::overlay_api::classify_item_live(key); lc = (cat >= 0); }  // live fallback (any mod / unbaked item)
-        if (cat < 0 || cat >= NUM_CAT) { ++unclassified; continue; }
+        if (cat < 0 || cat >= NUM_CAT) { if (key <= 0) { ++unclassified; continue; } ++catchall; cat = kUncategorised; }  // key<=0 = phantom lot (skip); else resolved item, no category → Other
         from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
         d.areaNo = c.area;
         d.gridXNo = c.gx;
@@ -697,7 +703,8 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
     g_skip.by_design += clutter_skip;  // non-ERR pot/jar clutter, anti-flood
     g_skip.no_anchor += no_lot;
     g_skip.dedup += dup;
-    g_skip.unclassified += unclassified;
+    g_skip.unclassified += unclassified;   // phantom lots (key<=0), correctly skipped
+    g_skip.catchall += catchall;           // resolved-but-uncategorised items → Other (drawn)
     if (verbose)
     {
         for (auto &[cat, n] : per_cat)
@@ -765,7 +772,7 @@ static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
                                      std::unordered_set<uint32_t> *parsed_enemy_lots = nullptr)
 {
     GOBLIN_BENCH("build.disk_enemies");
-    int emitted = 0, no_lot = 0, unclassified = 0, dup = 0, respawn = 0, lot_dup = 0, farm_emitted = 0;
+    int emitted = 0, no_lot = 0, unclassified = 0, dup = 0, respawn = 0, lot_dup = 0, farm_emitted = 0, catchall = 0;
     const bool verbose = (*goblin::overlay_api::cfg_diagLootPos_ptr());
     std::unordered_map<int, int> per_cat;  // category → emitted count (diag)
     std::unordered_set<uint32_t> seen;      // dedup by lot (one marker per notable lot)
@@ -832,7 +839,7 @@ static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
         int cat = goblin::overlay_api::item_marker_category(key);
         bool lc = false;
         if (cat < 0) { cat = goblin::overlay_api::classify_item_live(key); lc = (cat >= 0); }  // live fallback (any mod / unbaked)
-        if (cat < 0 || cat >= NUM_CAT) { ++unclassified; watch_lot(lot, "skip-enemy", "unclassified"); continue; }
+        if (cat < 0 || cat >= NUM_CAT) { if (key <= 0) { ++unclassified; watch_lot(lot, "skip-enemy", "no-item"); continue; } ++catchall; cat = kUncategorised; watch_lot(lot, "catchall-enemy", "unknown-item→Other"); }
         from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
         d.areaNo = en.area;
         d.gridXNo = en.gx;
@@ -888,7 +895,8 @@ static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
     g_skip.no_anchor += no_lot;
     g_skip.dedup += dup + lot_dup;
     g_skip.by_design += respawn + sib.runeember;  // respawnable base + GEOM-tracked rune/ember siblings
-    g_skip.unclassified += unclassified + sib.unclassified;
+    g_skip.unclassified += unclassified;                 // phantom lots (key<=0), correctly skipped
+    g_skip.catchall += catchall + sib.unclassified;      // resolved-but-uncategorised items → Other (drawn)
     if (verbose)
         for (auto &[cat, n] : per_cat)
             spdlog::info("[LOOTDISK]   enemy-drop category index {} = {} markers", cat, n);
@@ -966,7 +974,7 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
         return nullptr;
     };
 
-    int emitted = 0, no_entity = 0, dup = 0, treasure_dup = 0, unclassified = 0;
+    int emitted = 0, no_entity = 0, dup = 0, treasure_dup = 0, unclassified = 0, catchall = 0;
     int emit_direct = 0, emit_ev1200 = 0;  // by mechanism (lotType 1 = direct, 2 = event-1200)
     int boss_piece_emitted = 0, boss_piece_no_piece = 0;  // boss-reward Rune/Ember Piece recovery
     // Mechanism C (sequence-sibling) diag.
@@ -1086,7 +1094,7 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
             if (cat2 < 0) { cat2 = goblin::overlay_api::classify_item_live(key2b); lc2 = (cat2 >= 0); }
             if (cat2 >= 0 && cat2 < NUM_CAT) { lt = other; key = key2b; cat = cat2; lc = lc2; }
         }
-        if (cat < 0 || cat >= NUM_CAT) { ++unclassified; continue; }
+        if (cat < 0 || cat >= NUM_CAT) { if (key <= 0) { ++unclassified; continue; } ++catchall; cat = kUncategorised; }  // key<=0 = phantom lot (skip); else resolved item, no category → Other
         from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
         d.areaNo = pos->area;
         d.gridXNo = pos->gx;
@@ -1126,7 +1134,8 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
                  sib.unclassified);
     g_skip.no_anchor += no_entity;
     g_skip.dedup += dup + treasure_dup;
-    g_skip.unclassified += unclassified + sib.unclassified;
+    g_skip.unclassified += unclassified;                 // phantom lots (key<=0), correctly skipped
+    g_skip.catchall += catchall + sib.unclassified;      // resolved-but-uncategorised items → Other (drawn)
     g_skip.by_design += sib.runeember;
     spdlog::info("[LOOTDISK] emevd boss-reward pieces: {} Rune/Ember Pieces emitted (Reforged, at boss "
                  "pos, flag-gray); {} boss awards with no piece in base..base+8",
@@ -3195,18 +3204,23 @@ void build_buckets_impl()
         g_skip.dummy_inert = (int)dropped_dummy_lots.size();
         int drawn = 0;
         for (int c = 0; c < NUM_CAT; ++c) drawn += (int)g_buckets[c].size();
+        // catchall is DRAWN (resolved item, no category → the Uncategorised bucket), so it is NOT in the
+        // skip total. unclassified (a lot that resolved NO item, key<=0) IS a correct skip (phantom award).
         const int skipped = g_skip.unclassified + g_skip.dedup + g_skip.no_anchor +
                             g_skip.by_design + g_skip.merchant_phantom + g_skip.dummy_inert;
         spdlog::info("[SKIPPED] disk placements parsed but NOT drawn (by reason):");
-        spdlog::info("[SKIPPED]   unclassified={} (item type unknown → no category)", g_skip.unclassified);
+        spdlog::info("[SKIPPED]   unclassified={} (award lot resolved NO item — phantom/empty, correctly not drawn)", g_skip.unclassified);
         spdlog::info("[SKIPPED]   dedup={} (already placed by another pass)", g_skip.dedup);
         spdlog::info("[SKIPPED]   no_anchor={} (no lot / no positionable MSB entity)", g_skip.no_anchor);
         spdlog::info("[SKIPPED]   by_design={} (rune/ember GEOM-tracked, anti-flood clutter, "
                      "respawnable no-flag enemy drops)", g_skip.by_design);
         spdlog::info("[SKIPPED]   merchant_phantom={} (shop-∞ bake fallback, dropped)", g_skip.merchant_phantom);
         spdlog::info("[SKIPPED]   dummy_inert={} (cut DummyAsset, no EntityID)", g_skip.dummy_inert);
+        spdlog::info("[DRAWN]   catchall={} (RESOLVED item with no taxonomy category → Uncategorised 'Other' "
+                     "bucket; ~0 on ER/ERR, the mod-agnostic safety net for other mods)", g_skip.catchall);
         spdlog::info("[SKIPPED] TOTAL skipped={} vs drawn={} (drawn = all g_buckets markers; "
-                     "unclassified/no_anchor = real coverage gaps, dedup/by_design/phantom/inert = correct)",
+                     "unclassified/no_anchor = real coverage gaps, dedup/by_design/phantom/inert = correct, "
+                     "catchall = mod-agnostic unknowns retained not dropped)",
                      skipped, drawn);
     }
 

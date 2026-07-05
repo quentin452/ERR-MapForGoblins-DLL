@@ -25,6 +25,12 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **Mod-agnostic catch-all category (`Loot - Other`).** A placed item MFG's live taxonomy resolves but
+  can't sort into any known category now routes into a terminal `Loot - Other` category (toggle
+  `show_other`, on by default) and draws with its OWN native item icon (a plain circle only when even that
+  misses), instead of being dropped at marker build. Dormant on ER/ERR (every resolved item classifies);
+  it's the safety net so a non-ERR mod's items never silently vanish. Award lots that resolve NO item
+  (phantom/empty) stay correctly skipped — only real items reach the bucket.
 - **Item search on the Virtual World Map.** The mod's own map now has its own item-search sidebar
   (`Items` toggle): type a name, get results grouped per map/page with counts, click to centre the map on
   it — no native ER map needed. The F1 "Find item / object" search also locates onto the vmap now. One

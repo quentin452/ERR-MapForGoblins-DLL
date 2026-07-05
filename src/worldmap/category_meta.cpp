@@ -129,10 +129,11 @@ const CatMeta CAT[] = {
     {"show_elevators", G_WORLD},          // WorldElevator (Group 2 — lever-lifts)
     {"show_smithing_tables", G_WORLD},    // WorldSmithingTable (Group 2 — AEG099_308 assets)
     {"show_farmable_drops", G_LOOT},      // WorldFarmableCollectible (MFG-original — respawning notable drops)
+    {"show_other", G_LOOT},               // Uncategorised (TERMINAL catch-all — no atlas key; item-icon/circle)
 };
 constexpr int CAT_COUNT = static_cast<int>(sizeof(CAT) / sizeof(CAT[0]));
 static_assert(CAT_COUNT ==
-                  static_cast<int>(goblin::generated::Category::WorldFarmableCollectible) + 1,
+                  static_cast<int>(goblin::generated::Category::Uncategorised) + 1,
               "category_meta CAT table out of sync with the Category enum");
 } // namespace
 
