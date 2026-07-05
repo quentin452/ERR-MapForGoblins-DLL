@@ -414,18 +414,21 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   `active_world` half** — auto-set the active world from PlayerDim + re-key the relief/item-search/player-dot
   gates off "engine-backed" (not `active_world==0`) for when a WALKABLE custom world exists. Detail:
   `docs/plans/virtual_world_multi_world_design.md` Decision 2.
-- **ER frame-bottleneck profiling (RE idea) — followup, not started (2026-07-05).** `perf` on the live game
-  proved ER is **mono-thread CPU-bound** (~69% of samples on the main thread's own `[JIT]` code; GPU ~48% idle;
-  vkd3d/winevulkan translation ~4%; the mod negligible) — the frame ceiling is ER's own main-loop logic, not the
-  3D render and not Proton translation. Hot addrs are VMProtect-unresolved. Idea = name them (perf sample →
-  `/proc/$PID/maps` base → RVA → Ghidra on the decrypted dump; or an in-DLL RIP-sampler behind `frameprof`),
-  cross-ref the RE coverage map. `docs/re/er_frame_bottleneck_profiling_re_idea.md`. **⚠ For ENGINE understanding,
-  NOT the fix for the Linux<Windows fps deficit** — that same-box gap is distributed wine per-call overhead;
-  levers = **gamescope `-f`** (Wayland exclusive-fullscreen; installed), a recent **Proton** (Experimental/GE,
-  vkd3d improves per version), CPU **governor→performance** (currently `schedutil`). Machine: desktop RTX 3060 +
-  i5-10400F, Wayland/KDE, turbo on, ntsync active. (The `Launch ERR - TEST … MangoHud.sh` script was fixed:
-  dropped the stale laptop-Optimus PRIME env vars — this is a single-GPU desktop — + enriched the MangoHud config
-  for per-core / throttle / CSV-log profiling.)
+- **ER Linux/Proton fps deficit + ER frame-bottleneck profiling — INVESTIGATED 2026-07-05, no fix found.**
+  Symptom: same desktop (RTX 3060 + i5-10400F, Wayland/KDE) does **60fps on Windows 10** but **30-45fps + stutter
+  (dips to 22) on Linux/Proton, even VANILLA in the prologue**. Full investigation in
+  `docs/re/er_frame_bottleneck_profiling_re_idea.md` (§Results). **Conclusion: distributed inherent Proton
+  mono-thread/syscall overhead on ER — no single fixable cause.** `perf`→RVA proved ER is mono-thread bound but
+  the profile is **FLAT** (top fn 3.67%, long tail — the "69% [JIT]" spread over hundreds of fns; hot RVAs
+  `0x141C05F87`~5.5% / `0x14251BEE7` recorded for a future Ghidra-naming, engine-curiosity only). **Ruled out:**
+  constant shader/pipeline compilation (PROTON_LOG: pipeline only at load, foz cache active), sync (ntsync active),
+  compositor (gamescope `-f` no help), Proton version (already GE-Proton10-34), CPU governor/boost
+  (powerprofilesctl perf no help), GPU/modeset/clocks (all fine), and **SetCPUAffinity.dll** (Nexus 2859 ER Stutter
+  Fix — installed as a me3 native, verified pinning ~8 threads to cores 1-6 under Proton, **no help**). **Only
+  remaining config lever = kernel `mitigations=off`** (perf showed `clear_bhb_loop` Spectre-mitigation + wine
+  syscall dispatchers + `rwsem_spin_on_owner` lock contention taxing the syscall-heavy main thread) — user to try
+  (reboot, security tradeoff). Scripts left on the game install: `Launch ERR - gamescope TEST.sh`,
+  `Launch ERR - TEST (…MangoHud).sh` (enriched profiling config; stale laptop-Optimus PRIME vars dropped).
 - **Sidecar save BACKUPS (defense-in-depth) — followup, not started (2026-07-05).** The strip/reinject
   bracket writes into live inventory right before ER serializes, and ER re-checksums the save itself — so
   a wrong-layout write that somehow got past `verify_inventory_layout()` would be saved as a VALID file

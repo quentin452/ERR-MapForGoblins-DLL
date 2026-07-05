@@ -40,6 +40,40 @@ A sampler that attributes directly to ER RVAs (no /proc/maps step), hostable in 
 - Behind a dev flag / RPC verb (`frameprof start|stop|dump`), SEH-guarded, like the other probes. Riskier than
   perf (suspending the main thread) → keep sample windows short; perf (Method A) is safer, prefer it first.
 
+## Results so far (2026-07-05, Method A run — Linux/Proton, RTX 3060 + i5-10400F)
+Ran the perf→RVA pipeline live (`tmp/perf_rva.py`: boot + 16s render activity + `perf record -F 999` +
+`/proc/PID/maps`). **The RVA-resolution method WORKS** — eldenring.exe maps at base `0x6ffff4c00000`
+(maps region, file-offset 0); `RVA = sample - base`, Ghidra addr `= 0x140000000 + RVA`.
+
+**Hot ER functions (Ghidra addrs — NOT yet named; not in `re_signatures.hpp`):**
+| Ghidra addr | RVA | % | note |
+|---|---|---|---|
+| `0x141C05F87` (+f47/f8d/`0x141C060C7`) | `0x1C05F47` | **~5.5% cumulated** | the dominant frame region (~0x180 bytes) |
+| `0x14251BEE7` | `0x251BEE7` | 1.9% | 2nd |
+| `0x1404F9950` | `0x4F9950` | 0.4% | |
+
+**⚠ Key result — the profile is FLAT.** Top single fn = only 3.67%, then a long tail. **There is NO single
+dominant/pathological function.** The "69% [JIT]" of the first (unsymbolized) run is that same 69% spread
+across hundreds of ER functions once the file-backed mapping resolves. So the 60(Win)→44+stutter(Linux)
+deficit is **distributed** — the whole game loop a bit slower under wine — not one hot loop to fix. Naming
+`0x141C05F87` via Ghidra is engine-curiosity, NOT a perf fix.
+
+**Kernel/wine tax visible in the same profile (the real Linux<Windows gap):**
+- `clear_bhb_loop` (0.47%) = Spectre/BHI mitigation on every syscall/context-switch — taxes wine (syscall-heavy).
+  → **`mitigations=off`** (kernel cmdline) is the one actionable lever this surfaced (security tradeoff).
+- `rwsem_spin_on_owner` (0.92%) = kernel lock contention (wine memory-mgmt / mmap_lock).
+- `__wine_syscall_dispatcher` + `__wine_unix_call_dispatcher` = the per-syscall wine transition cost.
+
+**Other perf investigation results (same session, all ruled out as the fix):** PROTON_LOG refuted CONSTANT
+shader/pipeline compilation (pipeline activity only in the first ~6s = load; foz cache active; only signal was
+a benign flood of vkd3d `GetResourceAllocationInfo3: Invalid resource desc` / `Invalid alignment 4096 for
+buffer` warns = ER's D3D12 buffer pattern, a light query, not the killer). ntsync active. gamescope `-f`
+(compositor) no help. GE-Proton10-34 already (Proton version fine). governor perf (powerprofilesctl) no help.
+`nvidia_drm.modeset=1`, real NVIDIA Vulkan, full clocks — all fine. **SetCPUAffinity.dll (Nexus 2859 ER Stutter
+Fix)** installed as a me3 native + VERIFIED active under Proton (pins ~8 game threads to cores 1-6, avoiding
+core 0) → **no help either.** ⇒ Working conclusion: **inherent Proton mono-thread/syscall overhead on ER**
+(a known FromSoft-under-Proton reality), no single fixable cause; `mitigations=off` is the last config lever.
+
 ## Deliverable / acceptance
 A ranked list "RVA → ER function/subsystem → % of frame", so the frame's dominant cost is named (e.g.
 "55% in the Havok character step" vs "in the render-command build" vs "in EzState/EMEVD"). Feeds: engine
