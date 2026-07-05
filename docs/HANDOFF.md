@@ -439,10 +439,14 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   live, but `FUN_1406a5080` (registrar) can't be called from the mod: **present=deadlock, worker-thread=fault
   (game-thread-bound), the 2 proximity-streamer steps don't fire (gated)** — 4 attempts, all recorded in
   `windows_geom_spawn_pivot2_re_findings.md §live-4-attempts`. The **deferred-queue scaffolding is ready**
-  (`goblin_geom_spawn.cpp`: `spawn_asset` queues; swap `STREAMER_STEP_RVA` once the target is known). NEXT = the
-  Windows RE **`windows_geom_spawn_thread_re_prompt.md`**: identify the streamer's main-update thread + a reliable
-  always-per-frame injection point (CSSystemStep execute / world-update tick / hook the registrar to learn its
-  thread). Meanwhile the r3d debug tool covers visualisation.
+  (`goblin_geom_spawn.cpp`: `spawn_asset` queues; swap `STREAMER_STEP_RVA` once the target is known). **Windows RE
+  DONE (2026-07-05, `windows_geom_spawn_thread_re_findings.md`):** the injection point = **`FUN_1406d31f0`
+  (er+0x6d31f0)** — the reqMgr per-frame update (`param_1 = DAT_143d69ba8`), called every frame in-world by the
+  world-geom task `FUN_140623410` (er+0x623410) on the registrar's own main-update thread. **Set
+  `STREAMER_STEP_RVA = 0x6d31f0` and hook it**; drain the queue there via the native by-id helper
+  `FUN_1406d4e80(state, aegId, worldPos)` (builds `AEG###_###`+block+registrar) or the raw `FUN_1406a5080`.
+  Boundness = main-update CONTEXT (single-writer reqMgr RB-tree `mgr+0x318`, not TLS). NEXT = the live `hk_step`
+  acceptance run (Linux). Meanwhile the r3d debug tool covers visualisation.
 - **★ r3d DEBUG-RENDER TOOL — DONE + LIVE-VERIFIED 2026-07-05 (`a9dc674`).** r3d generalised from the test cube
   to **world-anchored debug boxes at arbitrary coords** (`r3d box <x> <y> <z> [size]` / `r3d clear`) via the ER
   camera — to SEE an invisible mesh / entity / loot at its real world pos (verified: 2 boxes beside+above the

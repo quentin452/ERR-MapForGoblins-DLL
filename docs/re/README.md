@@ -60,7 +60,13 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
    present=deadlock, worker=fault, the proximity-streamer steps don't fire (4 live attempts,
    `windows_geom_spawn_pivot2_re_findings.md §live-4-attempts`). The one wall left = a reliable per-frame
    main-update-thread injection point → `windows_geom_spawn_thread_re_prompt.md` (deferred-queue scaffolding
-   ready in `goblin_geom_spawn.cpp`).**
+   ready in `goblin_geom_spawn.cpp`). **SOLVED (static) → `windows_geom_spawn_thread_re_findings.md`:** the
+   registrar's own per-frame thread = the world-geom update `FUN_140623410` (er+0x623410) which each frame calls
+   the reqMgr update **`FUN_1406d31f0` (er+0x6d31f0, reqMgr=`DAT_143d69ba8`)**. Hook `FUN_1406d31f0`
+   (set `STREAMER_STEP_RVA=0x6d31f0`) → drain the queue on the right thread, every frame in-world. Bonus: native
+   by-id spawn helpers `FUN_1406d4e80`/`FUN_1406d0040` build `AEG###_###`+block+registrar for you. Registrar is
+   main-update-CONTEXT-bound (single-writer reqMgr RB-tree, not TLS) → any caller on that stack is safe. Pending
+   the live `hk_step` acceptance run.**
 2. **ESD / talk scripts (EzState) — mostly unmapped.** Merchant shop↔NPC join, dialogue, talk-driven
    logic need an EzState bytecode evaluator (shelved after a spike — see
    `docs/plans/merchant_item_search_plan.md` Slice 3).
