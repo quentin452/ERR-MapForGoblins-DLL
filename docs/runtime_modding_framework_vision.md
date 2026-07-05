@@ -157,6 +157,35 @@ is now partly cracked at the INSTANCE layer — MOVE an existing placement is a 
 (`vtable[0xd0] SetWorldMatrix`), and ADD a new placement is scoped (`spawn_clone` route; see
 `docs/re/windows_msb_placement_write_re_findings.md`).
 
+### 4. Mesh-FREE custom objects — Havok collision + ImGui procedural render (user idea 2026-07-05)
+**The clever sidestep of #3's AEG/MSB/FLVER wall for a GREYBOX/schematic world.** A modder's custom object
+does NOT need an authored mesh: give it (a) a **Havok collision volume** — `add_collision` (Route D box) is
+LIVE-PROVEN, injects a static walkable/blocking body into the live `hknpWorld`, the engine does collision
+itself, no `.hkx`/AEG file; and (b) a **procedural ImGui visual** — project the object's world XYZ to screen
+and draw a diamond / line / box-wireframe / level-grid with the modder's chosen colour. Author surface =
+`{pos, shape, size, colour, collision extents}` in a `.toml`. No mesh handling at all.
+- **Pipeline (user's diagram):** Havok raycast/OBB → exact impact `(wX,wY,wZ)` → **3D world-to-screen** →
+  `ImDrawList` primitive. The collision half + the raycast are DONE (`add_collision`, `goblin_heightfield`
+  cast). The renderer is trivial (we draw ImGui everywhere).
+- **THE ONE MISSING PRIMITIVE = a 3D world-to-screen** (the gameplay camera view-proj matrix). We have the
+  vmap's 2D map w2s but NOT the 3D one. It's scoped in the freecam RE (`GameRendCameraSet` er+0x680460 /
+  `CSCameraImp`, `windows_freecam_re_{prompt,findings}.md`) but the view-matrix offset + the `CSCameraImp`
+  singleton AOB are still pending Ghidra. Extract that → `w2s3d(xyz)=viewproj*xyz→NDC→screen` and this whole
+  path opens. Freecam and this share the exact same blocker, so they unlock together.
+- **Honest caveats:** ImGui draws are 2D overlays (billboards/wireframes), NOT shaded 3D meshes → a
+  schematic/greybox look, not photoreal. No depth occlusion by default (draws over walls) — gate visibility
+  with a per-object Havok raycast (we have it) or accept always-on-top for a dev world. So a "custom object"
+  = invisible walkable collision + an ImGui glyph marking it. Legit for a dev/greybox/modding world; not a
+  AAA asset.
+- **Why it's the RIGHT modder on-ramp:** #3 (real meshes) needs the unsolved MSB/FLVER write wall. THIS path
+  needs zero mesh authoring — the framework owns Havok-collision + ImGui-draw; the modder supplies pos +
+  shape + colour. Strictly simpler + already 90% built (only the 3D w2s remains). It is `far_terrain_relief_
+  plan.md` Layer 2 ("make it exist under the player's feet") realised via greybox instead of streamed geom.
+- **Quadtree reuse (user Q):** the vmap `MarkerQuadtree` is a 2D XZ index for MAP-viewport cull+cluster; 3D
+  objects cull by camera FRUSTUM + distance + behind-camera reject, a different axis. Reuse it only as a
+  COARSE broad-phase (XZ-near-camera query → skip projecting far objects), then per-candidate do the 3D
+  project + frustum/behind/LOD cull. For a handful of dev objects, skip it and project all.
+
 ### Dev "creative mode" mini-track (tooling for #2/#3 — scoped 2026-07-03)
 Two small/moderate RE items that make world-editing (move/ADD/spawn) practical to build + verify by giving
 a dev sandbox loop — **warp into a throwaway map + fly around + place/move/verify, isolated from the live

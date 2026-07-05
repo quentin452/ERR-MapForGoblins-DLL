@@ -291,6 +291,12 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   (the m35 Ashen→11→60 legacy fold path). Fix = make that tile fold correctly (check `goblin::legacy_fold`
   for an area-11 grid(5,0) row / the chained-dst; these may be Ashen-Capital placements with a default/
   unresolved MSB position). Re-run `vmap offmap` to confirm 0 after.
+  **ALSO (user-observed 2026-07-05): (0,0) objects appear on ALL 3 pages (OW/UG/DLC), not just overworld.**
+  `vmap offmap` only surfaced the 57 area-11 ones (they fold to group-0 OW) because it reads the STORED
+  worldX (marker_world_pos / legacy fold). The vmap DRAWS UG/DLC via `vmap_proj` (the live VM converter), so
+  UG/DLC markers the converter maps/fails to (0,0) draw at origin on those pages but are INVISIBLE to the
+  fold-based probe. Followup: extend `virtual_map_offmap_probe` to ALSO triage the `vmap_proj`-projected coord
+  per group (render-side, matches the actual draw) so the UG/DLC (0,0) get caught + attributed to their area.
 - **vmap `active_world` / `s_group` / PlayerDim reconciliation — followup for WALKABLE worlds (2026-07-05).**
   The vmap gates relief / item-search / player-dot on `active_world == 0` (Base-ER data). Correct TODAY
   because custom worlds are marker-only so the player is always in real ER — but once a walkable custom world
