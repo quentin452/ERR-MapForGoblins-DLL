@@ -1234,7 +1234,18 @@ namespace
         // last-ditch fallback if the embedded decompress ever fails.
         {
             ImGuiIO &io = ImGui::GetIO();
-            io.Fonts->AddFontDefault();  // ProggyClean (preserves the existing ASCII look)
+            // ProggyClean for ASCII ONLY (0x20-0x7E). Its DEFAULT range is 0x20-0xFF, which OVERLAPS the
+            // DejaVu merge below at 0x00A0-0x00FF — and ImGui merge = FIRST font wins, so ProggyClean would
+            // shadow DejaVu for accented Latin-1 like 'é' (U+00E9 in "White Mask Varré"). ProggyClean has no
+            // real glyph there → the accent renders blank → "Varre". (œ U+0153 worked only because it's
+            // outside the overlap, so DejaVu already owned it.) Restrict ProggyClean to ASCII → DejaVu owns
+            // every accent/extended glyph → "Varré" renders correctly, matching ERR's native name.
+            static const ImWchar kAsciiRange[] = { 0x0020, 0x007E, 0 };
+            ImFontConfig baseCfg;
+            baseCfg.OversampleH = baseCfg.OversampleV = 1;
+            baseCfg.PixelSnapH = true;                 // crisp ProggyClean bitmap look (AddFontDefault sets
+            baseCfg.GlyphRanges = kAsciiRange;         // these only when no template is passed — set here)
+            io.Fonts->AddFontDefault(&baseCfg);        // ProggyClean, ASCII-only (no longer shadows accents)
             static const ImWchar kExtRanges[] = {
                 0x00A0, 0x00FF,  // Latin-1 Supplement (accents) — merge-safe overlap
                 0x0100, 0x024F,  // Latin Extended-A + B (œ ligature, more accents)
