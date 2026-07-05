@@ -59,15 +59,43 @@ gameplay cam too). Gives VIEW; Projection would still need building from the len
 - `CSCam/CSPersCam` step `FUN_14076e7c0` (er+0x76e7c0), called from `FUN_140766980` (menu-mgr step).
 - Freecam globals: `DAT_143d6b880` (menu-scoped camera), `DAT_143d65f88` (WorldChrMan; +0x1e508=LocalPlayer).
 
-## Next step — the LIVE probe (repo-proven, the acceptance test doubles as the search)
-Static guessing on row/col-major is low-yield; do it empirically behind a throwaway `w2s_probe` RPC:
-1. Resolve a camera struct pointer live (pin the `CSCameraImp` FD4Singleton instance global, or reach
-   `GameRend` — scan for the pointer whose +0xF0/+0x130 blocks read as sane matrices).
-2. Read candidate 64-byte blocks (GameRend +0xF0, +0x130; and the `[[cam+0x10]+0x18]+0x10` view block).
-3. For each candidate ViewProj `M`: `clip = M * vec4(playerWorld,1)`; try both row- and column-major and
-   both NDC-Y signs. The correct `M` projects player pos → the player's on-screen feet (we have W,H).
-4. Draw a debug ImGui dot at the projected pixel; it must lock to the character through a full camera
-   orbit + zoom, cull behind camera (`clip.w<=0`). Then ship `w2s3d` as a `GOBLIN_RENDER_API`.
+## LIVE RPM probe attempt (2026-07-05) — partial result + a DEAD method
+Ran external `ReadProcessMemory` probes (Python, `D:\ghidra_scripts\w2s_probe.py`, `w2s_probe2.py`,
+`w2s_scan_global.py`) against a live in-world `eldenring.exe` (base ASLR'd, resolved via Toolhelp).
+
+**Confirmed live:**
+- Scanning committed memory for the `GameRendCameraSet` vtable (`base+0x2a7f2b8`) finds **2 live
+  instances**. Instance #1 (the active one) holds at **GameRend+0xF0** a clean **VIEW matrix** — an
+  orthonormal 3×3 rotation + a translation 4th row, 4th column `(0,0,0,1)`, i.e. **row-vector / DirectX
+  convention** (`v·M`). Instance #0's blocks are uninitialised ramp garbage.
+- **GameRend+0x130 = identity** in the live instance ⇒ the *combined* View-Projection is **NOT** stored at
+  the two default-init offsets. The projection / combined VP lives elsewhere (built per-draw, or a sibling
+  field / a D3D12 constant buffer).
+
+**DEAD method — do NOT repeat: brute-force "scan all memory for a matrix that projects the player".**
+Two structural reasons it can't work from an external RPM process:
+1. **Read-tearing / motion.** RPM reads the player pos and the candidate matrices at *different instants*.
+   With the camera or player moving (observed: player X drifted -47.05 → -45.58 between runs) no matrix
+   ever matches a stale player pos → the strict 3-point filter found **0** hits; loosening it produced
+   **~26 000** coincidental false positives (bone/skeleton/UI matrices, config float blocks). Unworkable
+   signal-to-noise.
+2. It stresses the game (~8 GB walk) — **the game crashed** during the global scan.
+An empirical match would require a *frozen frame* (game paused, single atomic snapshot of pos+matrix),
+which external RPM can't guarantee. ⇒ **pivot to static-first (below), or do the match INSIDE the DLL**
+(same-thread, same-frame read of pos+matrix — no tearing).
+
+## Revised next step — static-first (deterministic), verify with ONE read
+Don't scan. Find WHERE the projection / combined ViewProj is written, in Ghidra:
+1. Trace the **camera step** (`CSCameraStep` / `CSStepTask<CSCameraStep>` ctors er+0x3bb8b0/3bba00/3bbc30/
+   3bbd0; `CSCam/CSPersCam` step er+0x76e7c0) → find the function that **builds the perspective matrix**
+   (recognisable: `1/tan(fov/2)`, aspect, near/far, a `-1` in the w-row) and where the **View×Proj** result
+   is stored / uploaded to the D3D12 constant buffer.
+2. That yields a deterministic offset (from `GameRend+0xF0` VIEW, or the VP field). Then a *single* RPM read
+   on a **paused** game confirms it — no scanning.
+3. Alternatively (fastest to a testable result): keep the confirmed **VIEW @ GameRend+0xF0** and **build the
+   projection in the DLL** from the lens params (ctor put FOV/near/far-like scalars at GameRend
+   +0x54/+0x58/+0xa4/+0xa8/+0xac); combine `VP = View·Proj` at present time. Because the DLL reads pos+View
+   on the SAME present frame, there is no tearing. Draw the debug dot; iterate the convention live.
 
 Feeds `runtime_modding_framework_vision.md` #4 (virtual greybox world), an in-game hknp collision wireframe
-(no Havok-VDB version lock), and any 3D-anchored HUD.
+(no Havok-VDB version lock), and any 3D-anchored HUD. Probe scripts: `D:\ghidra_scripts\w2s_probe*.py`.
