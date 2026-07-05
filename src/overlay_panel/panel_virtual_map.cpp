@@ -117,9 +117,8 @@ namespace
 
     // Item-search "mark all results": a persistent highlight on EVERY matching item instance of the current
     // query (distinct orange, not the blue custom pins), capped at s_search_mark_max, regenerated on each new
-    // search + wiped by Clear. Stored in world XZ + group; drawn for the active group, on top of markers.
-    struct SearchMark { float wx, wz; int group; };
-    std::vector<SearchMark> s_search_marks;
+    // search + wiped by Clear. Stored in the SHARED goblin::search_marks store so the MINIMAP draws them too
+    // (like the blue custom markers). Only the UI knobs are vmap-local.
     int s_search_mark_max = 150;
     bool s_search_mark_on = true;
     int s_drawn = 0;               // marker count drawn last frame (toolbar readout)
@@ -882,7 +881,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         if (s_search_mark_max < 1) s_search_mark_max = 1;
         if (s_search_mark_max > 4000) s_search_mark_max = 4000;
         ImGui::SameLine();
-        if (ImGui::Button(tr("Clear marks"))) { s_search_marks.clear(); s_search_mark_on = false; }
+        if (ImGui::Button(tr("Clear marks"))) { goblin::search_marks::clear(); s_search_mark_on = false; }
         {
             static bool s_prev_on = s_search_mark_on; static int s_prev_max = s_search_mark_max;
             if (s_prev_on != s_search_mark_on || s_prev_max != s_search_mark_max)
@@ -893,7 +892,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         {
             s_ihits_q = s_item_filter;
             s_ihits.clear();
-            s_search_marks.clear();   // regenerate the result marks for the new query
+            std::vector<goblin::search_marks::Mark> marks;   // regenerated for the new query, then published
             if (s_ihits_q.size() >= 2)
             {
                 std::unordered_map<int32_t, std::string> loc_cache, en_cache;
@@ -918,8 +917,8 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                         if (!matches_all_tokens(loc + " " + en, s_item_filter)) continue;
                         const int g = m.group & 3;
                         // Mark EVERY matching instance (not deduped like the list rows), capped.
-                        if (s_search_mark_on && (int)s_search_marks.size() < s_search_mark_max)
-                            s_search_marks.push_back({m.worldX, m.worldZ, g});
+                        if (s_search_mark_on && (int)marks.size() < s_search_mark_max)
+                            marks.push_back({m.worldX, m.worldZ, g});
                         const int64_t k = ((int64_t)m.name_id << 2) | g;
                         if (hitc[k]++ == 0)
                         {
@@ -935,6 +934,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     return c != 0 ? c < 0 : a.group < b.group;
                 });
             }
+            goblin::search_marks::set(std::move(marks));   // publish (empty when query<2 → clears)
         }
 
         if (std::string(s_item_filter).size() < 2)
@@ -1737,9 +1737,9 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // Item-search RESULT marks — a persistent orange diamond on every matching instance of the current query
     // (distinct from the blue custom pins + yellow item icons), for the active group. Drawn ON TOP of markers
     // and independent of the visibility gate, so all results stay visible at once until the next search/Clear.
-    if (active_world == 0 && !s_search_marks.empty())
+    if (active_world == 0)
     {
-        for (const SearchMark &sm : s_search_marks)
+        for (const goblin::search_marks::Mark &sm : goblin::search_marks::snapshot())
         {
             if (sm.group != s_group) continue;
             ImVec2 p = w2s(sm.wx, sm.wz);

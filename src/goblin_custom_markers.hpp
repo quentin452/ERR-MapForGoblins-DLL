@@ -31,6 +31,18 @@ std::vector<Marker> snapshot();
 bool set_name(size_t index, const std::string &name);
 } // namespace goblin::custom_markers
 
+namespace goblin::search_marks
+{
+// Item-search "mark all results" highlights — a shared store so BOTH the vmap (rebuilds them on each
+// search) and the minimap (draws the current-dimension hits) read the same data, like custom_markers.
+// In-session, replaced per search, wiped by Clear. Distinct from the blue custom pins + the native ring.
+struct Mark { float wx = 0.f, wz = 0.f; int group = 0; };
+void set(std::vector<Mark> marks);   // replace ALL (vmap writes once per search; empty clears)
+std::vector<Mark> snapshot();        // stable copy (vmap draw + minimap read)
+void clear();
+size_t count();
+} // namespace goblin::search_marks
+
 namespace goblin::death_marker
 {
 // The single "you died here" marker (dropped runes / bloodstain), drawn with the native MENU_MAP_DropSoul

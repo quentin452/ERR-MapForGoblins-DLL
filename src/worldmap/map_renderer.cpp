@@ -2701,6 +2701,21 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
         fg->AddCircleFilled(p, half * 0.7f, c.color);
         fg->AddCircle(p, half * 0.7f, IM_COL32(255, 255, 255, 235), 0, 1.5f);
     }
+    // Item-search result marks (the SAME shared store the vmap fills) — orange diamonds of the CURRENT
+    // dimension, edge-clamped like the custom pins so a far hit still gives a bearing. Distinct colour from
+    // the blue custom pins, so "mark all results" is visible on the minimap too.
+    for (const goblin::search_marks::Mark &sm : goblin::search_marks::snapshot())
+    {
+        if (sm.group != pgroup) continue;
+        float dx = (sm.wx - pwx) * scale, dy = -(sm.wz - pwz) * scale;
+        const float d = std::sqrt(dx * dx + dy * dy);
+        if (d > edgeR) { const float k = edgeR / (d > 1e-3f ? d : 1e-3f); dx *= k; dy *= k; }
+        const ImVec2 p(ctr.x + dx, ctr.y + dy);
+        const float r = half * 0.6f;
+        const ImVec2 d0(p.x, p.y - r), d1(p.x + r, p.y), d2(p.x, p.y + r), d3(p.x - r, p.y);
+        fg->AddQuadFilled(d0, d1, d2, d3, IM_COL32(255, 140, 20, 235));
+        fg->AddQuad(d0, d1, d2, d3, IM_COL32(35, 20, 0, 235), 1.5f);
+    }
     // Death marker (DropSoul) on the minimap — native icon, edge-clamped like the rest.
     {
         float dwx, dwz; int dgrp, dsouls;

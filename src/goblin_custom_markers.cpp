@@ -65,6 +65,36 @@ bool set_name(size_t index, const std::string &name)
 }
 } // namespace goblin::custom_markers
 
+namespace goblin::search_marks
+{
+namespace
+{
+std::mutex g_mtx;
+std::vector<Mark> g_marks;
+}
+
+void set(std::vector<Mark> marks)
+{
+    std::lock_guard<std::mutex> lk(g_mtx);
+    g_marks = std::move(marks);
+}
+std::vector<Mark> snapshot()
+{
+    std::lock_guard<std::mutex> lk(g_mtx);
+    return g_marks;
+}
+void clear()
+{
+    std::lock_guard<std::mutex> lk(g_mtx);
+    g_marks.clear();
+}
+size_t count()
+{
+    std::lock_guard<std::mutex> lk(g_mtx);
+    return g_marks.size();
+}
+} // namespace goblin::search_marks
+
 namespace goblin::death_marker
 {
 namespace
