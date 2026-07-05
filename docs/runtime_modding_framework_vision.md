@@ -158,6 +158,20 @@ is now partly cracked at the INSTANCE layer — MOVE an existing placement is a 
 `docs/re/windows_msb_placement_write_re_findings.md`).
 
 ### 4. Mesh-FREE custom objects — Havok collision + ImGui procedural render (user idea 2026-07-05)
+**★ DESIGN DECISION (user, 2026-07-05) — split the render path by world TYPE, so each uses the right tool
+and neither fights a wall:**
+- **Editing a BASE ER world (a real dimension) → AEG assets.** The modder picks which existing AEG asset to
+  place; the engine streams + renders + collides it natively (real shaded mesh). This is the geom-spawn
+  pivot-2 path (name-driven `AEG###_###`, `windows_geom_spawn_pivot2_re_findings.md`) — reuse EXISTING ER
+  assets, no new mesh. The MSB/FLVER *creation* wall (#3) is avoided because you only place assets that
+  already exist in the game.
+- **A custom VIRTUAL world (ours) → ALWAYS ImGui procedural.** Havok collision (`add_collision`) + ImGui
+  billboard/wireframe/grid. **"Aucun problème possible"** — zero dependency on the engine's asset/streaming/
+  MSB system, so no write-frontier, no mesh authoring, 100% mod code. The greybox aesthetic IS the virtual
+  world's aesthetic (it's ours, it doesn't have to look like ER).
+This resolves the tension cleanly: real ER worlds get real assets (AEG, engine-rendered); our worlds get the
+free, unblocked ImGui path. Below is the ImGui path (the virtual-world half).
+
 **The clever sidestep of #3's AEG/MSB/FLVER wall for a GREYBOX/schematic world.** A modder's custom object
 does NOT need an authored mesh: give it (a) a **Havok collision volume** — `add_collision` (Route D box) is
 LIVE-PROVEN, injects a static walkable/blocking body into the live `hknpWorld`, the engine does collision
