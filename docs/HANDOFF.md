@@ -283,6 +283,16 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
 
 ## Open / next items
 
+- **Havok VDB present in ER — RE spike candidate (2026-07-05, `docs/re/havok_vdb_presence_findings.md`).**
+  `strings eldenring.exe` confirmed the Havok Visual Debugger machinery is compiled in (NOT stripped):
+  `hkSocket`(+Reader/Writer), `hk/hknpProcessContext`, `hknpViewer`/`hknpMultithreadedShapeViewer`,
+  `hkbBehaviorServer` + `VisualDebugger\Server\...cpp`, and the `hkSignal2<hknpProcessContext, hknpWorld>`
+  hook — and we already hold the live `hknpWorld` (`CSPhysWorld+0x08`). Standing up a VDB context+viewer+socket
+  over it → connect the official Havok VDB client → a 3D view of the whole collision world incl. our
+  `add_collision` bodies = a real DEV visualiser (verify collision/custom geometry/far-terrain). Main risks:
+  version-matched VDB client + whether the server is fully linked vs partially stripped. Orthogonal to the
+  player-facing ImGui/ESP greybox. Spike = Windows/Ghidra (find context/viewer/socket ctors + the step).
+
 - **✅ Off-map markers = area-11 (Leyndell) fold-to-(0,0) — FIXED 2026-07-05.** `vmap offmap` triaged ALL 57
   off-map markers → origin-zero, all raw area 11 grid(5,0) (Leyndell/Ashen graces + loot). Root cause: block
   (11,5,0) carries SEVERAL `WorldMapLegacyConvParam` rows with different dst (→60 overworld AND →19/34/35
