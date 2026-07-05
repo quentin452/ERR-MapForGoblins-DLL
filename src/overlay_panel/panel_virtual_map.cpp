@@ -83,6 +83,8 @@ namespace
     std::vector<const goblin::worldmap::Marker *> s_grace_pts;  // group's graces (drawn on top, not clustered)
     int s_qt_group = -999;
     uint32_t s_qt_vis_gen = 0xffffffffu;  // visibility_generation() the index was built for → rebuild on toggle
+    uint32_t s_qt_region_mask = 0xffffffffu;  // region-enabled bitmask the index was built for → rebuild on a
+                                              // region-name toggle (region_set_enabled doesn't bump vis_gen)
     uint64_t s_warp_pending = 0;   // grace rowId to warp to; serviced at the next frame's top (not mid-draw)
     int s_warp_offset = 0;          // added to the grace entity id before LuaWarp; 0 = entity id direct (ground truth; CT's -1000 was wrong)
     bool s_fit_requested = false;  // one-shot: on next draw, frame the selected group's markers
@@ -1251,7 +1253,13 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             return sec < 0 || goblin::overlay_api::section_visible(sec);
         };
         const uint32_t vis_gen = goblin::overlay_api::visibility_generation();
-        if (s_qt_group != s_group || s_qt_vis_gen != vis_gen)
+        // Region-name toggles don't bump vis_gen (region_set_enabled only persists the flag), so fold a
+        // fingerprint of the enabled regions into the rebuild key → a region toggle re-includes/-excludes
+        // its markers in BOTH the piles (count/centroid) and singles, not just the draw-time singles gate.
+        uint32_t region_mask = 0;
+        for (int i = 0; i < regN && i < kRegCap && i < 32; ++i)
+            if (regValid[i] && goblin::worldmap::region_enabled(i)) region_mask |= (1u << i);
+        if (s_qt_group != s_group || s_qt_vis_gen != vis_gen || s_qt_region_mask != region_mask)
         {
             std::vector<const goblin::worldmap::Marker *> pts;
             pts.reserve(8192);
@@ -1268,10 +1276,11 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                 if (!L) continue;
                 for (const goblin::worldmap::Marker &m : L->markers())
                 {
-                    if (m.group != s_group || implausible(m.worldX, m.worldZ) || !marker_shown(m))
+                    if (m.group != s_group || implausible(m.worldX, m.worldZ) || !marker_shown(m) ||
+                        region_gated(m))   // exclude region-hidden markers from the tree → piles de-count them too
                         continue;
                     if (m.category == kGraceCat)
-                        s_grace_pts.push_back(&m);   // graces: kept out of the tree, drawn on top
+                        s_grace_pts.push_back(&m);   // graces: kept out of the tree, drawn on top (region-exempt)
                     else
                         pts.push_back(&m);
                 }
@@ -1279,6 +1288,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             s_qt.build(pts);
             s_qt_group = s_group;
             s_qt_vis_gen = vis_gen;
+            s_qt_region_mask = region_mask;
         }
         // Fit frames ALL markers of the group → take the bbox from the index (not just the drawn subset).
         s_qt.bounds(minx, minz, maxx, maxz);
