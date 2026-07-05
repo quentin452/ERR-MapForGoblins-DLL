@@ -154,3 +154,33 @@ engine positions tiles. For rects, use §1/§4 or read live rects (§3).
 RECTS/position: **DONE** (formula §1/§4 + live-read chain §3). Runtime confirm on Linux: read a few live
 `WorldMapTile` `{+0x30 id, +0x98 rect}` and check `mapU0 == gridX*256`, `mapV0 == (40-gridZ)*256` for dim0,
 then that markers land inside. TEXTURES (archive name ↔ cell) = separate brief, unchanged.
+
+## 7. ⚠ LIVE-READ CHAIN DOES NOT YIELD TILES ON THIS BUILD (Linux/Proton recon, 2026-07-05)
+Attempted the §3 live-read to close A3 (textured tile placement). `harvest_resident_tiles`
+(`goblin_worldmap_probe.cpp`) + a new `vmap tile_recon` correlation RPC were driven against the OPEN,
+panned+zoomed overworld map (3 boots, mouse pan/zoom confirmed moving via `[INPUT-DELTA]` pan `+0x378`/
+zoom `+0x380`). Results — the §3 offsets are PARTLY WRONG for this runtime layout:
+- **`area+0x390` IS the layer vector** — but of **INLINE `WorldMapTiledLayer` objects, 0x110 each**
+  (`{begin,end,cap}` = layer0 / +0x110 / +0x220; vt `er+0x2b2caf0` at each 0x110 boundary, confirmed by
+  `mem_dump`). The overworld in this state has **only 1 ACTIVE layer** (capacity 2).
+- **The `+0x230` tile-tree offset is INCONSISTENT with a 0x110 inline layer** (0x230 > 0x110 → the harvest
+  reads into the NEXT layer's memory, not a tile map). So §3's "layer+0x230 std::map" is wrong for an inline
+  layout — it was static-Ghidra-inferred and the live object is smaller.
+- **The active layer's own map is EMPTY** across all zoom levels tried (`head=0 root=0 size=0`; the two
+  self-referential container heads inside the 0x110 object, at `layer+0x50` and near `+0xc8/+0xd0`, both read
+  as empty/self-linked). ⇒ **No resident `WorldMapTile` objects populate in this state** — the tile streamer
+  doesn't fill the tree here (possibly gated on the ART actually being drawn/streamed, which may not run the
+  same way under this Proton/headless drive).
+**⇒ A3 (textured tile placement) is BLOCKED on a fresh RE pass**, two sub-questions: (a) the CORRECT
+tile-map offset inside the 0x110 `WorldMapTiledLayer` (candidates `+0x50` / `+0xc8`; dump a layer whose map
+is NON-empty — need a state where tiles ARE resident); (b) WHAT makes tiles resident (zoom tier? region
+dwell? the ART draw path?). Ghidra: re-check `WorldMapTile` ctor `FUN_1409df560`'s caller
+`FUN_1409da900(descriptor, tileId)` — which container on the descriptor/layer it inserts into (that offset,
+not the guessed +0x230, is the tree). The `vmap tile_recon` RPC (correlate resident grid vs archive
+name-grid) is READY and correct — it just needs the harvest to return tiles first. Recon scripts:
+`$CLAUDE_JOB_DIR/tmp/live_tile_*.py`, `live_area_dump.py`.
+
+**Meanwhile the offset-broken name-grid placement (`virtual_map_load_lod`) and the position-only outline
+harvest (`virtual_map_load_resident`) both stand** — neither is textured+correct. The alternative to fixing
+the live read is solving the archive-name↔runtime-cell mapping (the deferred TEXTURE brief), which would let
+the SOLVED formula (§4) place archive DDS directly with no live read.

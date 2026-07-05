@@ -87,6 +87,8 @@ void virtual_map_clear_tiles();
 std::string virtual_map_load_lod(int dim, int lod, int cap);
 // Harvest LIVE resident tile rects (engine positions, no textures) → outline cells. Confirms alignment.
 std::string virtual_map_load_resident();
+// A3 recon: correlate live resident tile grid vs archive name-grid (archive-name↔runtime-cell). [TILERECON].
+std::string virtual_map_tile_recon();
 void virtual_map_service_pending_warp();  // POST-FRAME: execute a double-click-queued grace warp (safe pt)
 int dump_markers_csv(const char *path);  // export all markers → CSV (offline procedural-style prototyping)
 void virtual_map_set_view(float camX, float camZ, float zoom);  // dev/test: frame the canvas directly

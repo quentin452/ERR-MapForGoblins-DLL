@@ -80,7 +80,7 @@ from parity — Track A is real BUILD work, not just a checklist. This IS the go
 |---|------------------------------|-----------|----------|
 | A1 | Pan / zoom | ✅ canvas | no |
 | A2 | Real map ART tiles (overworld) | ✅ slice 2/3a (M00) | partial: seamless full-map streaming = map_tile slice 3 |
-| A3 | Underground (M01) + DLC (M10/M11) tiles | ⚠️ **PARTIAL** — `virtual_map_load_lod(dim,…)` is dim-generic + RPC-reachable, but the UI button hardcodes dim 0 (`panel_virtual_map.cpp:407`) and placement is offset-broken (name-grid≠converter grid, KNOWN GAP `:301-307`) | **yes** |
+| A3 | Underground (M01) + DLC (M10/M11) tiles | ⚠️ **BLOCKED on a fresh RE pass (2026-07-05)** — `virtual_map_load_lod(dim,…)` is dim-generic + RPC-reachable, but placement is offset-broken (name-grid≠runtime grid). The findings' "read LIVE rects" fix (`harvest_resident_tiles`) was driven live and DOESN'T yield tiles: `area+0x390` is a vector of INLINE 0x110 layers (confirmed), but the `+0x230` tile-tree offset is wrong for a 0x110 object AND the active layer's map is EMPTY in the driven state (tiles not resident). See `windows_worldmap_tile_rect_reach_re_findings.md` §7. Next: Ghidra `FUN_1409da900` for the real tree offset + find what makes tiles resident; OR solve archive-name↔cell (deferred texture brief). `vmap tile_recon` correlation RPC is ready for when harvest works. | **yes (RE)** |
 | A4 | All marker categories (graces/sites/bosses/loot/…) | ✅ reuses native draw (`draw_marker_glyph`) | no |
 | A5 | State-aware icons (discovered/collected/cleared/rune glow) | ✅ `563a00e` | no |
 | A6 | Marker tooltips (name + count) | ✅ | no |
