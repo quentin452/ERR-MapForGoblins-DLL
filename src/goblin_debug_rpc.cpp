@@ -1710,10 +1710,12 @@ namespace goblin::debug_rpc
                 return std::string(b);
             }
             // spawn_asset [AEGname] [force] — ADD via pivot 2 (asset streaming-REQUEST). Resolves the reqMgr
-            // singleton (GEOM_REQ_MGR AOB) → would call FUN_1406a5080(reqMgr, L"AEG###_###").
-            // ⚠ The direct call DEADLOCKS the present thread (lock inversion vs the streamer) — proven live
-            // 2026-07-04. Default = resolve + report ONLY (no call). `force` fires it anyway (WILL hang).
-            // No arg = resolve-only. RE: docs/re/windows_geom_spawn_pivot2_re_findings.md.
+            // singleton (GEOM_REQ_MGR AOB) → FUN_1406a5080(reqMgr, L"AEG###_###").
+            // Default (no force) QUEUES the request; the drain runs it on the game's own main-update thread
+            // via the per-frame hook on FUN_1406d31f0 (er+0x6d31f0) — the direct present-thread call
+            // DEADLOCKS (lock inversion vs the streamer), a worker call FAULTS. `force` fires the direct
+            // call anyway (WILL hang; diagnostic only). No arg = resolve-only.
+            // RE: docs/re/windows_geom_spawn_thread_re_findings.md.
             if (cmd == "spawn_asset")
             {
                 std::string name = next_token(rest);
@@ -1732,7 +1734,7 @@ namespace goblin::debug_rpc
                 if (!r.ok) { std::snprintf(b, sizeof(b), "err spawn_asset %s: %s", name.c_str(), r.err); return std::string(b); }
                 if (!force)
                 {
-                    std::snprintf(b, sizeof(b), "ok spawn_asset %s resolved reqMgr=%#llx — call SKIPPED (deadlocks present thread; append 'force' to fire)",
+                    std::snprintf(b, sizeof(b), "ok spawn_asset %s QUEUED reqMgr=%#llx — serviced on the game main-update thread (FUN_1406d31f0 hook); check log for 'step serviced'",
                                   name.c_str(), (unsigned long long)r.reqMgr);
                     return std::string(b);
                 }

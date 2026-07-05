@@ -25,6 +25,12 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **Runtime ADD-AEG: the thread wall is passed (dev tool).** `spawn_asset` now queues the AEG request and
+  drains it inside a per-frame detour on the reqMgr update `FUN_1406d31f0` (er+0x6d31f0) — the registrar's own
+  main-update thread — instead of the present thread (deadlock) or a worker (fault). Validated live on
+  Linux/Proton: the detour fires each frame with no deadlock/freeze. The raw registrar call still faults on
+  missing block context (next: route through the by-id helper `FUN_1406d4e80`), so nothing renders yet, but the
+  long-standing thread wall for runtime asset spawning is solved. `docs/re/windows_geom_spawn_thread_re_findings.md`.
 - **Virtual World Map auto-follows the player's dimension.** A new `Follow` toggle (on by default) switches
   the vmap page to match the dimension the player is physically in — cross from the overworld into an
   underground/DLC area and the map page changes with you. Edge-triggered on the actual crossing, so a manual

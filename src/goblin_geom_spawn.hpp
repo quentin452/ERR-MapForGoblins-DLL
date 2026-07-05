@@ -30,13 +30,15 @@ namespace goblin::geom_spawn
 
     // Request an existing AEG asset by name (e.g. "AEG099_090") via FUN_1406a5080(reqMgr, wname).
     //
-    // ⚠ LIVE PROBE RESULT 2026-07-04: the direct call DEADLOCKS the game (freeze watchdog fires; present
-    // beat frozen, worker threads alive). Our RPC handler runs on the PRESENT thread (pump()), yet the
-    // registrar's RB-tree insert into the live reqMgr tree (mgr+0x318) contends with the streamer thread →
-    // lock inversion → deadlock. So it is NOT safe to call standalone off the engine's native update thread
-    // (the static "streaming-friendly, no hang" claim held for the algorithm, not for an off-thread call).
-    // ⇒ `force=false` (default) does the read-only reqMgr resolve ONLY and reports the dead end — no call.
-    //   `force=true` actually fires FUN_1406a5080 (WILL hang; kept only for a future main-update-thread hook
-    //   or an in-dump diagnostic). See docs/re/windows_geom_spawn_pivot2_re_findings.md.
+    // THREAD WALL (2026-07-04): the direct call off the engine's update thread DEADLOCKS on the present
+    // thread (lock inversion vs the streamer over reqMgr+0x318) and FAULTS on a worker thread — the
+    // registrar is main-update-CONTEXT-bound. SOLVED (2026-07-05, windows_geom_spawn_thread_re_findings.md):
+    // `force=false` (default) QUEUES the request; a lazy `hook_now` detour on the reqMgr per-frame update
+    // FUN_1406d31f0 (STREAMER_STEP_RVA=0x6d31f0) drains it on the game's own main-update thread — the
+    // registrar's own context. Validated live: the drain runs there with no deadlock/freeze.
+    //   ⚠ OPEN: the raw FUN_1406a5080(reqMgr, name) drain still FAULTS (SEH-caught) — the registrar needs the
+    //   block-resolved context its callers build; route through FUN_1406d4e80(state, aegId, worldPos) next.
+    //   `force=true` fires the direct FUN_1406a5080 on the caller thread (WILL hang — diagnostic only).
+    // See docs/re/windows_geom_spawn_thread_re_findings.md.
     SpawnResult spawn_asset(const char *aegName, bool force = false);
 }

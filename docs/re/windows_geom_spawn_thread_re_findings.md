@@ -1,6 +1,9 @@
 # Streamer thread + per-frame injection point for ADD-AEG (pivot 2) — RE findings (static, Ghidra, 2026-07-05)
 
-Status: **SOLVED (static).** Delivers the always-per-frame hook on the registrar's OWN thread, the engine's
+Status: **THREAD WALL SOLVED + validated LIVE (2026-07-05, see "Live acceptance run" below).** The
+`FUN_1406d31f0` hook fires per-frame on the registrar's own thread with no deadlock — but the raw registrar
+drain FAULTS; the open follow-up is routing through `FUN_1406d4e80`. Original static finding: delivers the
+always-per-frame hook on the registrar's OWN thread, the engine's
 native "request AEG by id at position" helper, and the cause of `FUN_1406a5080`'s thread-boundness. Answers
 `windows_geom_spawn_thread_re_prompt.md`. Imagebase `0x140000000`; `query.java` on `D:\ghidra_proj2\ER`.
 
@@ -24,8 +27,11 @@ thread; `hk_step` drains the deferred-spawn queue there. (Its parent `FUN_140623
 per-frame tick but is huge and doesn't hand you the reqMgr; `FUN_1406d31f0` is the tight, correct target — it
 receives the reqMgr as `param_1`.)
 - **AOB `FUN_1406d31f0`:** `40 55 53 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 E9 48 81 EC E8 00 00`
-  (the `48 81 EC E8 00 00` = `sub rsp,0xE8` disambiguates it from the near-identical `FUN_140623410` prologue,
-  which ends `48 81 EC B8 00 00`). ABI: `char FUN_1406d31f0(reqMgr, FD4Time*, u8, u8, u8)`.
+  (the `48 81 EC E8 00 00` = `sub rsp,0xE8` was meant to disambiguate it from the near-identical
+  `FUN_140623410` prologue ending `48 81 EC B8 00 00`). ABI: `char FUN_1406d31f0(reqMgr, FD4Time*, u8, u8, u8)`.
+  ⚠ **This AOB is NOT usable as-is:** live on ERRv2.2.9.6 it matched **3 sites** (MULTI) and its first match
+  was a different function (`er+0x3e6bb0`) — `sub rsp,0xE8` is a common frame size, so the prologue is shared.
+  The impl hooks `FUN_1406d31f0` by RVA (`0x6d31f0`) instead; a longer, body-anchored unique AOB is still TODO.
 
 ## ★ The clean native spawn call (deliverable 3 — better than the raw registrar)
 Two engine helpers build the `AEG###_###` name from a numeric id + resolve the block + call the registrar, so
@@ -61,6 +67,31 @@ Set `STREAMER_STEP_RVA = 0x6d31f0` (hook `FUN_1406d31f0`), boot, `spawn_asset AE
 `hk_step FIRED` every frame + `step serviced ok=true req=<nonzero>` (the drain called `FUN_1406d4e80`/
 `FUN_1406a5080` on the right thread, no deadlock/fault) → walk to the spot; the asset spawns + renders (walk-on
 for collision). That closes runtime ADD-AEG.
+
+### Live acceptance run — 2026-07-05 (Linux/Proton, ERRv2.2.9.6). Thread wall PASSED; registrar arg-context is the new wall.
+Implemented in `src/goblin_geom_spawn.cpp` (`STREAMER_STEP_RVA = 0x6d31f0`, `spawn_asset` queues, `hk_step`
+detour drains). Cold-boot `mfg run --boot`, in-world, `spawn_asset AEG099_090` / `AEG099_510`:
+- ✅ `[SPAWNASSET] hk_step FIRED (first) — main-update thread reached` — the `FUN_1406d31f0` detour fires
+  per-frame on the registrar's own thread. **No deadlock, no freeze** — the game ran normally to kill. The
+  thread wall (present=deadlock / worker=fault) is genuinely passable from this hook.
+- ❌ `[SPAWNASSET] step serviced -> ok=false req=0x0` — the raw `FUN_1406a5080(reqMgr, L"AEG###_###")` call
+  **FAULTS** (SEH-caught, so no crash; both queued items faulted the same way). ok=false = access violation, NOT
+  the graceful req=0 "unknown asset" gate. So the raw registrar needs more than `(reqMgr, name)`: the
+  block-resolved context its real callers (`FUN_1406d6260`→`FUN_1406d4e80`) build first.
+- **NEXT wall:** route the drain through the by-id helper **`FUN_1406d4e80(blockStreamerState, aegId, worldPos)`**
+  (deliverable 3), which resolves the player's block + computes `worldPos - blockOrigin` before calling the
+  registrar. Unknowns to pin by hooking `FUN_1406d4e80` during legit per-frame calls and logging its args:
+  `blockStreamerState` (streamer sub-object — candidate `*(DAT_143d69ba8+0x1e8)`), `worldPos` (player world
+  pos, float3), `aegId` (`AEG099_090` → 99090 via `aegId/1000, aegId%1000`).
+
+### Two implementation bugs fixed en route (both would silently no-op the hook)
+1. **The `FUN_1406d31f0` prologue AOB above is NOT unique** — live health check = MULTI (3 matches) and its
+   first match is a DIFFERENT function (`er+0x3e6bb0`), so AOB-first `resolve_func_aob` hooked the wrong
+   function and the queue never drained. Fix: hook by RVA directly (correct for this build), NO AOB in the
+   health table. A longer, unique AOB is future hardening (`rva_aob_hardening_backlog.md`).
+2. **Lazy hook install must use `modutils::hook_now`** (immediate `MH_EnableHook`), not `modutils::hook`
+   (`MH_QueueEnableHook`, applied only by the init-time `MH_ApplyQueued`/`enable_hooks()` that already ran).
+   With `hook()` the detour is created but never armed → hooked-but-never-fires.
 
 ## Anchors (er-relative, imagebase 0x140000000)
 - **Injection hook `FUN_1406d31f0` er+0x6d31f0** (reqMgr per-frame update; AOB above). Parent task

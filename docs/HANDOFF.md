@@ -445,8 +445,20 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   world-geom task `FUN_140623410` (er+0x623410) on the registrar's own main-update thread. **Set
   `STREAMER_STEP_RVA = 0x6d31f0` and hook it**; drain the queue there via the native by-id helper
   `FUN_1406d4e80(state, aegId, worldPos)` (builds `AEG###_###`+block+registrar) or the raw `FUN_1406a5080`.
-  Boundness = main-update CONTEXT (single-writer reqMgr RB-tree `mgr+0x318`, not TLS). NEXT = the live `hk_step`
-  acceptance run (Linux). Meanwhile the r3d debug tool covers visualisation.
+  Boundness = main-update CONTEXT (single-writer reqMgr RB-tree `mgr+0x318`, not TLS). Meanwhile the r3d debug
+  tool covers visualisation.
+  **★ THREAD WALL PASSED — hook implemented + validated LIVE 2026-07-05 (Linux/Proton).** `STREAMER_STEP_RVA =
+  0x6d31f0`, `spawn_asset` queues + `hk_step` drains inside the `FUN_1406d31f0` detour. Live: `hk_step FIRED —
+  main-update thread reached`, drain ran with **no deadlock / no freeze** (game continued normally). Two bugs
+  fixed en route: (a) the finding's `FUN_1406d31f0` prologue AOB is NOT unique (3 matches, first = wrong fn
+  er+0x3e6bb0) → hook by RVA directly, no AOB in the health table; (b) lazy install must use
+  `modutils::hook_now` (immediate `MH_EnableHook`), not `hook()` (queued for the init-time `MH_ApplyQueued`
+  that already ran) — else the detour never fires. **NEXT (open):** the raw `FUN_1406a5080(reqMgr, name)` drain
+  **FAULTS** (`step serviced ok=false req=0`, SEH-caught, no crash) — the registrar needs the block-resolved
+  context its real callers build. Route the drain through the native by-id helper `FUN_1406d4e80(state, aegId,
+  worldPos)` instead; capture its exact args (blockStreamerState = streamer sub-obj at `singleton+0x1e8`?,
+  worldPos = player pos, aegId = 99090 for `AEG099_090`) by hooking it during legit per-frame calls, then
+  replay in the drain. That closes runtime ADD-AEG.
 - **★ r3d DEBUG-RENDER TOOL — DONE + LIVE-VERIFIED 2026-07-05 (`a9dc674`).** r3d generalised from the test cube
   to **world-anchored debug boxes at arbitrary coords** (`r3d box <x> <y> <z> [size]` / `r3d clear`) via the ER
   camera — to SEE an invisible mesh / entity / loot at its real world pos (verified: 2 boxes beside+above the

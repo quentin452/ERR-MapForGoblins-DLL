@@ -27,13 +27,19 @@ namespace
     // ── deferred spawn queue, drained on the GAME's MAIN-UPDATE thread via a per-frame step hook ─────────
     // present-thread call = deadlock (lock inversion); worker-thread call = FAULT (registrar needs the game's
     // own thread context). So drain inside a hooked per-frame main-update step (the streamer's own thread).
-    // FUN_140699170 never fired (conditional) -> try its sibling FUN_14069a550 (Q4: FUN_14069a550->d80).
-    constexpr uintptr_t STREAMER_STEP_RVA = 0x69a550;   // FUN_14069a550 (main-update per-frame step)
+    // SOLVED (windows_geom_spawn_thread_re_findings.md): the reqMgr per-frame update FUN_1406d31f0
+    // (er+0x6d31f0) is called every frame in-world by the world-geom update FUN_140623410 on the
+    // registrar's OWN thread, and RECEIVES the reqMgr as param_1. Hooking it drains exactly on that
+    // thread+context. (Earlier guesses FUN_140699170 / FUN_14069a550 fired conditionally or not at all.)
+    // AOB-resolved (STREAMER_STEP_FN) with this RVA as fallback.
+    constexpr uintptr_t STREAMER_STEP_RVA = 0x6d31f0;   // FUN_1406d31f0 (reqMgr per-frame update)
     std::deque<std::wstring> g_queue;
     std::mutex g_qmtx;
     std::atomic<bool> g_hook_installed{false};
     EnsureAssetReqFn g_ensure_fn = nullptr;
-    using StepFn = void(__fastcall *)(void *, void *, void *, void *);
+    // char FUN_1406d31f0(reqMgr, FD4Time*, u8, u8, u8) — full ABI so the trampoline forwards every arg
+    // (incl. the 5th, stack-passed) and returns the engine's al.
+    using StepFn = char(__fastcall *)(void *, void *, uint8_t, uint8_t, uint8_t);
     StepFn g_step_orig = nullptr;
 
     bool rpm(const void *addr, void *out, size_t n)
@@ -72,26 +78,29 @@ namespace
         return "";
     }
 
-    // Per-frame main-update step detour: run orig, then drain ONE queued spawn on THIS (game) thread.
-    void __fastcall hk_step(void *a, void *b, void *c, void *d)
+    // Per-frame reqMgr-update detour (FUN_1406d31f0): run orig, then drain ONE queued spawn on THIS
+    // (game main-update) thread — the registrar's own context. reqMgr arrives here as param_1, but we
+    // still resolve it via the singleton to keep the direct-call path identical.
+    char __fastcall hk_step(void *reqMgr, void *time, uint8_t p3, uint8_t p4, uint8_t p5)
     {
-        g_step_orig(a, b, c, d);
+        char ret = g_step_orig(reqMgr, time, p3, p4, p5);
         static std::atomic<uint64_t> fires{0};
         if (fires.fetch_add(1, std::memory_order_relaxed) == 0)
             spdlog::info("[SPAWNASSET] hk_step FIRED (first) — main-update thread reached");
         std::wstring name;
         {
             std::lock_guard<std::mutex> lk(g_qmtx);
-            if (g_queue.empty()) return;
+            if (g_queue.empty()) return ret;
             name = std::move(g_queue.front());
             g_queue.pop_front();
         }
         uint64_t sing = 0, mgr = 0;
-        if (resolve_mgr(sing, mgr)[0] || !mgr || !g_ensure_fn) return;
+        if (resolve_mgr(sing, mgr)[0] || !mgr || !g_ensure_fn) return ret;
         void *req = nullptr;
         bool ok = call_ensure(g_ensure_fn, (void *)mgr, name.c_str(), req);
         spdlog::info("[SPAWNASSET] step serviced -> ok={} req={:p} (reqMgr=0x{:x})", ok, req,
                      (unsigned long long)mgr);
+        return ret;
     }
 
     bool ensure_hook()
@@ -102,14 +111,23 @@ namespace
         g_ensure_fn = (EnsureAssetReqFn)goblin::sig::resolve_func_aob(
             goblin::sig::ENSURE_ASSET_REQUEST_FN, er, ENSURE_ASSET_REQUEST_RVA, "ENSURE_ASSET_REQUEST");
         if (!g_ensure_fn) return false;
+        // Hook by RVA directly: the FUN_1406d31f0 prologue AOB is NOT unique (matches 3 sites, first is a
+        // different function) — AOB-first would hook the wrong one (live 2026-07-05). RVA is correct for
+        // THIS build; re-find a unique AOB before shipping (rva_aob_hardening_backlog.md). Same posture as
+        // goblin_geom_move (RVA call, no AOB yet).
+        void *step_target = (void *)(er + STREAMER_STEP_RVA);
         try
         {
-            modutils::hook((void *)(er + STREAMER_STEP_RVA), reinterpret_cast<void *>(&hk_step),
-                           reinterpret_cast<void **>(&g_step_orig));
+            // hook_now (immediate MH_EnableHook), NOT hook() — this installs LAZILY at first spawn, long
+            // after enable_hooks()/MH_ApplyQueued already ran at DLL init, so a QUEUED enable would never
+            // apply and the detour would never fire (live 2026-07-05: hooked but no hk_step).
+            modutils::hook_now(step_target, reinterpret_cast<void *>(&hk_step),
+                               reinterpret_cast<void **>(&g_step_orig));
         }
         catch (const std::exception &e) { spdlog::error("[SPAWNASSET] step hook failed: {}", e.what()); return false; }
         g_hook_installed = true;
-        spdlog::info("[SPAWNASSET] main-update step hooked @ er+{:#x}", STREAMER_STEP_RVA);
+        spdlog::info("[SPAWNASSET] reqMgr per-frame update (FUN_1406d31f0) hooked @ {:p} (rva er+{:#x})",
+                     step_target, STREAMER_STEP_RVA);
         return true;
     }
 }

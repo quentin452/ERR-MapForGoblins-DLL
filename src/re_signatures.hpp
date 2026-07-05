@@ -361,6 +361,11 @@ namespace goblin::sig
     // FUN_1406a5080: EnsureAssetRequest(reqMgr, wchar_t* name) — geom ADD pivot-2. RVA 0x6a5080.
     inline constexpr const char *ENSURE_ASSET_REQUEST_FN =
         "40 56 57 48 83 EC 58 80 B9 85 01 00 00 00 48 8B F2 48 8B F9 75 ?? 33 C0 48 83 C4 58 5F 5E C3";
+    // NB: no AOB for the ADD-AEG per-frame hook target FUN_1406d31f0 (er+0x6d31f0). The prologue AOB the
+    // static RE recorded (windows_geom_spawn_thread_re_findings.md) is NOT unique — it matches 3 sites and
+    // its first match is a DIFFERENT function (er+0x3e6bb0), so AOB-first resolution hooked the wrong
+    // function and the drain never ran (live 2026-07-05). Until a longer, unique AOB is found (backlog:
+    // rva_aob_hardening_backlog.md), goblin_geom_spawn hooks it by RVA directly, like goblin_geom_move.
     // ── Grace-pin suppression HOOK targets (tier-S: RVA + code-patch write + crash-on-wrong) ──
     // These two are HOOKED (MinHook JMP), so a LIVE dump reads the detour, not the prologue — the AOBs
     // below were captured with the hook DISABLED (grace_suppress_native=false). docs/re/
