@@ -9,6 +9,26 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
+## ⇒ SESSION WRAP 2026-07-05 (late-2, Linux/Opus) — A15 CLOSED as parity + on-canvas icons already shipped
+
+Scoping/bookkeeping pass, no runtime work. Two parity rows reconciled against the live code:
+
+- **vmap on-canvas ICONS = already SHIPPED** (the "next brick" the prior wrap suggested). `panel_virtual_map.cpp`
+  already draws real category icons on the canvas: base ER via `draw_marker_glyph` (state-aware native/atlas),
+  custom worlds via `resolve_category_icon`/`icon_for` + `AddImage`, `s_show_icons` toggle, colored-dot
+  fallback when no glyph resolves. Corrected the stale `:1302` comment ("on-canvas icons are a follow-up").
+- **★ A15 legacy-dungeon sub-maps = CLOSED as parity (user decision).** Scoped it: vanilla ER has NO
+  in-dungeon detailed map for legacy dungeons — the native map ALSO folds them onto the overworld as points.
+  The vmap folds via `WorldMapLegacyConvParam` (`legacy_fold.cpp`) AND draws the dungeon's interior markers at
+  the fold point → MEETS/beats native. Separate per-dungeon PAGES would be a mod feature BEYOND native, and
+  doing it properly IS the dimension-registry pivot (`virtual_world_multi_world_design.md` L172-214:
+  groups→mapId dimensions) + dungeon sub-map tile art (blocked on A3-tiles RE) — NOT a parity gate. Plan A15
+  row + build-list updated (`imgui_only_map_plan.md`).
+- **⇒ NEXT ungated Linux brick** (A15 no longer a candidate): `vmap offmap` extend to catch UG/DLC (0,0)
+  render-side via `vmap_proj`; OR `active_world` auto-set from PlayerDim (the `s_group` follow half is done);
+  OR the RE-track ADD-AEG render gap (request accepted, not yet a rendered instance). Parity gate now: only
+  A3 tiles (Windows RE) + A10 fast-travel (Track C0) remain as real blockers; A12 = ERR-only low-prio.
+
 ## ⇒ SESSION WRAP 2026-07-05 (late, Linux/Opus) — M5 native-cull: BOTH cheap levers DISPROVEN + greybox #2a prompt
 
 All committed (local master ahead of origin; USER pushes). Worked the vmap migration's M5 (native-map cull) and

@@ -1298,8 +1298,9 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     std::fabs(gz) < step * 0.5f ? axis_col : grid_col);
     }
 
-    // Markers: project the ACTIVE world's markers onto the canvas + accumulate a bbox for Fit. A colored
-    // dot per marker (on-canvas icons are a follow-up). Base ER (world 0) → the live ER markers of the
+    // Markers: project the ACTIVE world's markers onto the canvas + accumulate a bbox for Fit. Real
+    // category icons draw on-canvas (`s_show_icons`: base ER → `draw_marker_glyph`; custom → `icon_for`),
+    // with a colored dot fallback when no glyph resolves. Base ER (world 0) → the live ER markers of the
     // selected group (slice B); a custom world → its OWN markers in its own coordinate namespace (slice C).
     int drawn = 0;
     float minx = 1e30f, minz = 1e30f, maxx = -1e30f, maxz = -1e30f;

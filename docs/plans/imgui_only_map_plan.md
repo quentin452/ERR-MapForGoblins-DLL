@@ -92,7 +92,7 @@ from parity — Track A is real BUILD work, not just a checklist. This IS the go
 | A12 | ERR day/night dial (ERR-only) | ❌ MISSING — native-map overlay only (`map_renderer.cpp:1170`) | ERR-only, low prio |
 | A13 | Map cursor → world readout (dev) | ✅ probe | no |
 | A14 | UI exclusion zones | native-map overlay only → **moot** after switch | drop |
-| A15 | Legacy-dungeon / sub-area maps | ❌ MISSING — vmap has only the 4 top-level groups (`s_group`, `:593`); dungeons folded into overworld | maybe (dungeons still show as folded markers) |
+| A15 | Legacy-dungeon / sub-area maps | ✅ **CLOSED as parity 2026-07-05** — vanilla ER has NO in-dungeon detailed map for legacy dungeons; the native map ALSO folds them onto the overworld as location points. vmap folds via `WorldMapLegacyConvParam` (`legacy_fold.cpp`) AND draws the dungeon's interior markers at the fold point — so it MEETS/beats native parity. Separate per-dungeon PAGES would be a mod feature BEYOND native, and doing it properly IS the dimension-registry pivot (`virtual_world_multi_world_design.md` L172-214: groups→mapId dimensions) + dungeon sub-map tile art (blocked on A3-tiles RE), NOT a parity blocker. So A15 is not a gate row. | no (parity met) |
 
 **A-BUILD list (the gate) — ordered cheapest/most-critical first:**
 1. ~~**A11 player marker + heading**~~ ✅ DONE `69188c3`.
@@ -104,7 +104,8 @@ from parity — Track A is real BUILD work, not just a checklist. This IS the go
 3. ~~**A8 clustering/piles**~~ ✅ DONE (`177c73c`) — a vmap-local quadtree (viewport cull + LOD piles).
 4. **A9 item search/locate** (make the F1 search ring + pan target the vmap too).
 5. **A3 tiles underground/DLC + placement fix** (map_tile slice 3; the offset gap).
-6. A12 dial (ERR-only, low), A15 legacy-dungeon sub-maps (decide if needed).
+6. A12 dial (ERR-only, low). A15 legacy-dungeon sub-maps = ✅ CLOSED as parity (native folds dungeons too;
+   real per-dungeon pages = the dimension-registry pivot, a mod feature beyond native, not a gate row).
 
 **vmap UX backlog (from live testing 2026-07-04):**
 - ✅ grace z-order (draw on top) `dd64d8d`; ✅ hover z-order (grace wins the tooltip/warp) `89d0cd8`;
