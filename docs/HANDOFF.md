@@ -9,6 +9,56 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
+## ⇒ SESSION WRAP 2026-07-05 (evening, Linux/Opus) — relief v0, search-marks, offmap fix, greybox design + Windows prompts
+
+All committed (local master well ahead of origin; USER pushes). A long Linux session: shipped the far-terrain
+relief v0, several vmap features/fixes, closed the Leyndell off-map bug, and locked a big chunk of the
+runtime-modding-render ARCHITECTURE (with 2 Windows RE prompts written).
+
+**⭐ NEXT SESSION (decided): continue the NATIVE-MAP → VMAP-ONLY migration** (`imgui_only_map_plan.md`
+Track C, the M5 native-map cull) on Linux, **while the Windows/Ghidra agent runs its passes** — priority
+`windows_world_to_screen_camera_re_prompt.md` (the w2s3d = unblocker for the ImGui virtual world), then the
+optional `windows_havok_vdb_standup_re_prompt.md`. The two tracks are independent.
+
+**SHIPPED this session (all committed + in-game verified where noted):**
+- **Baked `LEGACY_CONV` DELETED** — dungeon→overworld folds LIVE only (regulation param via `legacy_fold`);
+  generator emission removed (`0afebbd`).
+- **Catch-all `Loot - Other` category** — a resolved item with no taxonomy category is retained (not dropped),
+  gated on `key>0` so phantom lots stay skipped; ~0 on ER, mod-agnostic safety net (`d8970c0`).
+- **Relief D-far -1 v0** — MSB placement-Y cloud → per-cell median grid → `heightfield::Cell[]` → the vmap
+  hillshade. Frame VALIDATED world-ish (`far_relief_probe`). Runtime-wired per group (auto-build on group
+  change, 3 maps). Densified with ALL free sources (collectibles+treasures+enemies+regions+objacts+live
+  graces). Renders a recognizable Lands Between (`5c569c7`/`d4253fc`/`f7572d9`). RPCs `far_relief`, `vmap relief`.
+- **vmap search:** locate now pulses a ring at every hit (visible with markers off); item-search "MARK ALL
+  RESULTS" (orange diamonds, capped, regenerated per search, Clear) drawn on vmap AND minimap via a shared
+  `goblin::search_marks` store (`de6fd9c`/`ec4d8e0`/`d31bcf3`). Zoom-aware icon/spiderfy size.
+- **spiderfy DX:** Ctrl-gated open (config `spiderfy_hold_ctrl`, anti pan-pop), no-steal by a neighbour,
+  hint hidden while a fan is open (`c227cf3`/`ef588fc`/`1f91377`).
+- **Off-map triage + FIX:** `vmap offmap` RPC (`virtual_map_offmap_probe`) → all 57 off-map = area-11
+  (Leyndell) folding to (0,0). Fixed: `legacy_fold` prefers a TERMINAL-dst row per block over a dead-end →
+  **0 off-map of 9796** (`b1f188c`/`e5ab521`).
+- **STATUS.md regen rule** added to CLAUDE.md (it drifts; regen+commit after any RPC test run) (`23b543f`).
+
+**DESIGN LOCKED (runtime-modding render — `runtime_modding_framework_vision.md` #4):**
+- **Split by world type:** editing a real ER dimension → place existing **AEG** assets (engine-rendered,
+  geom-spawn pivot 2); our **virtual worlds → always ImGui** greybox (Havok `add_collision` + ImDrawList),
+  no mesh/MSB dependency.
+- **Enemies = 3 layers:** visual (ImGui procedural, no skeleton) + behaviour (mod state machine) are doable;
+  COMBAT (damage/hitreg) is the un-RE'd frontier → ImGui enemies = dummies until then; real actors = engine ChrIns.
+- **ESP > Havok VDB** for collision-viz: ESP + reading hknp shapes ourselves = same result, in-game, no
+  Havok-version lock. VDB machinery IS in the exe (`havok_vdb_presence_findings.md`) but SECONDARY.
+- **THREE distinct "greybox" jobs** (don't conflate): (1) draw OUR objects = ImGui; (2) restyle the REAL
+  base-ER render keeping systems = a GRAPHICS-PIPELINE hook (debug-render flag / post-process / D3D12 PSO
+  wireframe), engine renders itself, NOT ImGui, FEASIBLE; (3) hide meshes + ImGui proxies = infeasible
+  scene-mirror, unneeded. (The earlier "replace ER meshes = infeasible" was #3; #2 is a different doable track.)
+- **The one real unblocker for the ImGui path = a 3D world-to-screen** (camera view-proj matrix) →
+  `windows_world_to_screen_camera_re_prompt.md`.
+
+**Followups queued (see Open items):** relief §6 filters (v0 = raw median, no outlier-reject) + the USER GATE
+(evaluate v0 in-game → Havok bake or stop); extend `vmap offmap` to catch UG/DLC (0,0) via `vmap_proj`;
+`active_world`/`s_group`/PlayerDim reconciliation for walkable worlds; a cheap "does ER have a debug-render
+wireframe flag?" scan (for greybox-job #2).
+
 ## ⇒ SESSION WRAP 2026-07-05 (Linux/Fable) — add_collision live, vmap projection/spiderfy/search, converter-residency
 
 All committed + pushed (origin/master == HEAD `23a83f5`). Big Linux session on top of the Windows RE.
