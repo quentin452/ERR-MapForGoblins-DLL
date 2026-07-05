@@ -515,6 +515,20 @@ namespace goblin::debug_rpc
                 // archive-name↔runtime-cell (deferred texture-fetch). Read-only; needs the ER map open+moved.
                 if (arg == "tile_recon")
                     return "ok vmap tile_recon " + goblin::overlay_api::virtual_map_tile_recon();
+                // vmap locate <name_id> [group] — A9: centre the vmap on an item-search hit (test the
+                // click-to-locate path headlessly). name_id = FMG text id; group 0=OW 1=UG 2=DLC.
+                if (arg == "locate")
+                {
+                    std::string ns = next_token(rest), gs = next_token(rest);
+                    int32_t nid = 0; int grp = 0;
+                    try { nid = (int32_t)std::stol(ns, nullptr, 0); } catch (...) { return "err usage: vmap locate <name_id> [group]"; }
+                    if (!gs.empty()) { try { grp = std::stoi(gs); } catch (...) {} }
+                    int found = goblin::overlay_api::virtual_map_locate(nid, grp);
+                    char b[96];
+                    std::snprintf(b, sizeof(b), "ok vmap locate name_id=%d group=%d -> %d instance(s)%s",
+                                  nid, grp, found, found ? " (centred)" : " (no such marker)");
+                    return std::string(b);
+                }
                 // vmap flip <none|x|z|xz> — orientation calibration: toggle world→screen axis signs live
                 // (default none = minimap +X/-Z north-up). Try until it matches the native map.
                 if (arg == "flip")

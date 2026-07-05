@@ -148,6 +148,31 @@ void virtual_map_request_focus() { s_focus_player = true; }
 void virtual_map_set_group(int g) { if (g >= 0 && g < 4) s_group = g; }
 int virtual_map_group() { return s_group; }
 
+// A9: locate an item-search hit on the vmap. Centre the canvas on the centroid of every Base-ER marker
+// with this name on this page (group&3), switch to that page, zoom in if we were far out, and open the
+// vmap. Returns the instance count (0 = no such marker on that page → no-op, doesn't open). Mirrors the
+// native map's click-to-locate so item search works with the vmap as the surface, not just the ER map.
+int virtual_map_locate(int32_t name_id, int group)
+{
+    const int pg = group & 3;
+    float sx = 0.0f, sz = 0.0f; int n = 0;
+    for (auto *L : overlay_layers())
+    {
+        if (!L) continue;
+        for (const goblin::worldmap::Marker &m : L->markers())
+        {
+            if (m.name_id != name_id || (m.group & 3) != pg) continue;
+            sx += m.worldX; sz += m.worldZ; ++n;
+        }
+    }
+    if (n == 0) return 0;
+    s_cam_x = sx / n; s_cam_z = sz / n;
+    s_group = pg;
+    if (s_zoom < 0.25f) s_zoom = 0.25f;   // frame the hit if the view was zoomed far out
+    s_open = true;
+    return n;
+}
+
 // Dev orientation calibration: set world→screen axis signs. flipX/flipZ toggle each axis relative to the
 // minimap default (+X, -Z). Lets us match the native map live without a rebuild per guess.
 void virtual_map_set_flip(bool flipX, bool flipZ)
@@ -187,7 +212,7 @@ int dump_markers_csv(const char *path)
 {
     std::ofstream f(path);
     if (!f) return -1;
-    f << "group,category,srcArea,color,worldX,worldZ\n";
+    f << "group,category,srcArea,color,worldX,worldZ,name_id\n";
     int n = 0;
     for (auto *L : overlay_layers())
     {
@@ -195,7 +220,7 @@ int dump_markers_csv(const char *path)
         for (const goblin::worldmap::Marker &m : L->markers())
         {
             f << m.group << ',' << m.category << ',' << m.srcArea << ',' << std::hex << m.color << std::dec
-              << ',' << m.worldX << ',' << m.worldZ << '\n';
+              << ',' << m.worldX << ',' << m.worldZ << ',' << m.name_id << '\n';
             ++n;
         }
     }
