@@ -1449,10 +1449,10 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             if (hovered)
             {
                 float dx = ps.x - io.MousePos.x, dy = ps.y - io.MousePos.y;
-                // Suppress the "zoom in to expand" hint when THIS pile's spiderfy fan is open (it IS expanded).
-                const bool fanned = goblin::config::clusterSpiderfy && s_fan_open &&
-                                    s_fan_key == spiderfy_key(pl.cx, pl.cz, 1);
-                if (dx * dx + dy * dy < r * r && !fanned)
+                // Suppress the expand hint whenever ANY spiderfy fan is open (not just THIS pile's): a fan
+                // is already showing, so "Ctrl+hover to expand" is wrong (with no-steal, hovering another
+                // pile won't open it) and it leaks over the open fan's icons.
+                if (dx * dx + dy * dy < r * r && !s_fan_open)
                     ImGui::SetTooltip("%d %s", pl.count,
                         (goblin::config::clusterSpiderfy && goblin::config::spiderfyHoldCtrl)
                             ? tr("markers — Ctrl+hover to expand, or zoom in")
