@@ -52,6 +52,28 @@ Ran the perf→RVA pipeline live (`tmp/perf_rva.py`: boot + 16s render activity 
 | `0x14251BEE7` | `0x251BEE7` | 1.9% | 2nd |
 | `0x1404F9950` | `0x4F9950` | 0.4% | |
 
+### RVAs NAMED (Ghidra decompile, 2026-07-05) — confirms "flat / generic plumbing", NOT a fixable subsystem
+- **`0x141C05F87` (5.5%, the dominant "region") = a FAMILY of identical 53-byte intrusive-list `find-by-id`
+  lookups**, not one function. `0x1c05f30 / f70 / fb0 / ff0 …` are byte-identical (same AOB), spaced 0x40 —
+  template instantiations of one generic finder, one per registry type. Each:
+  `node=*(mgr+0x30); while(node){ if(*(int*)(node+0x18)==id) break; node=*(node+0x10);} return (node+0x1c flag)?node:0;`
+  i.e. an **O(n) linear walk of an intrusive linked list keyed by an int id**, gated by a per-node enabled byte.
+  The perf samples (+f47/+f87/+fc7/0x60c7) spread ACROSS the family → the "hot region" is the same lookup
+  pattern called constantly for many different managers, not a discrete subsystem.
+- **`0x14251BEE7` (1.9%) = the CRT `memmove`/`memcpy`** (size-0..16 switch + SSE-unrolled bulk copy with
+  overlap handling; ERMS bit `DAT_1448574d0`, non-temporal threshold `DAT_143c5add8`; 30+ callers:
+  `write_string`, `fp_format_f_internal`, `memcpy_s`, `operator=`, `__wcsrtombs_utf8`, …). Generic data
+  movement from everywhere.
+- **`0x1404F9950` (0.4%) = another intrusive-list membership check** (`node=*(base+8); while(node){ if(*(int*)(node+8)==id) break; node=*(node+0x30);} return node!=0;`), 29 callers across unrelated TUs.
+
+**⇒ Verdict for "is the fps easily fixable": NO.** The top cost is **generic engine plumbing** — id-keyed
+intrusive-list lookups + `memmove` — spread across hundreds of call sites, not a single subsystem you could
+disable or a mod-patchable hotspot (converting FromSoft's intrusive lists to hashmaps is not moddable). Top 3
+sum to only ~8%; a flat profile means meaningful fps needs speeding up hundreds of functions = impossible from
+a mod. And these run on Windows too, so they are NOT the Linux<Windows delta (that stays the distributed wine
+syscall/thunk tax: `clear_bhb_loop`, `rwsem_spin_on_owner`, the wine dispatchers). The only lever remains
+config (`mitigations=off`, security tradeoff) — no easy code fix exists.
+
 **⚠ Key result — the profile is FLAT.** Top single fn = only 3.67%, then a long tail. **There is NO single
 dominant/pathological function.** The "69% [JIT]" of the first (unsymbolized) run is that same 69% spread
 across hundreds of ER functions once the file-backed mapping resolves. So the 60(Win)→44+stutter(Linux)
