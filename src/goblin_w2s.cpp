@@ -23,10 +23,17 @@ namespace
     constexpr uintptr_t VIEW_FROM_HIT = 0xE0;   // GameRend+0xF0, hit = GameRend+0x10
     constexpr uintptr_t MB_FROM_HIT   = 0x120;  // GameRend+0x130 (the identity/second block)
 
-    // Live-tunable projection interpretation (nailed via `w2s_probe`, then locked in code).
-    int   g_conv = 0;        // 0 rowvec+Zf, 1 rowmajor+Zf, 2 rowvec-Zf, 3 rigid-inverse rowvec
-    float g_fovy = 0.7505f;  // vertical FOV (radians) ~43 deg — refined from the probe
+    // Live-tunable projection interpretation. Live calibration (2026-07-05, Fable 5, Linux) confirmed:
+    // VIEW@GameRend+0xF0 is a clean row-vector view matrix, FOV=0.7505, conv=2 (row-vector, +Z fwd). BUT
+    // the VIEW is in a render frame RE-CENTRED near the camera (ER rebases world coords for float
+    // precision): its translation row is tiny (~(-2,5,4)) while the player is at ~(-58,92,99). So a GLOBAL
+    // player pos must be REBASED (player - origin) before the VIEW. g_origin = that render origin.
+    int   g_conv = 2;        // 0 rowvec+Zf, 1 rowmajor+Zf, 2 rowvec-Zf (confirmed), 3 rigid-inverse
+    float g_fovy = 0.7505f;  // vertical FOV (radians) — confirmed from lens@GameRend+0x54
     bool  g_dot  = false;
+    float g_origin[3] = {0, 0, 0};   // render rebase origin (world); subtracted before VIEW when g_have_origin
+    bool  g_have_origin = false;
+    long  g_origin_off = 0;          // offset of g_origin within GameRend where it was found (diagnostic)
 
     __declspec(noinline) bool safe_read(const void *src, void *dst, size_t n)
     {
@@ -119,11 +126,13 @@ namespace
             vy = m[4] * dx + m[5] * dy + m[6] * dz;
             vz = m[8] * dx + m[9] * dy + m[10] * dz;
         }
-        else  // 0 or 2: row-vector v*M
+        else  // 0 or 2: row-vector v*M, with the render rebase applied (player - origin) before the VIEW
         {
-            vx = m[0] * x + m[4] * y + m[8] * z + m[12];
-            vy = m[1] * x + m[5] * y + m[9] * z + m[13];
-            vz = m[2] * x + m[6] * y + m[10] * z + m[14];
+            float rx = x, ry = y, rz = z;
+            if (g_have_origin) { rx -= g_origin[0]; ry -= g_origin[1]; rz -= g_origin[2]; }
+            vx = m[0] * rx + m[4] * ry + m[8] * rz + m[12];
+            vy = m[1] * rx + m[5] * ry + m[9] * rz + m[13];
+            vz = m[2] * rx + m[6] * ry + m[10] * rz + m[14];
         }
         fwd = (conv == 2) ? -vz : vz;
     }
@@ -137,6 +146,44 @@ namespace
         sx = W * 0.5f + (vx / fwd) * focal;
         sy = H * 0.5f - (vy / fwd) * focal;   // screen Y down
         return true;
+    }
+
+    // Scan the GameRend struct for the render REBASE ORIGIN: the float3 O such that projecting
+    // (player - O) through the VIEW (conv2) centres the player on screen. Same-frame (no tearing).
+    // Discriminated with a 2nd point (player + 3m up) so a coincidental float3 doesn't win. On success
+    // sets g_origin/g_have_origin/g_origin_off and returns true. `gr` = GameRend base, `m` = VIEW.
+    bool find_origin(uintptr_t gr, const float *m, float px, float py, float pz, float W, float H)
+    {
+        const long LO = -0x40, HI = 0x600;
+        std::vector<uint8_t> buf((size_t)(HI - LO));
+        if (!safe_read((const void *)(gr + LO), buf.data(), buf.size())) return false;
+        float best = 1e9f; long best_off = 0; float bo[3] = {0, 0, 0};
+        bool save_have = g_have_origin; float save_o[3] = {g_origin[0], g_origin[1], g_origin[2]};
+        g_have_origin = true;
+        for (long o = 0; o + 12 <= (long)buf.size(); o += 4)
+        {
+            const float *c = (const float *)(buf.data() + o);
+            if (!std::isfinite(c[0]) || !std::isfinite(c[1]) || !std::isfinite(c[2])) continue;
+            // render origin sits near the active region: within a few km of the player, not at 0/huge
+            if (std::fabs(px - c[0]) > 3000 || std::fabs(py - c[1]) > 3000 || std::fabs(pz - c[2]) > 3000) continue;
+            g_origin[0] = c[0]; g_origin[1] = c[1]; g_origin[2] = c[2];
+            float sx, sy, sx2, sy2;
+            if (!project(m, px, py, pz, 2, g_fovy, W, H, sx, sy)) continue;
+            if (sx < 0 || sx > W || sy < 0 || sy > H) continue;                 // player on screen
+            if (!project(m, px, py + 3.f, pz, 2, g_fovy, W, H, sx2, sy2)) continue;
+            if (std::fabs(sx2 - sx) > 0.15f * W) continue;                       // head ~above, small dx
+            if (!(sy2 < sy - 1.f)) continue;                                     // head strictly higher on screen
+            float score = std::fabs(sx - W * 0.5f) + std::fabs(sy - H * 0.5f);   // prefer centred
+            if (score < best) { best = score; best_off = LO + o; bo[0] = c[0]; bo[1] = c[1]; bo[2] = c[2]; }
+        }
+        if (best < 1e9f)
+        {
+            g_origin[0] = bo[0]; g_origin[1] = bo[1]; g_origin[2] = bo[2]; g_origin_off = best_off;
+            g_have_origin = true;
+            return true;
+        }
+        g_have_origin = save_have; g_origin[0] = save_o[0]; g_origin[1] = save_o[1]; g_origin[2] = save_o[2];
+        return false;
     }
 }
 
@@ -173,15 +220,27 @@ namespace goblin::w2s
         std::snprintf(b, sizeof(b), "+0x130: [%.3f %.3f %.3f %.3f ...]  lens@+0x50: %.4f %.4f %.4f %.4f %.4f %.4f\n",
                       m2[0], m2[1], m2[2], m2[3], lens[0], lens[1], lens[2], lens[3], lens[4], lens[5]);
         out += b;
-        // report every interpretation: view-space coords + resulting screen px
+        // report every interpretation WITHOUT rebase (origin off) — shows the raw off-screen result
+        bool save_ho = g_have_origin; g_have_origin = false;
         for (int c = 0; c < 4; ++c)
         {
             float vx, vy, vz, fwd; to_view(m, px, py, pz, c, vx, vy, vz, fwd);
             float sx = -1, sy = -1; bool vis = project(m, px, py, pz, c, g_fovy, W, H, sx, sy);
-            std::snprintf(b, sizeof(b), " conv%d: view=(%.2f,%.2f,%.2f) fwd=%.2f -> px=(%.0f,%.0f) %s\n",
+            std::snprintf(b, sizeof(b), " conv%d(no-rebase): view=(%.2f,%.2f,%.2f) fwd=%.2f -> px=(%.0f,%.0f) %s\n",
                           c, vx, vy, vz, fwd, sx, sy, vis ? "" : "(behind)");
             out += b;
         }
+        g_have_origin = save_ho;
+        // auto-find the render rebase origin, then project conv2 WITH it (the real answer)
+        if (find_origin(hit - 0x10, m, px, py, pz, W, H))
+        {
+            float sx, sy; bool vis = project(m, px, py, pz, 2, g_fovy, W, H, sx, sy);
+            std::snprintf(b, sizeof(b), "REBASE origin=(%.2f,%.2f,%.2f) @GameRend%+ld -> conv2 px=(%.0f,%.0f) %s <== w2s3d\n",
+                          g_origin[0], g_origin[1], g_origin[2], g_origin_off, sx, sy, vis ? "LOCKED" : "?");
+            out += b;
+        }
+        else
+            out += "REBASE origin: NOT FOUND in GameRend[-0x40..+0x600] — widen the window or the origin is elsewhere\n";
         spdlog::info("[W2S] {}", out);
         return out;
     }
@@ -197,6 +256,9 @@ namespace goblin::w2s
         if (!rd(hit + VIEW_FROM_HIT, m) || !looks_like_view(m)) return;
         ImVec2 ds = ImGui::GetIO().DisplaySize;
         float W = ds.x, H = ds.y; if (!(W > 0 && H > 0)) return;
+        // ER renders camera-relative: rebase the global player pos before the VIEW. Re-find the origin
+        // each frame (cheap, same-frame) so it tracks as the render frame re-centres while the player moves.
+        find_origin(hit - 0x10, m, px, py, pz, W, H);
         float sx, sy;
         if (!project(m, px, py, pz, g_conv, g_fovy, W, H, sx, sy)) return;
         ImDrawList *dl = ImGui::GetForegroundDrawList();
