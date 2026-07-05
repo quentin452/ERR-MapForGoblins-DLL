@@ -9,16 +9,42 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
+## ⇒ SESSION WRAP 2026-07-05 (late, Linux/Opus) — M5 native-cull: BOTH cheap levers DISPROVEN + greybox #2a prompt
+
+All committed (local master ahead of origin; USER pushes). Worked the vmap migration's M5 (native-map cull) and
+retired a roadmap RE question.
+
+- **greybox job #2a RE prompt WRITTEN** — `docs/re/windows_debug_render_flag_re_prompt.md` (`837199e`): a cheap
+  Windows GO/NO-GO scan for a FromSoft debug-render flag (wireframe/untextured/collision) that restyles the
+  engine's OWN render. Scoped explicitly as #2a only (NOT the ImGui-mirror #3 wall). Indexed in `re/README.md`.
+- **★ M5 native-map cull — BOTH cheap Linux levers DISPROVEN live (`4d54094`).** Ran the recon end-to-end:
+  - **D3D12 `RSSetScissorRects`** (was the RECOMMENDED lever): 0 mapopen=1-only rects — the Scaleform map draws
+    full-screen through generic engine scissors, no map-specific rect to empty (tagging proven sound: the
+    minimap correctly isolated as mapopen=0-only). Findings §4c.
+  - **GFx `MovieImpl+0xB0` clip write** (the pivot): resolve corrected (2-deref `WorldMapDialog+0x140 →
+    *(+0x00)`, validated `buf==1920×1080`); the zero-write HOLDS but the map still renders → `+0xB0` is
+    descriptive, not a render gate. Findings §4d. Shipped `movieclip read|hide|show` RPC (`read` = live
+    map-viewport diagnostic; hide/show INERT for cull, kept as scaffolding).
+  - **⇒ M5 DEPRIORITIZED:** the cull now needs the Scaleform draw-vfunc no-op (Windows Ghidra), a movie
+    visible-flag (risky RPM spike), or the CSMenuMan draw-skip — all not-cheap, and the production flip is gated
+    on Track A parity + Track B fast-travel anyway. **Keep advancing the vmap migration on UNGATED bricks;** do
+    the cull from the Windows/RE track when it has a slot. Plan M5 row + `imgui_only_map_plan.md` C1 updated.
+
 ## ⇒ SESSION WRAP 2026-07-05 (evening, Linux/Opus) — relief v0, search-marks, offmap fix, greybox design + Windows prompts
 
 All committed (local master well ahead of origin; USER pushes). A long Linux session: shipped the far-terrain
 relief v0, several vmap features/fixes, closed the Leyndell off-map bug, and locked a big chunk of the
 runtime-modding-render ARCHITECTURE (with 2 Windows RE prompts written).
 
-**⭐ NEXT SESSION (decided): continue the NATIVE-MAP → VMAP-ONLY migration** (`imgui_only_map_plan.md`
-Track C, the M5 native-map cull) on Linux, **while the Windows/Ghidra agent runs its passes** — priority
-`windows_world_to_screen_camera_re_prompt.md` (the w2s3d = unblocker for the ImGui virtual world), then the
-optional `windows_havok_vdb_standup_re_prompt.md`. The two tracks are independent.
+**⭐ NEXT SESSION (updated 2026-07-05 late): the M5 native-map cull is DEPRIORITIZED** — both cheap Linux levers
+(D3D12 scissor + GFx MovieImpl clip) are live-disproven (see the late-session wrap above); the cull now needs a
+Windows-Ghidra draw-vfunc pass, and its production flip is gated on parity+fast-travel anyway. **So continue the
+vmap migration on an UNGATED Linux brick** — candidates: on-canvas ICONS for vmap markers (dots→glyphs, visible
+quality win); extend `vmap offmap` to catch UG/DLC (0,0) render-side; A15 legacy-dungeon sub-maps (last
+pure-Linux parity gap); `active_world`/`s_group`/PlayerDim auto-follow. **Meanwhile the Windows/Ghidra agent
+runs** — priority `windows_world_to_screen_camera_re_prompt.md` (w2s3d = unblocker for the ImGui virtual world),
+then optional `windows_havok_vdb_standup_re_prompt.md` + the new `windows_debug_render_flag_re_prompt.md` (#2a).
+The tracks are independent.
 
 **SHIPPED this session (all committed + in-game verified where noted):**
 - **Baked `LEGACY_CONV` DELETED** — dungeon→overworld folds LIVE only (regulation param via `legacy_fold`);
