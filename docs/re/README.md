@@ -132,9 +132,17 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
   (`linux_f2_fog_locate_clamp_re_findings.md`).
 - **Hidden Passage** (illusory walls, no static signal — `windows_group2_landscape`), **Wandering
   Mausoleum** (dynamic entity, no static MSB signal).
+- **★ 3D world-to-screen (camera view-proj) — `windows_world_to_screen_camera_re_prompt.md`.** THE unblocker
+  for the runtime-modding virtual worlds (in-game ImGui/ESP overlay: world XYZ → screen → ImDrawList). Read
+  the live 4×4 view-projection (target `GameRendCameraSet` er+0x680460 / `CSCameraImp`) + resolve chain; ship
+  `w2s3d(xyz)`. Reuses the freecam recon (freecam WRITES the transform, this READS the ViewProj).
 - **Freecam** (dev tool for the world-editor loop — recon done `windows_freecam_re_findings.md`, Route 2 =
   freeze ChrCam + override the render view matrix in `GameRendCameraSet` er+0x680460; blocked on the matrix
   offset + a `CSCameraImp` singleton AOB).
+- **Havok VDB stand-up (OPTIONAL) — `windows_havok_vdb_standup_re_prompt.md`.** VDB machinery IS in the exe
+  (`havok_vdb_presence_findings.md`); could give a free 3D collision render via the official client, but is
+  gated on a version-matched client (~2018 Havok). SECONDARY — the ESP hknp-wireframe path avoids the version
+  lock. Settle the client GO/NO-GO first.
 - **In-game pause** (`windows_ingame_pause_re_prompt.md`), **gamepad input device**
   (`windows_gamepad_input_device_re_prompt.md`), **silent deadlock freeze** (unsolved; watchdog shipped).
 - **Keybinding config (read the user's LIVE kb+pad binds) — OPEN, `windows_keybinding_config_re_prompt.md`.**

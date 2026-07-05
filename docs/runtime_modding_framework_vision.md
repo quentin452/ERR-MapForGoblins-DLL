@@ -209,6 +209,17 @@ and draw a diamond / line / box-wireframe / level-grid with the modder's chosen 
   waypoints, no behaviour, no wall). Combat ACTORS = real engine `ChrIns` (native spawn → real AI/anim/
   combat). Same rule: real content → engine; our virtual STRUCTURE → ImGui; ImGui enemies only as dummies
   until the combat primitives land.
+- **ESP vs Havok VDB for collision-viz (user Q 2026-07-05) — lean ESP.** They are NOT interchangeable: the
+  **Havok VDB** is an EXTERNAL viewer that reads + renders the REAL collision geometry for free, but needs a
+  version-matched client (ER's Havok ~2018 — the risk) and is dev-only (never player-facing). **ImGui/ESP** is
+  an in-game renderer of whatever YOU compute — it does NOT know the collision; you must FEED it the geometry.
+  Conclusion: **ESP + reading the hknp shapes ourselves does everything the VDB would — in-game, no version
+  lock, player-capable — and we already RE the shapes** (`hknpCompressedMeshShape` far-terrain, `hknpBoxShape`
+  add_collision) → dequantize the triangles, draw wireframe via ESP. So the VDB is a "free render IF the
+  matched client can be sourced" bonus (recon POSITIVE, `havok_vdb_presence_findings.md`; spike
+  `windows_havok_vdb_standup_re_prompt.md`, SECONDARY), NOT a dependency. **The single real unblocker for BOTH
+  the player greybox world AND an in-game collision wireframe = the 3D world-to-screen matrix**
+  (`windows_world_to_screen_camera_re_prompt.md`).
 - **SCOPE BOUNDARY (user Q 2026-07-05): ImGui greybox draws OUR world's objects — it does NOT replace ER's
   own meshes.** Two very different asks: (a) draw OUR custom-world objects (walls/platforms/dummies) as ImGui
   — few, cheap, feasible; (b) replace ER's ENTIRE mesh rendering (every FLVER/asset/enemy/weapon/SFX/terrain)

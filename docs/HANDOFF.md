@@ -283,6 +283,15 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
 
 ## Open / next items
 
+- **★ 3D world-to-screen (camera view-proj matrix) — Windows RE prompt written (2026-07-05,
+  `docs/re/windows_world_to_screen_camera_re_prompt.md`).** THE single unblocker for the runtime-modding
+  virtual worlds: read object world XYZ → project to screen → ImDrawList (the ImGui/ESP overlay path,
+  `runtime_modding_framework_vision.md` #4). We have the 2D map w2s but NOT a 3D gameplay one. Target =
+  `GameRendCameraSet` (er+0x680460, "consumes the final view matrix") / `CSCameraImp` — find the live 4×4
+  view-projection + resolve chain (AOB), ship `w2s3d(xyz)`. Reuse the freecam recon (shares the camera
+  subsystem; freecam WRITES the transform, this READS the ViewProj). Acceptance = project the player's world
+  pos, the dot sticks to the character through camera motion. Unblocks: player greybox world + an in-game
+  hknp collision wireframe (reuse the shape RE, no VDB version-lock).
 - **Havok VDB present in ER — RE spike candidate (2026-07-05, `docs/re/havok_vdb_presence_findings.md`).**
   `strings eldenring.exe` confirmed the Havok Visual Debugger machinery is compiled in (NOT stripped):
   `hkSocket`(+Reader/Writer), `hk/hknpProcessContext`, `hknpViewer`/`hknpMultithreadedShapeViewer`,
@@ -291,7 +300,8 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   over it → connect the official Havok VDB client → a 3D view of the whole collision world incl. our
   `add_collision` bodies = a real DEV visualiser (verify collision/custom geometry/far-terrain). Main risks:
   version-matched VDB client + whether the server is fully linked vs partially stripped. Orthogonal to the
-  player-facing ImGui/ESP greybox. Spike = Windows/Ghidra (find context/viewer/socket ctors + the step).
+  player-facing ImGui/ESP greybox. **SECONDARY** (lean ESP — in-game hknp wireframe, no version lock). Spike
+  prompt: `docs/re/windows_havok_vdb_standup_re_prompt.md` (settle the matched-client GO/NO-GO first).
 
 - **✅ Off-map markers = area-11 (Leyndell) fold-to-(0,0) — FIXED 2026-07-05.** `vmap offmap` triaged ALL 57
   off-map markers → origin-zero, all raw area 11 grid(5,0) (Leyndell/Ashen graces + loot). Root cause: block

@@ -47,9 +47,15 @@ differently, partially compiled out, or simply not instantiated by the game.
 - **Effort:** moderate-to-hard RE to wire context+viewer+socket+step; but every building block is in the exe
   and the `hknpWorld` handle is already ours.
 
-## Verdict
-Strong, cheap-to-check lead that came back POSITIVE: the VDB viewer/context/socket/shape-viewer are in the
-binary. Worth a focused RE spike for a **dev-side** collision visualiser (verify add_collision / custom
-walkable geometry / far-terrain collision via the official Havok tool). Orthogonal to the player-facing
-ImGui/ESP greybox (that still stands for the virtual world's player-visible objects). See
-`runtime_modding_framework_vision.md` #4 + `hknpworld_addbody_slot_re_findings.md` (the `hknpWorld` handle).
+## Verdict — POSITIVE but SECONDARY (lean ESP)
+The VDB viewer/context/socket/shape-viewer ARE in the binary. BUT the recommended collision-visualiser is the
+in-game **ImGui/ESP overlay reading the hknp shapes ourselves** (dequantize `hknpCompressedMeshShape` /
+`hknpBoxShape` — already RE'd — and draw wireframe): in-game, player-capable, and **no Havok-version lock**.
+The VDB only adds "a free authoritative render IF a version-matched client can be sourced" (the main risk —
+ER's Havok is ~2018). So:
+- **Player-facing greybox + in-game collision wireframe → ESP**, unblocked by the 3D world-to-screen matrix
+  (`windows_world_to_screen_camera_re_prompt.md`). No VDB dependency.
+- **VDB stand-up → OPTIONAL spike** (`windows_havok_vdb_standup_re_prompt.md`) — settle the version-matched
+  client GO/NO-GO FIRST; only then the context/viewer/socket/step RE. We already hold the `hknpWorld`
+  (`CSPhysWorld+0x08`, `hknpworld_addbody_slot_re_findings.md`).
+See `runtime_modding_framework_vision.md` #4.
