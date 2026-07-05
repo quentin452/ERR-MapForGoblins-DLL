@@ -213,6 +213,17 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
 
 ## Open / next items
 
+- **Sidecar save BACKUPS (defense-in-depth) — followup, not started (2026-07-05).** The strip/reinject
+  bracket writes into live inventory right before ER serializes, and ER re-checksums the save itself — so
+  a wrong-layout write that somehow got past `verify_inventory_layout()` would be saved as a VALID file
+  (no game-side detection). The canary + fail-loud design covers the known failure modes; a backup covers
+  the unknown ones for ~zero cost. Design: on the FIRST mod-write save bracket of a session (strip active,
+  i.e. sidecar enabled + custom items registered), copy `g_save_path` (`ER0000.sl2`/`.err`) + `g_mfg_path`
+  (`.mfg`) to a rolling `<save>.mfg-backups/` (keep N=3, timestamped) BEFORE `g_orig_ser` runs; skip if
+  the bracket is inactive (zero overhead for non-sidecar users). Both paths already live in
+  `goblin_sidecar.cpp` (`g_save_path`/`g_mfg_path`); the copy must be pre-serialize (the pre-strip file
+  still holds the last-known-good state). NB ER already keeps its own `.sl2.bak`, but the game overwrites
+  it on the NEXT save — the mod backup must survive multiple save cycles.
 - **NEW map entry for MFG markers — SPIKED 2026-07-04 (`docs/re/worldmap_new_page_spike_findings.md`).**
   User goal: a new map ENTRY so MapForGoblins markers show on a custom "dev world". **Spike verdict (this
   CORRECTS the earlier "lighter data-layer" guess):** a NATIVE new page is its OWN unsolved WRITE frontier,
@@ -502,10 +513,17 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   `FUN_140c6f120` mapped: **`hknpWorld*` @ `CSPhysWorld+0x08`** (confirms the raycast `ctx+8`), hknpWorld ctor
   `FUN_1418a6760`, world event slots `FUN_1418ae7d0`, shape-tag codec `hknpUFMShapeTagCodec<3,5,8>`
   (`FUN_14187dc50`). Route B shapes = `hknpBoxShape`/`hknpSphereShape`; vehicle = `CSPhysIns@CS` (~0x60B) +
-  DLRF factory. **⇒ NEXT (Linux, decisive):** (a) read a live ground-hit body's shape vtable → confirm mesh
-  vs heightfield; (b) dump the live `hknpWorld` vtable (er+0x2eedc78) → locate `addBody`; (c) `add_collision
-  <dx dy dz>` box smoke test verified with the existing `hf_probe` raycast. Frame is Havok BLOCK-LOCAL. The
-  only static gap left = the exact `addBody` slot (easier live).
+  DLRF factory. **✅ ROUTE D LOOP PROVEN LIVE 2026-07-05** (`goblin_add_collision.{hpp,cpp}`, staged
+  `add_collision` RPC, `test_add_collision.py` 9/9): cinfo(defaults + shape@+0x00 + pos@+0x30, STATIC) →
+  `allocateBody FUN_1418aabf0` → `addBody FUN_1418a9ff0(mgr,&id,1,0,0)` ran from the PRESENT thread (no
+  deadlock, no hook needed), and the `hf_probe_present` oracle then hit at EXACTLY the injected body's Y
+  (21.44→133.37 = player+40, Δfoot=40.00), persistent ≥8s. Full result:
+  `docs/re/hknpworld_addbody_slot_re_findings.md` §7. All 4 anchors AOB-hardened same day (PHYSWORLD_SLOT
+  via live FWA + CINFO_INIT/ALLOCATE_BODY/ADD_BODY prologues via hf_hook_scout; [SIG] 48/48 clean).
+  **Remaining:** (a) the REAL `hknpBoxShape` build — `FUN_141916c30(self, aabb[8], convexRadius, cfg)` +
+  the small BuildCfg map (the probe BORROWS a live body's shape, so half-extents aren't honored yet);
+  (b) walk-on-it human confirm + tile-re-stream persistence; (c) hit-normal readback was (0,0,0) on the
+  injected body — benign for the probe, check when the real box lands.
 
 - **Dev "creative mode" mini-track — SCOPED 2026-07-03 (do after ADD; not on ADD's critical path).** Two
   small/moderate RE items that together give a dev sandbox loop (warp into a throwaway map + fly around +
