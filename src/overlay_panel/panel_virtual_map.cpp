@@ -1203,8 +1203,12 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // here and the region-label draw below. regValid[i] = projected; regGrp[i] = its marker group. The
     // on/off flags are the shared map_renderer state (same flags the native chips use).
     // LIVE-projected vmap position for a marker/anchor (raw area/grid/pos → the unified marker world frame).
-    // The vmap is gated on world_map_open() → the native WorldMapViewModel converter is resident, so the
-    // SAME live projection the native map uses is available here. Baked worldX/worldZ is correct for the
+    // Uses the engine's live WorldMapViewModel converter (worldmap_probe::project). NB the converter does
+    // NOT need the native map to be OPEN each time: find_view_model() CACHES the VM (static s_vm) + only
+    // re-scans when stale, and the VM object persists after the map closes — so once the map has been opened
+    // ONCE this session (to publish the cursor for the first scan), project() keeps working map-closed. Until
+    // that first resolve, project() returns false → we fall back to baked + a bounded rebuild retry. Baked
+    // worldX/worldZ is correct for the
     // OVERWORLD (area 60) and DLC-overworld (61), but UNDERGROUND (12) is only approximate and DLC-UNDERGROUND
     // (40-43) is NOT folded at all by the baked path → those land near-origin (bottom-left, e.g. Nameless
     // Eternal City). For those, re-project via the engine converter → map-space (u,v) → worldX=u+7040,
@@ -1484,13 +1488,18 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                         if ((int)std::floor(sp.first.x / K) == bx && (int)std::floor(sp.first.y / K) == by)
                             members.push_back(sp.second);
                 }
-                // Dedup identical members (same name/category/icon) → one icon + an ×N badge.
+                // Dedup identical members (same name/category/icon) → one icon + an ×N badge. When
+                // collected_graying is on, DROP collected/cleared members: draw_marker_glyph hides them
+                // anyway (blank fan slots), so keeping them only bloats a big fan → less churn, and the
+                // fan reads as an action list of what's still LEFT to grab/kill (user request 2026-07-05).
+                const bool drop_done = goblin::config::collectedGraying;
                 struct FE { const goblin::worldmap::Marker *m; int n; };
                 std::vector<FE> ents;
                 {
                     std::unordered_map<uint64_t, size_t> seen;
                     for (auto *m : members)
                     {
+                        if (drop_done && goblin::worldmap::marker_is_done(*m)) continue;
                         uint64_t k = ((uint64_t)(uint32_t)m->name_id << 32) ^
                                      ((uint64_t)(uint32_t)m->category << 8) ^
                                      ((uintptr_t)m->icon_key & 0xFFu);

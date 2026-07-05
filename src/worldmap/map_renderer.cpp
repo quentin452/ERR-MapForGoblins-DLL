@@ -1855,6 +1855,10 @@ void draw_marker_glyph(ImDrawList *dl, const Marker &m, float px, float py, void
 
 bool inworld_hovered() { return s_inworld_hot; }
 
+// Exported wrapper over the file-local marker_done (which lives in the anon namespace above, reachable
+// here in the same TU). Lets the vmap spiderfy drop collected/cleared members from a fan.
+bool marker_is_done(const Marker &m) { bool co = false; return marker_done(m, co); }
+
 // Region on/off toggle — shared read/set so the Virtual World Map's region labels drive the SAME
 // g_region_on flags the native chips do (sync + config::regionToggles persistence). Both seed the
 // state (the vmap can toggle before the native map ever opened). Out-of-range → "on" / no-op.

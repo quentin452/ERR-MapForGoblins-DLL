@@ -19,6 +19,11 @@ namespace goblin::worldmap
 // draw instead of duplicating it. atlas = baked-atlas SRV; native = config nativeItemIcons.
 void draw_marker_glyph(ImDrawList *dl, const Marker &m, float px, float py, void *atlas, bool native, float half);
 
+// Is this marker's item collected / boss cleared (the state that dims/hides it under collected_graying)?
+// Exposed wrapper over the file-local marker_done — lets the vmap spiderfy drop collected/cleared members
+// from a fan (they'd otherwise be blank slots: draw_marker_glyph hides them) → smaller, action-only fans.
+bool marker_is_done(const Marker &m);
+
 // Draw all visible layers' markers for the currently open map page. Call once per
 // frame the overlay builds (from the Present hook). Must run inside an ImGui frame.
 // atlas_texture = the category-icon atlas's ImGui texture id (GPU descriptor handle),

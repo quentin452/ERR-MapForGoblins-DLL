@@ -562,8 +562,11 @@ bool read_converter_affine(uintptr_t vm, int area, goblin::worldmap_probe::ConvA
 
 // Find the live CS::WorldMapViewModel (cached). Resolves from the active map cursor →
 // WorldMapDialog (cursor-0x2DB0) → scan its pointer fields for an object whose first qword
-// is the VM vtable. Re-validates the cached ptr cheaply; re-scans only when it goes stale
-// (map reopened / freed). Returns 0 if the map is closed / not found.
+// is the VM vtable. Re-validates the cached ptr cheaply; re-scans only when it goes stale.
+// IMPORTANT: once resolved, the cache SURVIVES the map closing — the VM object persists in-world, so this
+// keeps returning it (and project()/read_converter_affine keep working) with the native map CLOSED. Returns
+// 0 only BEFORE the first successful resolve (needs the cursor published = the map opened once this session)
+// or if the VM is genuinely freed. So the converter is NOT a "map must be open" per-use requirement.
 uintptr_t find_view_model()
 {
     static uintptr_t s_vm = 0;
