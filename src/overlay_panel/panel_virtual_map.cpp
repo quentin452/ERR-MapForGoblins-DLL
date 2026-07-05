@@ -24,6 +24,7 @@
 #include "goblin_major_regions.hpp"    // MAJOR_REGION_ANCHORS — coarse region name labels (A7 parity)
 #include "goblin_bench.hpp"            // GOBLIN_BENCH_QUIET — profile the vmap draw at high marker counts
 #include "goblin_custom_markers.hpp"   // shared player-placed marker store (vmap + minimap read it)
+#include "goblin/goblin_map_flags.hpp" // story-state flags (Erdtree burns / charm / seal) — item-search Royal vs Ashen
 #include "overlay_panel/marker_quadtree.hpp"  // spatial index: viewport cull + LOD clustering (perf)
 
 #include <spdlog/spdlog.h>
@@ -69,7 +70,7 @@ namespace
     bool s_show_custom = false;        // custom-marker list sidebar toggle
     float s_custom_w = 250.0f;         // its resizable width
     bool s_show_item_search = false;   // A9: item-search sidebar (locate items ON the vmap, no native map)
-    float s_items_w = 260.0f;          // its resizable width
+    float s_items_w = 320.0f;          // its resizable width (wide enough for the Royal/Ashen state tag)
     char s_item_filter[64] = "";       // file-scope so a dev RPC (vmap items <q>) can drive it for tests
     int s_custom_seq = 1;              // auto-name counter
     char s_grace_filter[64] = "";   // grace-list search box
@@ -1012,7 +1013,10 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // (no native ER map needed). Rebuilds the hit list only when the query changes (name lookups cached).
     if (s_show_item_search && active_world == 0)
     {
-        struct IHit { std::string label; int32_t name_id; int group; int count; };
+        // state_id splits a same-name/same-page item into ROYAL vs ASHEN Capital (and other pre/post
+        // story-state regions), so a player doesn't hunt an item in the wrong game state — `state` is the
+        // human tag, `reachable` = is that state the CURRENT game state (via the live story flag).
+        struct IHit { std::string label; int32_t name_id; int group; int count; int state_id; std::string state; bool reachable; };
         static std::vector<IHit> s_ihits;
         static std::string s_ihits_q = "\x01";   // sentinel ≠ "" so an empty box builds once (clears list)
 
@@ -1045,7 +1049,30 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             if (s_ihits_q.size() >= 2)
             {
                 std::unordered_map<int32_t, std::string> loc_cache, en_cache;
-                std::map<int64_t, int> hitc;                 // (name_id<<2 | group) -> instance count
+                std::unordered_map<int, bool> flag_cache;    // story flag -> live state (read once per flag)
+                std::map<int64_t, int> hitc;                 // (name_id, state, group) -> instance count
+                // A marker's pre/post story state: secondary_flag = appears-post-event (Ashen);
+                // hide_when_flag = pre-event / consumed-post-event (Royal). state_id splits the rows;
+                // reachable = does the current game state match (live flag). Never both flags on a tile.
+                auto story = [&](const goblin::worldmap::Marker &m, int &sid, bool &reach) -> std::string {
+                    int f = m.secondary_flag; bool post = true;
+                    if (!f) { f = m.hide_when_flag; post = false; }
+                    if (!f) { sid = 0; reach = true; return std::string(); }
+                    auto fc = flag_cache.find(f);
+                    if (fc == flag_cache.end())
+                        fc = flag_cache.emplace(f, goblin::overlay_api::read_event_flag((uint32_t)f)).first;
+                    reach = post ? fc->second : !fc->second;   // post: reachable when flag SET; pre: when UNSET
+                    sid = f * 2 + (post ? 1 : 0);
+                    const char *t;
+                    if (f == goblin::flag::StoryErdtreeOnFire)        t = post ? "Ashen Capital"      : "Royal Capital";
+                    else if (f == goblin::flag::StoryCharmBroken)     t = post ? "post charm-break"   : "pre charm-break";
+                    else if (f == goblin::flag::StorySealingTreeBurnt)t = post ? "post seal-tree-burn": "pre seal-tree-burn";
+                    else                                             t = post ? "post-event"        : "pre-event";
+                    return std::string(t);
+                };
+                auto keyof = [](int32_t nid, int sid, int g) {
+                    return ((int64_t)nid << 40) | ((int64_t)(sid & 0x3FFFFFFF) << 2) | (int64_t)g;
+                };
                 for (auto *L : overlay_layers())
                 {
                     if (!L) continue;
@@ -1065,22 +1092,25 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                         if (loc.empty() && en.empty()) continue;
                         if (!matches_all_tokens(loc + " " + en, s_item_filter)) continue;
                         const int g = m.group & 3;
+                        int sid; bool reach; std::string st = story(m, sid, reach);
                         // Mark EVERY matching instance (not deduped like the list rows), capped.
                         if (s_search_mark_on && (int)marks.size() < s_search_mark_max)
                             marks.push_back({m.worldX, m.worldZ, g});
-                        const int64_t k = ((int64_t)m.name_id << 2) | g;
+                        const int64_t k = keyof(m.name_id, sid, g);
                         if (hitc[k]++ == 0)
                         {
                             std::string label = loc.empty() ? en : loc;
                             if (!en.empty() && en != label) label += " (" + en + ")";
-                            s_ihits.push_back({label, m.name_id, g, 0});
+                            s_ihits.push_back({label, m.name_id, g, 0, sid, std::move(st), reach});
                         }
                     }
                 }
-                for (auto &h : s_ihits) h.count = hitc[((int64_t)h.name_id << 2) | h.group];
+                for (auto &h : s_ihits) h.count = hitc[keyof(h.name_id, h.state_id, h.group)];
                 std::sort(s_ihits.begin(), s_ihits.end(), [](const IHit &a, const IHit &b) {
                     int c = a.label.compare(b.label);
-                    return c != 0 ? c < 0 : a.group < b.group;
+                    if (c != 0) return c < 0;
+                    if (a.group != b.group) return a.group < b.group;
+                    return a.state_id < b.state_id;   // Royal/Ashen rows of one item sort adjacent + stable
                 });
             }
             goblin::search_marks::set(std::move(marks));   // publish (empty when query<2 → clears)
@@ -1096,14 +1126,34 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         ImGui::BeginChild("##ilist");
         for (const IHit &h : s_ihits)
         {
-            char row[224];
-            std::snprintf(row, sizeof(row), "%s  (x%d) - %s##ih%d", h.label.c_str(), h.count,
-                          (h.group >= 0 && h.group < 4) ? kGroupNames[h.group] : "?", h.name_id);
+            const char *gname = (h.group >= 0 && h.group < 4) ? kGroupNames[h.group] : "?";
+            char row[288];
+            // State-gated items get a [Royal Capital] / [Ashen Capital] (…) suffix so the player knows
+            // WHICH game state holds the item + whether it is reachable RIGHT NOW — "here now" when the
+            // current state matches, "GATED" when it needs the other state (pre/post the story event).
+            if (h.state.empty())
+                std::snprintf(row, sizeof(row), "%s  (x%d) - %s##ih%d_%d", h.label.c_str(), h.count,
+                              gname, h.name_id, h.state_id);
+            else
+                // Gated item: the state (Royal/Ashen Capital) is more useful than the redundant OW group,
+                // so it REPLACES it — and leads with a reachability badge so a wrong-state item is obvious
+                // at a glance even if the row is clipped.  [+] = here in the current game state, [x] = gated.
+                std::snprintf(row, sizeof(row), "%s %s  (x%d) - %s##ih%d_%d",
+                              h.reachable ? "[+]" : "[x]", h.label.c_str(), h.count, h.state.c_str(),
+                              h.name_id, h.state_id);
             if (ImGui::Selectable(row))
                 virtual_map_locate(h.name_id, h.group);   // centre the canvas on the hit + switch page
             if (ImGui::IsItemHovered())
-                ImGui::SetTooltip(tr("click: centre the map on it (%s)"),
-                                  (h.group >= 0 && h.group < 4) ? kGroupNames[h.group] : "?");
+            {
+                if (h.state.empty())
+                    ImGui::SetTooltip(tr("click: centre the map on it (%s)"), gname);
+                else
+                    ImGui::SetTooltip(h.reachable
+                                          ? tr("%s — in the CURRENT game state; click to centre")
+                                          : tr("%s — needs a different game state (the item is not here "
+                                               "in this playthrough state yet); click to centre"),
+                                      h.state.c_str());
+            }
         }
         ImGui::EndChild();
         ImGui::EndChild();

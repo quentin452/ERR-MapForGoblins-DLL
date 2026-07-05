@@ -25,6 +25,11 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **Item search distinguishes Royal vs Ashen Capital (and other pre/post story states).** A state-gated
+  item now shows its game-state in the vmap item-search results — e.g. `[+] Item — Royal Capital` (reachable
+  in the current playthrough state) vs `[x] Item — Ashen Capital` (needs the other state) — so you don't hunt
+  an item in Leyndell Royal Capital when your save is already in the Ashen Capital (or vice-versa). Royal and
+  Ashen versions of the same item split into separate rows; reachability is read live from the story flag.
 - **Runtime ADD-AEG: thread wall passed + engine accepts the spawn request (dev tool).** `spawn_asset` queues
   the AEG request and drains it inside a per-frame detour on the reqMgr update `FUN_1406d31f0` (er+0x6d31f0) —
   the registrar's own main-update thread — via the native by-id helper `FUN_1406d4e80(state, aegId, worldPos)`.
@@ -153,6 +158,12 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   each marker's vertices. Only the ERR dial fades; user-drawn exclusion rectangles stay hard.
 
 ### Fixed
+- **Leyndell Ashen Capital / Elden Throne markers no longer land bottom-left off-map.** The final boss
+  (Elden Beast), the Fractured Marika grace, Stakes of Marika, Summoning Pools and every other marker in a
+  Leyndell sub-area (Ashen Capital / Elden Throne, map areas 19/34/35) used to collapse to the map origin
+  (bottom-left corner) because those areas are dead-ends in the fold table (they have no outgoing conversion
+  row). The fold now lifts such a sub-area into its parent Leyndell block and folds that to the overworld,
+  so they overlay the real Leyndell location. (Verified: Elden Beast now at Leyndell instead of world (0,0).)
 - **Enemy-drop loot no longer appears twice (once off-map).** An item whose lot lives in BOTH
   `ItemLotParam_map` and `ItemLotParam_enemy` (enemy/boss drops — e.g. the Banished Knight Engvall
   spirit ash) was emitted as two markers: the correct one at the enemy, plus a redundant `_map` copy

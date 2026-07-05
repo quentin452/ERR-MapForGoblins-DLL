@@ -26,6 +26,11 @@ bool g_available = false;
 // nearest-base-point fallback (markers whose grid matches no exact base block).
 std::unordered_map<uint32_t, ConvRow> g_by_block;
 std::unordered_map<uint8_t, std::vector<ConvRow>> g_by_area;
+// Rows keyed by DST area — the reverse index. A "sub-map dead-end" area (Leyndell Ashen/Elden Throne
+// 19/34/35: it is a DST of block (11,5,0) but a SRC of no row) has no forward fold, so its markers used
+// to stay at raw grid ~0 = the bottom-left off-map corner. reverse_lookup lifts such a marker to its
+// PARENT frame (the row's src), after which the normal forward loop folds the parent to a terminal.
+std::unordered_map<uint8_t, std::vector<ConvRow>> g_by_dst_area;
 
 inline uint32_t block_key(uint8_t a, uint8_t gx, uint8_t gz) {
     return ((uint32_t)a << 16) | ((uint32_t)gx << 8) | (uint32_t)gz;
@@ -51,6 +56,25 @@ const ConvRow *lookup(uint8_t area, uint8_t gx, uint8_t gz) {
     return best;
 }
 
+// A row whose DST is `area` and whose SRC is a DIFFERENT area — used to lift a sub-map dead-end
+// (no forward row) into its parent frame. Prefer a src that itself has a forward row (i.e. can be
+// folded onward toward a terminal); else take any. nullptr if `area` is not a dst of any row.
+const ConvRow *reverse_lookup(uint8_t area) {
+    auto it = g_by_dst_area.find(area);
+    if (it == g_by_dst_area.end())
+        return nullptr;
+    const ConvRow *fallback = nullptr;
+    for (const auto &c : it->second) {
+        if (c.src_area == area)
+            continue;                       // not a real lift
+        if (!fallback)
+            fallback = &c;
+        if (g_by_area.count(c.src_area) || is_terminal(c.src_area))
+            return &c;                      // src can fold onward → best
+    }
+    return fallback;
+}
+
 } // namespace
 
 void invalidate() {
@@ -58,6 +82,7 @@ void invalidate() {
     g_available = false;
     g_by_block.clear();
     g_by_area.clear();
+    g_by_dst_area.clear();
 }
 
 bool ensure_built() {
@@ -83,6 +108,7 @@ bool ensure_built() {
                     ins.first->second = c;   // upgrade to the direct-to-overworld row
             }
             g_by_area[c.src_area].push_back(c);
+            g_by_dst_area[c.dst_area].push_back(c);
             ++n;
         }
     } catch (...) {
@@ -112,8 +138,31 @@ Folded fold(uint8_t area, uint8_t gx, uint8_t gz, float posX, float posZ) {
         if (is_terminal(a))
             break;
         const ConvRow *r = lookup(a, cgx, cgz);
-        if (!r)
+        if (!r) {
+            // No forward row for `a`. If `a` is a sub-map dead-end (a DST of some row, e.g. Leyndell
+            // Ashen/Elden Throne 19/34/35), lift it INTO its parent frame via that row's inverse, then
+            // retry — the parent (area 11) does have a forward row to the overworld terminal (a60). This
+            // is what fixes Elden Beast / Fractured Marika / all Ashen-Capital markers folding to (0,0).
+            const ConvRow *rev = reverse_lookup(a);
+            if (rev) {
+                wx += (rev->src_gx * 256.0 + rev->src_px) - (rev->dst_gx * 256.0 + rev->dst_px);
+                wz += (rev->src_gz * 256.0 + rev->src_pz) - (rev->dst_gz * 256.0 + rev->dst_pz);
+                a = rev->src_area;
+                // Select the parent's EXACT block, not wx/256 — the nearest-base fallback in lookup()
+                // ignores terminal preference and would return the parent's row BACK to this sub-map
+                // (11->19), ping-ponging to a net-zero no-op. The exact block hits g_by_block, which the
+                // terminal-upgrade prefers to route straight to the overworld (11->60).
+                cgx = rev->src_gx;
+                cgz = rev->src_gz;
+                // Provisional entrance = the lifted position, so the out-of-range snap below never
+                // targets (0,0) if (pathologically) no forward hop follows. A forward hop overwrites it.
+                f.ent_x = (float)wx;
+                f.ent_z = (float)wz;
+                any = true;
+                continue;   // retry from the parent frame (now foldable to a terminal)
+            }
             break;
+        }
         wx += (r->dst_gx * 256.0 + r->dst_px) - (r->src_gx * 256.0 + r->src_px);
         wz += (r->dst_gz * 256.0 + r->dst_pz) - (r->src_gz * 256.0 + r->src_pz);
         a = r->dst_area;
