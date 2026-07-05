@@ -14,6 +14,13 @@ namespace goblin::overlay::panel
 {
 using goblin::i18n::tr;  // overlay UI localization (lang/<code>.txt)
 
+// Force the in-game minimap to stay drawn while its settings section is expanded, even with the vmap /
+// native map open — otherwise tuning the minimap sliders gives no live feedback (map_renderer.cpp:2541
+// hard-hides the minimap under any full map). Stamped every frame the section is open; expires ~1 frame
+// after the settings stop drawing (F1 closed / section collapsed). map_renderer.cpp reads the accessor.
+namespace { int s_minimap_focus_frame = -1000; }
+bool minimap_settings_focused() { return ImGui::GetFrameCount() - s_minimap_focus_frame <= 1; }
+
 void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
 {
     // Master on/off + Save.
@@ -241,6 +248,7 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
     if (f.filtering && show_minimap) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
     if (show_minimap && ImGui::CollapsingHeader(tr("Minimap (in-game HUD)")))
     {
+        s_minimap_focus_frame = ImGui::GetFrameCount();  // keep the minimap drawn over the vmap while tuning
         ImGui::Checkbox(tr("Show minimap (corner HUD during gameplay)"),
                         goblin::overlay_api::cfg_showMinimap_ptr());
         if (ImGui::IsItemHovered())

@@ -2000,64 +2000,10 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             s_locate_pts.clear();   // expired → stop drawing
     }
 
-    // the displayed group (underground overlaps the overworld in XZ, so a cross-group dot would mislead).
-    if (active_world == 0)
-    {
-        int parea = 0, pgroup = 0;
-        float pwx = 0.f, pwz = 0.f;
-        if (goblin::overlay_api::get_player_map_pos(parea, pwx, pwz, nullptr, nullptr, &pgroup) &&
-            pgroup == s_group)
-        {
-            ImVec2 pp = w2s(pwx, pwz);
-            if (pp.x >= origin.x && pp.x <= canvas_end.x && pp.y >= origin.y && pp.y <= canvas_end.y)
-            {
-                // Heading arrow when the yaw resolves, else a plain dot. Same convention as the minimap
-                // (a = yaw + π), but expressed in WORLD dir then run through the vmap's axis signs so it
-                // stays correct if the canvas is flipped: world fwd = (sin a, cos a); screen dir =
-                // (s_sx·fwd_x, s_sz·fwd_z) → matches the minimap's (sin a, −cos a) at the default signs.
-                float yaw = 0.f;
-                if (goblin::overlay_api::get_player_facing_yaw(yaw))
-                {
-                    const float a = yaw + 3.14159265f;
-                    float fx = s_sx * std::sin(a), fz = s_sz * std::cos(a);
-                    const float len = std::sqrt(fx * fx + fz * fz);
-                    if (len > 1e-4f) { fx /= len; fz /= len; }
-                    const ImVec2 fwd(fx, fz), rgt(-fwd.y, fwd.x);
-                    // NATIVE player cursor = MENU_MAP_Player_01 (arrow+circle) rotated to face yaw, same as
-                    // the minimap. Tall sprite (72x150) → keep aspect. Red-triangle fallback if unresolved.
-                    void *pt = nullptr; float pu0, pv0, pu1, pv1;
-                    if (goblin::overlay_api::map_point_glyph_uv("MENU_MAP_Player_01", -1, pt, pu0, pv0, pu1, pv1) && pt)
-                    {
-                        const float hh = 16.0f * uiScale, hw = hh * (72.0f / 150.0f);
-                        // Cool glow halo + bright tint so the yellow player pin stands out from the yellow markers.
-                        dl->AddCircleFilled(pp, hh * 0.9f, IM_COL32(40, 130, 255, 95));
-                        const ImVec2 tl(pp.x - rgt.x * hw + fwd.x * hh, pp.y - rgt.y * hw + fwd.y * hh);
-                        const ImVec2 tr(pp.x + rgt.x * hw + fwd.x * hh, pp.y + rgt.y * hw + fwd.y * hh);
-                        const ImVec2 br(pp.x + rgt.x * hw - fwd.x * hh, pp.y + rgt.y * hw - fwd.y * hh);
-                        const ImVec2 bl(pp.x - rgt.x * hw - fwd.x * hh, pp.y - rgt.y * hw - fwd.y * hh);
-                        dl->AddImageQuad((ImTextureID)pt, tl, tr, br, bl, ImVec2(pu0, pv0), ImVec2(pu1, pv0),
-                                         ImVec2(pu1, pv1), ImVec2(pu0, pv1), IM_COL32(255, 255, 210, 255));
-                    }
-                    else
-                    {
-                        const float L = 11.f * uiScale, B = 6.f * uiScale;
-                        const ImVec2 tip(pp.x + fwd.x * L, pp.y + fwd.y * L);
-                        const ImVec2 bl(pp.x - fwd.x * B + rgt.x * B, pp.y - fwd.y * B + rgt.y * B);
-                        const ImVec2 br(pp.x - fwd.x * B - rgt.x * B, pp.y - fwd.y * B - rgt.y * B);
-                        dl->AddTriangleFilled(tip, bl, br, IM_COL32(255, 48, 48, 255));
-                        dl->AddTriangle(tip, bl, br, IM_COL32(255, 255, 255, 235), 1.5f * uiScale);
-                    }
-                }
-                else
-                {
-                    dl->AddCircleFilled(pp, 5.0f * uiScale, IM_COL32(255, 48, 48, 255));
-                    dl->AddCircle(pp, 5.0f * uiScale, IM_COL32(255, 255, 255, 235), 0, 1.5f * uiScale);
-                }
-            }
-        }
-    }
+    // NOTE: the PLAYER cursor is drawn further down (after custom pins + the death marker) so it sits ON
+    // TOP of them — it used to draw here and got covered. See the "Player cursor" block below.
 
-    // Custom player-placed markers — drawn ON TOP of every icon (like the player dot): a colored pin
+    // Custom player-placed markers — drawn under the player cursor (moved below): a colored pin
     // (teardrop) + name, for the markers tagged to the displayed group. Right-click the canvas to drop one.
     if (active_world == 0)
     {
@@ -2096,6 +2042,74 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                 const ImVec2 mp = ImGui::GetIO().MousePos;
                 if (hovered && std::fabs(mp.x - p.x) <= h && std::fabs(mp.y - p.y) <= h)
                     ImGui::SetTooltip("%s — %d %s", tr("Bloodstain"), dsouls, tr("runes"));
+            }
+        }
+    }
+
+    // Player cursor — drawn AFTER custom pins + the death marker so it sits ON TOP of them (it used to
+    // draw above the marker loop and got covered). Only on the displayed group (underground overlaps the
+    // overworld in XZ, so a cross-group dot would mislead).
+    if (active_world == 0)
+    {
+        int parea = 0, pgroup = 0;
+        float pwx = 0.f, pwz = 0.f;
+        if (goblin::overlay_api::get_player_map_pos(parea, pwx, pwz, nullptr, nullptr, &pgroup) &&
+            pgroup == s_group)
+        {
+            ImVec2 pp = w2s(pwx, pwz);
+            if (pp.x >= origin.x && pp.x <= canvas_end.x && pp.y >= origin.y && pp.y <= canvas_end.y)
+            {
+                // Heading arrow when the yaw resolves, else a plain dot. Same convention as the minimap
+                // (a = yaw + π), but expressed in WORLD dir then run through the vmap's axis signs so it
+                // stays correct if the canvas is flipped: world fwd = (sin a, cos a); screen dir =
+                // (s_sx·fwd_x, s_sz·fwd_z) → matches the minimap's (sin a, −cos a) at the default signs.
+                float yaw = 0.f;
+                if (goblin::overlay_api::get_player_facing_yaw(yaw))
+                {
+                    const float a = yaw + 3.14159265f;
+                    float fx = s_sx * std::sin(a), fz = s_sz * std::cos(a);
+                    const float len = std::sqrt(fx * fx + fz * fz);
+                    if (len > 1e-4f) { fx /= len; fz /= len; }
+                    const ImVec2 fwd(fx, fz), rgt(-fwd.y, fwd.x);
+                    // NATIVE player cursor = MENU_MAP_Player_01 (arrow+circle) rotated to face yaw, same as
+                    // the minimap. Tall sprite (72x150) → keep aspect. Red-triangle fallback if unresolved.
+                    void *pt = nullptr; float pu0, pv0, pu1, pv1;
+                    if (goblin::overlay_api::map_point_glyph_uv("MENU_MAP_Player_01", -1, pt, pu0, pv0, pu1, pv1) && pt)
+                    {
+                        const float hh = 16.0f * uiScale, hw = hh * (72.0f / 150.0f);
+                        // Cool glow halo + bright tint so the yellow player pin stands out from the yellow markers.
+                        // The halo is a CONSTANT-px glow, so zoomed right in it becomes a blob covering the
+                        // character on the terrain art — fade it out past ~0.3 px/unit (gone by ~1.0).
+                        int haloA = 95;
+                        if (s_zoom > 0.30f)
+                        {
+                            const float f = 1.0f - (s_zoom - 0.30f) / 0.70f;  // 1 at 0.30 px/unit → 0 by ~1.0
+                            haloA = f > 0.0f ? (int)(95.0f * f) : 0;
+                        }
+                        if (haloA > 0)
+                            dl->AddCircleFilled(pp, hh * 0.9f, IM_COL32(40, 130, 255, haloA));
+                        const ImVec2 tl(pp.x - rgt.x * hw + fwd.x * hh, pp.y - rgt.y * hw + fwd.y * hh);
+                        const ImVec2 tr(pp.x + rgt.x * hw + fwd.x * hh, pp.y + rgt.y * hw + fwd.y * hh);
+                        const ImVec2 br(pp.x + rgt.x * hw - fwd.x * hh, pp.y + rgt.y * hw - fwd.y * hh);
+                        const ImVec2 bl(pp.x - rgt.x * hw - fwd.x * hh, pp.y - rgt.y * hw - fwd.y * hh);
+                        dl->AddImageQuad((ImTextureID)pt, tl, tr, br, bl, ImVec2(pu0, pv0), ImVec2(pu1, pv0),
+                                         ImVec2(pu1, pv1), ImVec2(pu0, pv1), IM_COL32(255, 255, 210, 255));
+                    }
+                    else
+                    {
+                        const float L = 11.f * uiScale, B = 6.f * uiScale;
+                        const ImVec2 tip(pp.x + fwd.x * L, pp.y + fwd.y * L);
+                        const ImVec2 bl(pp.x - fwd.x * B + rgt.x * B, pp.y - fwd.y * B + rgt.y * B);
+                        const ImVec2 br(pp.x - fwd.x * B - rgt.x * B, pp.y - fwd.y * B - rgt.y * B);
+                        dl->AddTriangleFilled(tip, bl, br, IM_COL32(255, 48, 48, 255));
+                        dl->AddTriangle(tip, bl, br, IM_COL32(255, 255, 255, 235), 1.5f * uiScale);
+                    }
+                }
+                else
+                {
+                    dl->AddCircleFilled(pp, 5.0f * uiScale, IM_COL32(255, 48, 48, 255));
+                    dl->AddCircle(pp, 5.0f * uiScale, IM_COL32(255, 255, 255, 235), 0, 1.5f * uiScale);
+                }
             }
         }
     }

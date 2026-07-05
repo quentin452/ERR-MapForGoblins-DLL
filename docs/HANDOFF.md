@@ -1190,10 +1190,20 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
 
 Two read-only Sonnet subagents ran at session end; findings banked here (NOT yet actioned).
 
-**★ vmap/minimap player DX (3 real bugs, all RENDER-side = hot-reloadable):**
-1. **Player blue circle not zoom-aware** — `panel_virtual_map.cpp:2033` `AddCircleFilled(pp, hh*0.9f, blue)`, `hh=16*uiScale`; `uiScale` is DPI-only, no link to `s_zoom` → constant-px blob over the character when zoomed in. Fix: taper/skip the halo (:2033) + fallback dot (:2053-54) past a zoom threshold.
-2. **Player z-order wrong on vmap** — player draws :2004-2058 but custom pins (:2062) + death marker (:2079) + region labels draw AFTER → cover the player (comment :2060 wrongly claims "on top"). Minimap already draws player last (correct). Fix: move the player block after the custom-pins/death-marker block.
-3. **Minimap settings invisible while vmap open** — `map_renderer.cpp:2541` hard-returns (no minimap) when vmap/native map open; no override. Tweaking minimap sliders = no feedback (worse once settings merge into vmap). Fix: `panel_settings.cpp:242` CollapsingHeader-open → a `minimap_settings_focused()` flag → `map_renderer.cpp:2541` guard `… && !minimap_settings_focused()` (force-draw minimap over vmap while its settings open).
+**★ vmap/minimap player DX (3 real bugs, all RENDER-side = hot-reloadable) — ✅ ALL FIXED 2026-07-06 (both builds link clean; NOT yet in-game verified — do a `reload_overlay` pass next boot):**
+1. **✅ Player blue circle not zoom-aware** — the constant-px halo behind the player pin now fades as `s_zoom`
+   climbs past 0.30 px/unit (gone by ~1.0) so it stops blobbing over the character when zoomed in
+   (`panel_virtual_map.cpp`, the `MENU_MAP_Player_01` halo). ⚠ used a manual taper, NOT `std::max` — the
+   windows.h `max` macro clobbers `std::max(` in this TU (compile error `expected unqualified-id`); use
+   `(std::max)()` or a plain ternary here.
+2. **✅ Player z-order wrong on vmap** — moved the whole player-cursor block to AFTER the custom-pins + death-
+   marker blocks (still before region labels, which are text pills meant to sit on top), so the player draws
+   over them now. Left a pointer comment where it used to be.
+3. **✅ Minimap settings invisible while vmap open** — `panel_settings.cpp` now stamps `s_minimap_focus_frame`
+   every frame its "Minimap (in-game HUD)" CollapsingHeader is open + exposes `minimap_settings_focused()`
+   (frame-stamp, auto-expires ~1 frame after the settings stop drawing); `map_renderer.cpp:draw_minimap` gates
+   the vmap/native-map hide on `!minimap_settings_focused()` → the minimap force-draws over the vmap while you
+   tune its sliders, giving live feedback.
 
 **★ build_pipeline.py dead-stage audit (cleanup-scoping):**
 - SAFE DELETE (confirmed dead, no Stage + no consumer): `generate_{gestures,hero_tomb_statues,hostile_npcs,imp_statues,kindling_spirits_massedit,maps,material_nodes,paintings,pieces_massedit,seal_puzzles,spirit_springs,stakes,summoning_pools}.py`, `extract_seal_puzzles.py`, + NEW `generate_model_aliases.py` and its ORPHANED uncompiled output `src/generated/goblin_model_aliases.{hpp,cpp}` (not in CMakeLists). Likely also `extract_rune_positions.py` (superseded), `extract_err_collectibles.py` (write-only output).
