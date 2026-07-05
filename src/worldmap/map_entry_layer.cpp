@@ -975,7 +975,7 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
         return nullptr;
     };
 
-    int emitted = 0, no_entity = 0, dup = 0, treasure_dup = 0, unclassified = 0, catchall = 0;
+    int emitted = 0, no_entity = 0, dup = 0, treasure_dup = 0, unclassified = 0, catchall = 0, lot_covered_dup = 0;
     int emit_direct = 0, emit_ev1200 = 0;  // by mechanism (lotType 1 = direct, 2 = event-1200)
     int boss_piece_emitted = 0, boss_piece_no_piece = 0;  // boss-reward Rune/Ember Piece recovery
     // Mechanism C (sequence-sibling) diag.
@@ -992,8 +992,21 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
     std::unordered_set<uint32_t> base_lots;
     base_lots.reserve(awards.size());
     for (const DiskEmevd &a : awards) base_lots.insert(a.lotId);
+    // Lot-coverage dedup (the one the loot_disk.cpp comment promises): a lot that a type-2
+    // (ItemLotParam_enemy) award places at a real position is an enemy/boss drop — the enemy pos is
+    // authoritative. A type-1 (_map, direct/perTile) award for the SAME lot is then a redundant copy,
+    // often mis-anchored to a wrong overworld grid (the Banished Knight Engvall spirit-ash double:
+    // type-2 → its m30 dungeon pos, type-1 → a degenerate area60 grid(13,9) = off-map margin). The
+    // (entity,lot) `seen` set doesn't catch it because the two awards resolve to DIFFERENT entities.
+    // Pre-scan the type-2 lots that actually RESOLVE (so a lot is never lost when the enemy join finds
+    // no pos) and skip the non-boss type-1 copy below. bossReward type-1 bases are exempt (their base
+    // emits alongside the boss piece — different mechanism, not a duplicate of a type-2).
+    std::unordered_set<uint32_t> type2_placed_lots;
+    for (const DiskEmevd &a : awards)
+        if (a.lotType == 2 && resolve_pos(a)) type2_placed_lots.insert(a.lotId);
     for (const DiskEmevd &a : awards)
     {
+        if (a.lotType == 1 && !a.bossReward && type2_placed_lots.count(a.lotId)) { ++lot_covered_dup; continue; }
         // Resolve the world anchor ONCE (asset-aware for direct/boss awards + loose-anchor fallback).
         // Shared by the boss-piece walk and the normal emit so it's computed/counted a single time.
         const DiskEnemy *pos = resolve_pos(a);
@@ -1128,13 +1141,13 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
     }
     spdlog::info("[LOOTDISK] emevd drops: {} base markers ({} direct + {} event-1200) + {} sequence-"
                  "siblings = {} total ({} awards; filtered: {} entity-not-an-msb-enemy, {} "
-                 "(entity,lot)-dedup, {} treasure-dup, {} base-unclassified; siblings: {} rune/ember-"
-                 "skipped, {} unclassified)",
+                 "(entity,lot)-dedup, {} type1-covered-by-type2, {} treasure-dup, {} base-unclassified; "
+                 "siblings: {} rune/ember-skipped, {} unclassified)",
                  emitted, emit_direct, emit_ev1200, sib.emitted, emitted + sib.emitted,
-                 (int)awards.size(), no_entity, dup, treasure_dup, unclassified, sib.runeember,
-                 sib.unclassified);
+                 (int)awards.size(), no_entity, dup, lot_covered_dup, treasure_dup, unclassified,
+                 sib.runeember, sib.unclassified);
     g_skip.no_anchor += no_entity;
-    g_skip.dedup += dup + treasure_dup;
+    g_skip.dedup += dup + treasure_dup + lot_covered_dup;
     g_skip.unclassified += unclassified;                 // phantom lots (key<=0), correctly skipped
     g_skip.catchall += catchall + sib.unclassified;      // resolved-but-uncategorised items → Other (drawn)
     g_skip.by_design += sib.runeember;

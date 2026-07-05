@@ -239,10 +239,49 @@ int virtual_map_locate(int32_t name_id, int group)
 // (the vmap re-projects those via the live converter at draw, so a few UG/DLC edge cases can differ). RPC.
 std::string virtual_map_offmap_probe()
 {
-    auto implausible = [](float x, float z) {
+    // Gross test: origin-zero or way past any map extent.
+    auto crude_bad = [](float x, float z) {
         return (x == 0.f && z == 0.f) || x < -40000.f || x > 40000.f || z < -40000.f || z > 40000.f;
     };
-    size_t total = 0, off = 0, zero = 0, oob = 0;
+    // In-frame MARGIN test: the crude ±40000/(0,0) gate misses a marker that lands inside the frame but
+    // well outside where its page's markers actually cluster — a degenerate margin dupe (the Banished
+    // Knight Engvall type-1 at area60 grid(13,9) = world(2856,2366), below the populated overworld; the
+    // crude test called it "onmap"). Derive each page's (group's) valid extent LIVE from the bulk of its
+    // OWN markers (robust 0.5%/99.5% percentiles, padded) so it stays mod-agnostic — no hardcoded ER grid
+    // range — then flag in-frame outliers as MARGIN. Needs enough markers to trust a bound.
+    std::vector<float> gxs[4], gzs[4];
+    for (auto *L : overlay_layers())
+    {
+        if (!L) continue;
+        for (const goblin::worldmap::Marker &m : L->markers())
+        {
+            if (crude_bad(m.worldX, m.worldZ)) continue;
+            int g = (m.group >= 0 && m.group < 4) ? m.group : 0;
+            gxs[g].push_back(m.worldX); gzs[g].push_back(m.worldZ);
+        }
+    }
+    float xlo[4] = {0}, xhi[4] = {0}, zlo[4] = {0}, zhi[4] = {0};
+    bool have_bounds[4] = {false, false, false, false};
+    auto pct = [](std::vector<float> &v, float p) {
+        std::sort(v.begin(), v.end());
+        return v[(size_t)(p * (v.size() - 1))];
+    };
+    for (int g = 0; g < 4; ++g)
+    {
+        if (gxs[g].size() < 64) continue;   // too few to trust a bound (sparse/custom page) — no margin test
+        float x0 = pct(gxs[g], 0.005f), x1 = pct(gxs[g], 0.995f);
+        float z0 = pct(gzs[g], 0.005f), z1 = pct(gzs[g], 0.995f);
+        float padx = (x1 - x0) * 0.05f + 512.f, padz = (z1 - z0) * 0.05f + 512.f;
+        xlo[g] = x0 - padx; xhi[g] = x1 + padx; zlo[g] = z0 - padz; zhi[g] = z1 + padz;
+        have_bounds[g] = true;
+    }
+    auto margin_bad = [&](const goblin::worldmap::Marker &m) {
+        int g = (m.group >= 0 && m.group < 4) ? m.group : 0;
+        if (!have_bounds[g]) return false;
+        return m.worldX < xlo[g] || m.worldX > xhi[g] || m.worldZ < zlo[g] || m.worldZ > zhi[g];
+    };
+
+    size_t total = 0, off = 0, zero = 0, oob = 0, marg = 0;
     std::map<int, int> byArea, byCat;   // raw ER area -> count, category -> count
     std::vector<std::string> samples;
     for (auto *L : overlay_layers())
@@ -251,33 +290,39 @@ std::string virtual_map_offmap_probe()
         for (const goblin::worldmap::Marker &m : L->markers())
         {
             ++total;
-            if (!implausible(m.worldX, m.worldZ)) continue;
-            ++off;
             const bool z0 = (m.worldX == 0.f && m.worldZ == 0.f);
-            if (z0) ++zero; else ++oob;
+            const bool crude = crude_bad(m.worldX, m.worldZ);
+            const bool mg = !crude && margin_bad(m);
+            if (!crude && !mg) continue;
+            ++off;
+            const char *kind;
+            if (z0) { ++zero; kind = "ZERO"; }
+            else if (crude) { ++oob; kind = "OOB"; }
+            else { ++marg; kind = "MARGIN"; }
             byArea[m.raw_area]++; byCat[m.category]++;
             if (samples.size() < 25)
             {
                 std::string nm = m.name_id >= 0 ? goblin::overlay_api::lookup_text_utf8(m.name_id) : std::string();
                 const char *cl = goblin::overlay_api::category_label(m.category);
-                char b[192];
-                std::snprintf(b, sizeof(b), "'%s' area%d grid(%d,%d) [%s] w(%.0f,%.0f) %s",
-                              nm.c_str(), m.raw_area, m.raw_gx, m.raw_gz, cl ? cl : "?",
-                              m.worldX, m.worldZ, z0 ? "ZERO" : "OOB");
+                char b[208];
+                std::snprintf(b, sizeof(b), "'%s' area%d grid(%d,%d) g%d [%s] w(%.0f,%.0f) %s",
+                              nm.c_str(), m.raw_area, m.raw_gx, m.raw_gz, m.group, cl ? cl : "?",
+                              m.worldX, m.worldZ, kind);
                 samples.push_back(b);
             }
         }
     }
-    spdlog::info("[OFFMAP] {} off-map of {} markers ({} origin-zero, {} out-of-range)", off, total, zero, oob);
+    spdlog::info("[OFFMAP] {} off-map of {} markers ({} origin-zero, {} out-of-range, {} in-frame margin)",
+                 off, total, zero, oob, marg);
     { std::string s; for (auto &kv : byArea) { char b[24]; std::snprintf(b, sizeof(b), " area%d:%d", kv.first, kv.second); s += b; }
       spdlog::info("[OFFMAP] by raw ER area (which map):{}", s.empty() ? " (none)" : s.c_str()); }
     { std::string s; for (auto &kv : byCat) { char b[32]; const char *cl = goblin::overlay_api::category_label(kv.first);
         std::snprintf(b, sizeof(b), " %s:%d", cl ? cl : "?", kv.second); s += b; }
       spdlog::info("[OFFMAP] by category:{}", s.empty() ? " (none)" : s.c_str()); }
     for (auto &s : samples) spdlog::info("[OFFMAP]   {}", s);
-    char out[192];
-    std::snprintf(out, sizeof(out), "ok offmap: %zu off-map of %zu markers (%zu origin-zero, %zu out-of-range) — see [OFFMAP] log",
-                  off, total, zero, oob);
+    char out[208];
+    std::snprintf(out, sizeof(out), "ok offmap: %zu off-map of %zu markers (%zu origin-zero, %zu out-of-range, %zu margin) — see [OFFMAP] log",
+                  off, total, zero, oob, marg);
     return out;
 }
 

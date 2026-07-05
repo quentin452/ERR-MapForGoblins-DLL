@@ -153,6 +153,12 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   each marker's vertices. Only the ERR dial fades; user-drawn exclusion rectangles stay hard.
 
 ### Fixed
+- **Enemy-drop loot no longer appears twice (once off-map).** An item whose lot lives in BOTH
+  `ItemLotParam_map` and `ItemLotParam_enemy` (enemy/boss drops — e.g. the Banished Knight Engvall
+  spirit ash) was emitted as two markers: the correct one at the enemy, plus a redundant `_map` copy
+  mis-anchored to a degenerate grid in the empty map margin. The disk-loot pass now drops the `_map`
+  copy when the `_enemy` award already places the lot. Gated so a lot is never lost if the enemy join
+  finds no position.
 - **Underground / DLC markers land in the right place on the Virtual World Map.** Base-underground
   (Ainsel River / Siofra River / Deeproot Depths, incl. the Nameless Eternal City) and DLC markers used to
   clump in the bottom-left corner of the vmap because it drew the pre-baked position, which under-/un-folds
