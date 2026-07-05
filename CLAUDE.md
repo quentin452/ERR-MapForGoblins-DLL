@@ -14,6 +14,34 @@ Claude Code auto-loads this file. The full agent handoff lives in `AGENTS.md`, i
 - On any completed task that changes durable state, update the right `docs/memory/` file (+ `changelog.md`
   if it adds a feature or fixes a bug) and commit — never stash it in a side memory.
 
+## Overlay hot-reload split — keep BOTH DLLs linking (avoid drift)
+
+The mod builds two ways from the SAME sources: the shipped **single DLL** (`build-linux`, default) and a
+DEV **split** (`build-linux-hotreload`, `GOBLIN_OVERLAY_HOTRELOAD=ON`) that puts the draw layer in a
+swappable `goblin_overlay_render.dll` so render/marker/panel edits reload into the running game with **no
+restart** (watcher auto-swaps ~1.3s, or the `reload_overlay` RPC). Loop + tasks: see `docs/HANDOFF.md`
+"OVERLAY HOT-RELOAD RESYNC" + the `.vscode/tasks.json` "Hot-reload …" tasks.
+
+- **The split silently rots** because `build-linux` (single DLL) links every symbol regardless of the
+  host↔render boundary, so a new **host→render** call (e.g. a new `debug_rpc` verb calling a `panel::` or
+  `worldmap::` function) compiles fine in the default build but leaves the split's host DLL with an
+  undefined symbol. It bit twice already (2026-07-05 resync fixed ~40 of them).
+- **RULE: if your change adds or moves a call across the host↔render boundary** — host code (dllmain,
+  `goblin_debug_rpc.cpp`, `goblin_overlay.cpp`, `goblin_overlay_render_api.cpp`, `goblin_mod.cpp`) calling
+  into render code (`overlay_panel/`, `worldmap/map_entry_layer.cpp`/`map_renderer.cpp`/`grace_layer.cpp`,
+  `goblin_overlay_render.cpp`), or vice-versa — **before you finish, run:**
+  `ninja -C build-linux-hotreload MapForGoblins goblin_overlay_render` and fix any new `undefined symbol`.
+  (Pure host-only or render-only edits don't need it.) Fix patterns, in order of preference:
+  1. **Stateful data/logic file misfiled in render** → move it to `GOBLIN_HOST_SOURCES` + mark its public
+     API `GOBLIN_RENDER_API` (host exports; render imports via `MapForGoblins.lib`). See vworld/maptile.
+  2. **A render-resident fn the host must call** (marker/panel/relief code that must STAY hot-reloadable) →
+     add a loader export (`MFG_*` in the `map_entry_layer.cpp` extern block + typedef/field/GetProcAddress/
+     `call_*` wrapper in both branches of `goblin_overlay_render_loader.cpp`). std::string returns fill a
+     caller buffer. For a whole verb family, prefer ONE generic dispatch export (see `MFG_VmapCommand`).
+  3. **A render fn calling an unexported host fn** → mark the host fn `GOBLIN_RENDER_API`, or repoint the
+     render caller at the existing `overlay_api::` export.
+- Keep BOTH builds green at every commit; the default single-DLL build is the shipped/played one.
+
 ## VSCode dev tasks (`.vscode/tasks.json`)
 
 - Build/deploy + RPC test runners live here (Terminal ▸ Run Task…). "Run ONE RPC test (pick)" shows a
