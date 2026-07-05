@@ -99,3 +99,37 @@ Don't scan. Find WHERE the projection / combined ViewProj is written, in Ghidra:
 
 Feeds `runtime_modding_framework_vision.md` #4 (virtual greybox world), an in-game hknp collision wireframe
 (no Havok-VDB version lock), and any 3D-anchored HUD. Probe scripts: `D:\ghidra_scripts\w2s_probe*.py`.
+
+## ★ LIVE CALIBRATION 2026-07-05 (Linux/Proton) — VIEW+FOV confirmed, blocked on a CAMERA-RELATIVE render frame
+Ran the in-DLL `w2s_probe dot on` + `conv 0..3` calibration live (`tmp/w2s_calib.py`; full dump logged as
+`[W2S]`). The GameRendCameraSet instance resolves (`GameRend=0x24e7c500`), and the pieces are confirmed:
+- **VIEW@+0xF0 (live):**
+  ```
+  [-0.5960  0.0000  0.8030  0.0000]
+  [ 0.0000  1.0000  0.0000  0.0000]
+  [-0.8030  0.0000 -0.5960  0.0000]
+  [-2.1262  4.7951  3.9725  1.0000]   <- translation row
+  ```
+  Clean Y-rotation upper-3×3, 4th col (0,0,0,1) = **row-vector / DirectX** (`v·M`), as the static recon said.
+- **FOV CONFIRMED = 0.7505 rad** (~43°) — it's `lens@+0x54`; `lens@+0x5c = 500000` = the far plane. So the
+  `fovy` default in `goblin_w2s.cpp` was already right, and `+0x130` is identity (no combined VP), all as found.
+- **Convention = conv2** (row-vector `v·M`, **+Z forward**) — the ONLY one giving `fwd>0` for the player.
+
+**⛔ But no dot lands on screen — root cause = camera-RELATIVE rendering (a real gap the plan missed).**
+The VIEW **translation row is TINY: `(-2.13, 4.80, 3.97)`**. A true global world→view would have translation
+`= -R·cam_world_pos`, magnitude ~100+ for a camera at world ~(-58,92,99). It's ~4 ⇒ **the VIEW operates in a
+render frame RE-CENTRED near the camera** (ER rebases world coords near the camera for float precision — standard
+in large-world engines). Meanwhile `get_player_world_pos` (`LocalPlayer+0x6C0`) returns the **global** frame
+`(-58.13, 92.80, 99.97)`. Feeding global coords into a render-local VIEW projects into the wrong space:
+`conv2 view=(-47.76, 97.59, -102.29) → px=(320, -768)` (off the top). Note `vy = playerY(92.80)+transY(4.80)`
+= the Y row is pass-through identity, so the world Y is used raw against a ~4-unit translation = far off-screen.
+**This is NOT a wrong convention/FOV** (both are right) — it's a missing coordinate rebase.
+
+**⇒ NEXT (the real w2s3d unblocker): find the render REBASE ORIGIN** — the large offset the engine subtracts
+from world coords before the VIEW (near the camera/player, ≈ `(-56, 88, 96)` this frame). Then
+`player_render = player_global − origin`, project `player_render` through VIEW (conv2) → should lock to the feet.
+Candidates to scan: a `float3`/`double3` ≈ `(-56,88,96)` in the GameRend/camera struct, or the camera's GLOBAL
+position elsewhere in the struct, or a WorldChrMan render-origin field. Cheap next probe = extend `w2s_probe` to
+dump the qwords/floats around `GameRend+0x00..+0xF0` and near the camera and look for that ~(-56,88,96) vector.
+(Alternative reframing the user raised: don't ImGui-project at all — render the virtual 3D via a **separate 3D
+backend** sharing ER's swapchain/depth, which sidesteps needing this w2s matrix — see HANDOFF discussion.)
