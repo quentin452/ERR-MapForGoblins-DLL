@@ -28,6 +28,7 @@
 #include "goblin_markers.hpp"   // goblin::markers::set_event_flag()
 #include "goblin_worldmap_probe.hpp"   // get_live_view() for the marker prototype
 #include "goblin_heightfield.hpp"      // tick_present() — heightfield present-thread probe (D2.2)
+#include "goblin_w2s.hpp"              // draw_present() — 3D world-to-screen debug dot (present-thread)
 #include "goblin_custom_markers.hpp"   // death_marker::tick() — mirror the native GameDataMan bloodstain
 #include "goblin_map_data.hpp"         // generated::MAP_ENTRIES (graces for Phase 1)
 #include "worldmap/grace_layer.hpp"      // goblin::worldmap::GraceLayer
@@ -1914,6 +1915,10 @@ namespace
                 goblin::overlay_render_loader::call_draw_worldmap_markers(g_show, frame_ctx);
             if (minimap)
                 goblin::overlay_render_loader::call_draw_minimap_hud(frame_ctx);   // gameplay HUD (map closed) — self-gates overworld-only
+
+            // 3D world-to-screen calibration dot (present-thread; self-gates off unless `w2s_probe dot on`).
+            // Reads the live camera VIEW + player pos on THIS frame → no read-tearing. See goblin_w2s.
+            goblin::w2s::draw_present();
 
             // Debug-RPC command HUD (bottom-right): live feed of what a driver script is doing —
             // each command + its result, entries fading after a few seconds. Draws nothing when
