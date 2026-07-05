@@ -136,11 +136,22 @@ terrain. Conditions: base derived by the offline baker (reproducible, not hand-d
 log baked-vs-rederived-vs-authored so staleness is never silent.
 
 ## 9. Open items / first brick
+- **✅ FRAME VALIDATED 2026-07-05 (`far_relief_probe` RPC, in-game ERR).** The one blocking unknown — is the
+  parsed `posY` world-frame or block-local — is answered: **world-frame, directly usable, no per-tile Y
+  correction.** The probe (reads the cached `g_parsed`, no new parse) buckets area-60 collectible Y by tile:
+  **135,204 samples / 266 tiles; globalY [-17..1970]; within-tile relief mean 59; cross-tile |Δmedian| mean
+  49, max 530**; the median-Y strip is a smooth coastal→inland gradient. cross-tile Δ ≈ within-tile spread and
+  globalY spans the full elevation range continuously ⇒ not block-local. This CLEARS §7 risk (b) for the
+  overworld. Also confirms coverage is content-biased: **266 of ~1681 overworld tiles (~16%)** carry samples
+  → dense at POIs, holes in empty terrain (the honest limitation for the USER GATE). `far_relief_probe` is the
+  reusable oracle (also cross-checks D-far 0 later).
 - **First brick = D-far -1** (MSB Y-cloud v0) — FREE, no Havok, no new parse, ships visible relief. Then the
   **USER GATE** decides whether the collision bake (D-far 0) is even needed. **The heavy Havok path is gated
   behind v0 turning out insufficient** — likely we stop at v0 for a good while.
-- v0 build detail: find where `loot_disk` filters the placement stream and tee off `{x,z,y}` for ALL
-  placements (incl. the pot/jar "clutter") BEFORE the marker filter drops them.
+- v0 build detail: source = `g_parsed.collectibles` (+ enemies/treasures) in `map_entry_layer.cpp` — the
+  clutter is skipped for markers at the `!aeg_is_gather → continue` (~L579), so tee off `{worldX,worldZ,posY}`
+  for ALL placements (incl. pots/jars) from the cache BEFORE that filter, or in a dedicated pass over
+  `g_parsed`. Grid → `heightfield::Cell[]` (normals from grid gradient) → the existing D2 hillshade render.
 - (Only if the gate opens) confirm the `hkxpwv` per-tile naming + MSB map-piece transform (community-known;
   verify on ERR) and decide the heightfield format in D-far 0's spec.
 - Cross-ref: `heightfield_relief_plan.md` (near field), `imgui_only_map_plan.md` (Track D umbrella),
