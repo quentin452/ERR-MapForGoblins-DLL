@@ -414,6 +414,14 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   `active_world` half** — auto-set the active world from PlayerDim + re-key the relief/item-search/player-dot
   gates off "engine-backed" (not `active_world==0`) for when a WALKABLE custom world exists. Detail:
   `docs/plans/virtual_world_multi_world_design.md` Decision 2.
+- **★ Mod manifest system (`mod.toml`) — SLICE 1 DONE + LIVE-VERIFIED 2026-07-05 (`b3a1114`).** One
+  `<mod_folder>/mod.toml` declares the whole mod; `goblin::mod::load` (dllmain `init_mod`, after the subsystems)
+  realizes it. Slice 1 = `[mod]` name/version + `[style]` (enabled/mode/strength) → postfx at boot. No mod.toml =
+  no-op (backward-compat; subsystems still self-load). RPC `mod status|reload`. Verified: a test manifest with
+  `[style] mode=posterize` applied the restyle AT BOOT with no manual call. **NEXT slices** (`mod_manifest_system_plan.md`):
+  (2) the manifest OWNS the worlds/bundle/items load order (retire the standalone `init_*`); (3) the `[[object]]`
+  proc-mesh realizer (needs the proc-mesh lib — 3D-backend step 3); (4) named style presets; (5) `mfg_min`
+  version gate + realizer-logs-gaps. This is the framework's mod-authoring backbone.
 - **★ Greybox job #2b (restyle ER's render) — PROTOTYPED + LIVE-VERIFIED 2026-07-05 (`55afc49`).** The CHEAP
   path to restyling ER's own render (vs the hard #2c shader/PSO-override the user was weighing): a full-screen
   post-process pass in the present hook — copy backbuffer → temp SRV → full-screen style shader → backbuffer,
