@@ -5,9 +5,13 @@ The far-field companion to `heightfield_relief_plan.md` (Track D2, near-field li
 
 Grounded in the RE that reshaped the original prompt (`docs/re/far_terrain_heightmap_re_findings.md`):
 **there is NO far-terrain heightmap texture** — ER terrain is FLVER meshes, and the walkable-ground truth is
-the **`hkxpwv` map collision** (`hknpCompressedMeshShape`). This plan bakes that offline into a base
-heightfield and layers authored + detected overrides on top, so runtime cost is proportional to the *diff*,
-never the whole map.
+the **`hkxpwv` map collision** (`hknpCompressedMeshShape`).
+
+**Strategy: v0-first, heavy path GATED.** Ship a FREE relief v0 from the placement Y the disk-MSB parse
+already captures (~480K samples), evaluate it in-game, and **only** build the offline `hkxpwv` collision bake
+IF v0 proves insufficient (§6 USER GATE). The bake + incremental-override design (authored `.toml` = free;
+third-party mod = hash-detect + re-derive) is kept below the gate — runtime cost then stays proportional to
+the *diff*, never the whole map — but we likely stop at v0.
 
 ---
 
@@ -72,19 +76,42 @@ Two DIFFERENT override sources — do not conflate:
 - Multi-layer (caves/bridges): single-value rule = **topmost walkable** per cell (or match the raycast).
 - Near↔far consistency: both are `hknpCompressedMeshShape` walkable → no seam at the streaming boundary.
 
-## 6. Slices
-- **D-far 0 — offline baker (build step).** A dev tool (C#/Python w/ SoulsFormats-HKX, or Blender) that reads
-  `hkxpwv` for one dimension (overworld m60 first), dequantizes, world-transforms via MSB, rasterizes walkable
-  tris into an R16 heightfield + writes the per-tile hash manifest. Deliverable: `base_heightfield.bin` for
-  the overworld + a spec of its format (extent, cell size, world→cell map = the marker frame
-  `worldX=mapU+7040, worldZ=-mapV+16512`).
-- **D-far 1 — in-DLL load + sample + render.** Load the baked heightfield; `sample(x,z)→Y`; hillshade it on
-  the vmap (reuse the Track-D2 hillshade renderer). Blend with the live near-field raycast where loaded.
-- **D-far 2 — authored `.toml` overrides.** Patch the grid from bundle/vworld authored deltas (add/move
-  terrain, or a supplied heightmap PNG for a custom world). Free (no parse).
+## 6. Slices (v0-first, then a USER GATE)
+- **D-far -1 — MSB Y-cloud relief v0 (FREE, already-parsed) ← FIRST BRICK.** Tap the placement Y that the
+  disk-MSB parse ALREADY captures (`loot_disk` stores `posY = pos[1]` on treasures/enemies/collectibles/
+  regions/objacts/feature-assets — currently used only for the above/below-player badge). **Sample count is
+  large, not ~10K** (that's the *filtered visible markers*): the ERR log (2026-07-04) shows **479,549 asset
+  placements** + **26,057 enemy placements** parsed, each with a Y. **Key insight: the 476,655 "clutter"
+  assets (pots/jars) MFG DISCARDS for markers are the BEST ground-Y data** — small props rest ON the ground →
+  their base Y ≈ ground level. Build: keep `{x,z,y}` for the whole pre-filter placement stream (the parse
+  already iterates it — just don't drop it), then a **FILTERED** cloud→heightfield (NOT naïve):
+  1. **layer-separate** by tile/mapId (a basement point doesn't contaminate the field above);
+  2. **vertical outlier reject** (drop points > k·MAD above the local median → towers/ledges/roofs/flying
+     enemies; filter flying `c####` by NpcParam);
+  3. **per-cell robust stat** = median (or min-of-topmost) of the assets in the cell;
+  4. **type weighting** (ground clutter = high; big structures = low; graces = reliable anchors).
+  Render via the Track-D2 hillshade path. **Zero Havok, zero new disk parse, mod-agnostic** (mods change MSB →
+  auto-reflected). Coverage is **content-biased** (dense at POIs/dungeons, holes in truly-empty terrain) — the
+  one honest limitation.
+- **★ USER GATE (after v0 ships) — is v0 SUFFICIENT?** The user evaluates the v0 relief in-game.
+  - **SUFFICIENT → STOP HERE.** D-far 0/1 (the offline collision bake) become **unbuilt / optional**. No Havok
+    work at all. This is the intended happy path if the content-biased coverage looks good enough.
+  - **INSUFFICIENT** (open-terrain holes too visible, too coarse) → proceed to the collision bake below.
+- **D-far 0 — offline collision baker (build step) [ONLY IF v0 insufficient].** A dev tool (SoulsFormats-HKX /
+  HKLib / Blender) that reads `hkxpwv` for a dimension (overworld m60 first), dequantizes, world-transforms
+  via MSB, rasterizes walkable tris into an R16 heightfield + a per-tile hash manifest. Fills the open-terrain
+  holes v0 can't. Deliverable: `base_heightfield.bin` + a format spec (extent, cell size, world→cell map =
+  marker frame `worldX=mapU+7040, worldZ=-mapV+16512`). v0's cloud becomes its **cross-check oracle**.
+- **D-far 1 — in-DLL load baked + blend [with the bake].** Load the baked heightfield; `sample(x,z)→Y`;
+  blend: live raycast (near, exact) > baked collision (far) > MSB v0 (fill). Same hillshade renderer.
+- **Followup — authored Y for custom `.toml` objects (hypothetical).** When bundles/vworlds place custom
+  objects via `.toml`, each carries its Y (authored → exact). Feed those into the same cloud/heightfield so a
+  CUSTOM world gets relief from its own authored content (the new-world degenerate case, §3): base = ∅, the
+  `.toml` objects' Y ARE the surface. No parse — you wrote the heights. (Also the natural place for a supplied
+  heightmap PNG / procedural grid per custom world.)
 - **D-far 3 (optional, deferred) — third-party override detection + re-derive.** Hash-scan the mod overlay's
-  map files vs the manifest; for changed tiles, re-derive (needs the in-DLL Havok parser). Only for
-  terrain-reshaping mods; log baked-vs-rederived (no silent staleness).
+  map files vs the manifest; re-derive only changed tiles (needs the in-DLL Havok parser). Only for
+  terrain-reshaping mods; log baked-vs-rederived-vs-v0 (no silent staleness).
 - **Sea level (cheap, any slice):** `GXWaterHeightMap`/`GXWaveTerrain` or a global constant to classify
   far cells sea-vs-land (prompt #5).
 
@@ -109,12 +136,15 @@ terrain. Conditions: base derived by the offline baker (reproducible, not hand-d
 log baked-vs-rederived-vs-authored so staleness is never silent.
 
 ## 9. Open items / first brick
-- **First brick = D-far 0** (offline baker for the overworld) — it de-risks everything and produces a
-  shippable base heightfield with no in-DLL work. Then D-far 1 (load+render) banks visible value.
-- Confirm the exact `hkxpwv` per-tile naming + the MSB transform for map pieces (community-known; verify on
-  the ERR install).
-- Decide the heightfield format (extent/cell size/endianness) in D-far 0's spec.
+- **First brick = D-far -1** (MSB Y-cloud v0) — FREE, no Havok, no new parse, ships visible relief. Then the
+  **USER GATE** decides whether the collision bake (D-far 0) is even needed. **The heavy Havok path is gated
+  behind v0 turning out insufficient** — likely we stop at v0 for a good while.
+- v0 build detail: find where `loot_disk` filters the placement stream and tee off `{x,z,y}` for ALL
+  placements (incl. the pot/jar "clutter") BEFORE the marker filter drops them.
+- (Only if the gate opens) confirm the `hkxpwv` per-tile naming + MSB map-piece transform (community-known;
+  verify on ERR) and decide the heightfield format in D-far 0's spec.
 - Cross-ref: `heightfield_relief_plan.md` (near field), `imgui_only_map_plan.md` (Track D umbrella),
   `docs/re/far_terrain_heightmap_re_findings.md` (the source RE), `procedural_map_derivation_design.md`
-  (Convergence-trap: read the active install, never hardcode).
+  (Convergence-trap: read the active install, never hardcode), `virtual_world_multi_world_design.md`
+  (custom-world relief = the followup's authored-`.toml`-Y case).
 ```

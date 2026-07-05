@@ -22,10 +22,12 @@ RE-only session (Windows Ghidra `D:\ghidra_proj2\ER`), all committed, local mast
 - **Far-terrain elevation SCOPED** (`docs/re/far_terrain_heightmap_re_findings.md`): NO heightmap texture
   exists; terrain = FLVER/`.mapbnd`; the walkable-ground truth = **`hkxpwv` map collision =
   `hknpCompressedMeshShape`** (verified §5b). `WorldMapPieceParam` ruled out (2D reveal rect, no Y).
-- **PLAN: `docs/plans/far_terrain_relief_plan.md`** (far-field companion to `heightfield_relief_plan.md`):
-  whole-map relief via OFFLINE `hkxpwv` collision bake (community tooling, no in-DLL Havok parser) → base
-  heightfield + incremental override (authored `.toml` = free; third-party mod = hash-detect + re-derive).
-  **First brick = D-far 0 (offline baker for the overworld), not started.**
+- **PLAN: `docs/plans/far_terrain_relief_plan.md`** (far-field companion to `heightfield_relief_plan.md`),
+  **v0-first + USER GATE**: first brick = **D-far -1 = FREE relief from the already-parsed MSB placement Y**
+  (`loot_disk` keeps `posY`; the ERR log shows ~480K asset + 26K enemy placements — the "clutter" pots/jars
+  are the BEST ground-Y), filtered anti-false-relief (layer-sep + vertical-outlier reject + per-cell median +
+  type weight). Ship v0 → **if the user judges it sufficient, STOP** (the offline `hkxpwv` collision bake
+  D-far 0 stays UNBUILT/gated). Followup = authored Y for custom `.toml` objects. **Not started.**
 
 ## ⇒ SESSION WRAP 2026-07-04 (evening) — custom markers + death marker + minimap edge fix
 
