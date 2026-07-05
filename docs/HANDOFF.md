@@ -283,7 +283,15 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
 
 ## Open / next items
 
-- **★ 3D world-to-screen (camera view-proj matrix) — Windows RE prompt written (2026-07-05,
+- **★ 3D world-to-screen (camera view-proj matrix) — STATIC RECON DONE (2026-07-05,
+  `docs/re/windows_world_to_screen_camera_re_findings.md`; prompt `..._re_prompt.md`).** THE single unblocker
+  for the runtime-modding virtual worlds. Ghidra found: ViewProj candidates = `GameRend`/`GameRendCameraSet`
+  instance **+0xF0 / +0x130** (two consecutive 4×4, default-init in `FUN_1406800f0` er+0x6800f0); alt VIEW
+  block via `[[cam+0x10]+0x18]+0x10` (CSCam step er+0x76e7c0). Present hook (`hk_present`) + player-XYZ oracle
+  (`LocalPlayer+0x6C0`) already in the DLL → overlay path ready. **NEXT = LIVE `w2s_probe` RPC:** pin the
+  `CSCameraImp` FD4Singleton instance anchor + empirically confirm which block is ViewProj (row/col-major,
+  NDC-Y) by projecting player pos → feet. (Needs the game running — Proton dev box.)
+- **(old) 3D world-to-screen — Windows RE prompt written (2026-07-05,
   `docs/re/windows_world_to_screen_camera_re_prompt.md`).** THE single unblocker for the runtime-modding
   virtual worlds: read object world XYZ → project to screen → ImDrawList (the ImGui/ESP overlay path,
   `runtime_modding_framework_vision.md` #4). We have the 2D map w2s but NOT a 3D gameplay one. Target =
