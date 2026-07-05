@@ -25,6 +25,7 @@
 #include "goblin_geom_move.hpp"     // move_asset cmd — live geom transform-setter test (MSB-write RE)
 #include "goblin_geom_spawn.hpp"    // spawn_asset cmd — ADD via pivot-2 asset-request path (MSB-write RE)
 #include "goblin_heightfield.hpp"   // hf_probe cmd — terrain raycast heightfield (Track D2)
+#include "goblin_w2s.hpp"           // w2s_probe cmd — 3D world-to-screen camera calibration
 #include "goblin_custom_markers.hpp" // death_mark cmd — the DropSoul death marker
 #include "goblin_add_collision.hpp"  // add_collision cmd — Route D walkable box (recon phase)
 #include "goblin_field_probe.hpp"  // arm_raw — serialize find-what-accesses (Phase 2)
@@ -411,7 +412,7 @@ namespace goblin::debug_rpc
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp coords warp_local warp_xyz we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
-                       " | mfg_build er_base er_version proj mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset add_collision hf_probe hf_probe_present hf_sample hf_shape_probe far_relief_probe far_relief"
+                       " | mfg_build er_base er_version proj mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset add_collision hf_probe hf_probe_present hf_sample hf_shape_probe far_relief_probe far_relief w2s_probe"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
             if (cmd == "status")
@@ -641,6 +642,32 @@ namespace goblin::debug_rpc
                 std::snprintf(head, sizeof(head), "ok assets_probe shape=%s loose=%d packed=%d missing=%d |",
                               overall, nloose, npacked, nmiss);
                 return std::string(head) + per;
+            }
+            // w2s_probe [dot on|off | conv <0..3> | fovy <rad>] — 3D world-to-screen calibration
+            // (docs/re/windows_world_to_screen_camera_re_findings.md). Bare: dump the live camera VIEW
+            // matrix + player view-space coords in every interpretation + candidate screen px, on the
+            // present frame (no read-tearing). `dot on` draws a crosshair at the projected player pixel;
+            // `conv`/`fovy` retune the projection live until the dot locks to the character's feet.
+            if (cmd == "w2s_probe")
+            {
+                std::string sub = next_token(rest);
+                if (sub == "dot")
+                {
+                    std::string v = next_token(rest);
+                    goblin::w2s::set_debug_dot(v != "off" && v != "0");
+                    return std::string("ok w2s dot ") + (v != "off" && v != "0" ? "on" : "off");
+                }
+                if (sub == "conv")
+                {
+                    try { goblin::w2s::set_conv(std::stoi(next_token(rest))); } catch (...) { return "err usage: w2s_probe conv <0..3>"; }
+                    return goblin::w2s::probe();
+                }
+                if (sub == "fovy")
+                {
+                    try { goblin::w2s::set_fovy(std::stof(next_token(rest))); } catch (...) { return "err usage: w2s_probe fovy <radians>"; }
+                    return goblin::w2s::probe();
+                }
+                return goblin::w2s::probe();
             }
             // maptile_probe [rel_base] [maxProbe] [nameFilter] — endgame phase-1a sub-slice 1b: read the
             // world-map tile archive (BHF4 split: menu/71_MapTile.tpfbhd/.tpfbdt) off the active install,

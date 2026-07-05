@@ -136,6 +136,10 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
   for the runtime-modding virtual worlds (in-game ImGui/ESP overlay: world XYZ → screen → ImDrawList). Read
   the live 4×4 view-projection (target `GameRendCameraSet` er+0x680460 / `CSCameraImp`) + resolve chain; ship
   `w2s3d(xyz)`. Reuses the freecam recon (freecam WRITES the transform, this READS the ViewProj).
+  **Static recon done → `windows_world_to_screen_camera_re_findings.md`:** ViewProj candidates =
+  `GameRend`/`GameRendCameraSet` instance **+0xF0 / +0x130** (two 4×4, default-init in `FUN_1406800f0`
+  er+0x6800f0); alt view block via `[[cam+0x10]+0x18]+0x10`; Present hook + player-XYZ oracle already in the
+  DLL. Remaining = pin the singleton anchor + confirm the matrix live (row/col-major, NDC-Y).
 - **Freecam** (dev tool for the world-editor loop — recon done `windows_freecam_re_findings.md`, Route 2 =
   freeze ChrCam + override the render view matrix in `GameRendCameraSet` er+0x680460; blocked on the matrix
   offset + a `CSCameraImp` singleton AOB).

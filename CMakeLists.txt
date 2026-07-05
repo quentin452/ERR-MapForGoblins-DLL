@@ -269,6 +269,7 @@ set(GOBLIN_HOST_SOURCES
   src/goblin_freeze_watchdog.cpp
   src/goblin_load_watchdog.cpp
   src/goblin_heightfield.cpp
+  src/goblin_w2s.cpp
   src/dllmain.cpp)
 
 # Slice C: real two-target split when ON. Host does NOT link the render DLL (loaded at runtime
