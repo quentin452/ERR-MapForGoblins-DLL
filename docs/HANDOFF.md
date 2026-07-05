@@ -112,10 +112,16 @@ User wants to STOP the ~3-4min game-reboot per fix and revive the overlay hot-re
   the hot-reload loop here: added `[BOSSDIAG]` to `map_entry_layer.cpp`, hot-swapped render `gen0→gen1` live,
   read the log, removed it — no reboot. Persistent-game harness caveat: the keepalive loop exited when
   foreground `mfg rpc` calls raced its `ping` — gate the keepalive on real liveness, don't break on one ping.)
-- **Grace story-flags — VERIFY FIRST (task #17):** before gating grace markers Royal/Ashen, confirm vanilla
-  ER actually DELETES old-state graces on the story flip. If `live_graces` (BonfireWarpParam) is already
-  state-correct (removed graces absent), gating would double-gate = wrong. Check whether the live source
-  includes not-yet-active/removed graces or is already current-state-only.
+- **Grace story-flags (task #17) — RESOLVED 2026-07-06: DON'T gate.** Verified at the code level: graces are
+  sourced LIVE from `BonfireWarpParam` (`grace_layer.cpp:31`, no bake) + carry a `discoverFlag`, drawn
+  state-aware (discovered=warpable, undiscovered=helper). The live source is STATIC (never deletes old-state
+  graces); the game gates availability by the discovery flag, which already reflects state. And grace NAMES
+  already distinguish state ("Leyndell, Royal Capital" vs "…, Ashen Capital" = separate grace names → the
+  item search shows them as distinct rows WITHOUT a story tag). So wiring story-flags into graces would be
+  redundant + risks hiding valid graces = "gate for nothing". Royal/Ashen tagging stays LOOT-only (done).
+  The earlier "graces untagged" note is the correct end state, not a gap. (Unverifiable without an in-game
+  pre/post-burn comparison: whether a DISCOVERED Royal grace lingers post-burn — but hiding it needs the very
+  gate we're declining, so leave as-is.)
 
 ## ⇒ SESSION WRAP 2026-07-05 (late-3, Linux/Opus) — off-map "bottom-left" root causes + fixes
 
