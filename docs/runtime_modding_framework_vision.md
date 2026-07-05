@@ -220,21 +220,28 @@ and draw a diamond / line / box-wireframe / level-grid with the modder's chosen 
   `windows_havok_vdb_standup_re_prompt.md`, SECONDARY), NOT a dependency. **The single real unblocker for BOTH
   the player greybox world AND an in-game collision wireframe = the 3D world-to-screen matrix**
   (`windows_world_to_screen_camera_re_prompt.md`).
-- **SCOPE BOUNDARY (user Q 2026-07-05): ImGui greybox draws OUR world's objects — it does NOT replace ER's
-  own meshes.** Two very different asks: (a) draw OUR custom-world objects (walls/platforms/dummies) as ImGui
-  — few, cheap, feasible; (b) replace ER's ENTIRE mesh rendering (every FLVER/asset/enemy/weapon/SFX/terrain)
-  with ImGui — **NOT feasible, not "2-3 moves"; it is re-implementing a renderer as a 2D overlay.** (b) would
-  need: SUPPRESS every real D3D12 draw (per-draw-call hook, breaks the game), MIRROR the whole live scene
-  graph (thousands of ChrIns/AEG/bullets/bone-attached weapons, read each transform + draw a proxy every
-  frame), read live HAVOK SKELETON poses to animate the proxies, and cope with ImGui having NO depth buffer
-  (no occlusion → visual mush) and no 3D batching (perf death). The count of ER "primitives" (weapons, arts,
-  …) is NOT even the blocker — suppress-real-render + mirror-the-scene + skeletal-anim is.
-  **Key: in OUR virtual world the player keeps their REAL engine character — real weapons, real weapon arts,
-  real animation, all engine-driven.** Greybox draws only the WORLD (structure + dummies); we NEVER
-  re-implement ER's kit, so "how many ER primitives" is out of scope for the greybox. (A greybox VIEW of the
-  REAL world, if ever wanted, is the game's OWN debug/wireframe render — a FromSoft flag — not ImGui.) The
-  AEG-vs-ImGui split above is exactly the scoping that AVOIDS this wall: real content keeps the engine
-  renderer, ImGui only ever draws our own greybox objects.
+- **SCOPE BOUNDARY — THREE distinct things, don't conflate (user Q + correction 2026-07-05).** "Greybox" can
+  mean three different jobs with three different techniques:
+  1. **Draw OUR virtual-world objects** (walls/platforms/dummies that don't exist in the engine) → **ImGui/ESP**
+     (w2s3d + ImDrawList). Few objects, cheap, feasible. This is the whole rest of this section.
+  2. **Restyle the REAL base-ER render into greybox, KEEPING all systems** (physics/AI/combat/weapons/arts run
+     untouched — the user's actual ask; they meant the RENDER, not the systems) → **a GRAPHICS-PIPELINE hook,
+     NOT ImGui.** The engine renders ITSELF, restyled; you mirror nothing and touch no system. Feasibility,
+     cheapest→hardest: (a) a FromSoft **debug render flag** if one exposes wireframe/untextured/collision
+     display — RE the flag, free if it exists (cheap first check — worth a strings/RTTI scan for a debug-render
+     mode); (b) a **post-process shader** via the present hook (ReShade-style desaturate/edge/flatten) — cheap,
+     stylised not true-wireframe; (c) a **D3D12 PSO override** forcing `FILL_WIREFRAME`/a flat shader on the
+     game's own draws — true wireframe but D3D12 PSOs are immutable so it needs PSO-creation/draw interception
+     — a real graphics-mod project. None of these is ImGui or scene-mirroring.
+  3. **Hide the meshes + redraw everything as ImGui proxies** (mirror the scene graph) → **INFEASIBLE / the
+     wall, and UNNEEDED.** Would need to suppress every real draw + read thousands of live transforms + Havok
+     SKELETON poses per frame + fight ImGui's no-depth/no-3D-batching. Nobody needs this — #2 restyles the
+     engine's own render instead.
+  **The earlier "replace ER meshes = infeasible" was about #3 (ImGui scene-mirror); #2 (restyle the real
+  pipeline) is a different, feasible technique.** And regardless: in OUR virtual world the player keeps their
+  REAL engine character (weapons/arts/anim = engine), so we never re-implement ER's kit. The AEG-vs-ImGui
+  split covers content authoring; render restyling of the real game (#2) is an orthogonal graphics-hook track,
+  not part of the ImGui path.
 - **Quadtree reuse (user Q):** the vmap `MarkerQuadtree` is a 2D XZ index for MAP-viewport cull+cluster; 3D
   objects cull by camera FRUSTUM + distance + behind-camera reject, a different axis. Reuse it only as a
   COARSE broad-phase (XZ-near-camera query → skip projecting far objects), then per-candidate do the 3D
