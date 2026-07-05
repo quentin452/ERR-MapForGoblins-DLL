@@ -131,6 +131,7 @@ namespace goblin::overlay_api
     // no-op). Lets the F1 item search locate onto the vmap, not just the native ER map.
     GOBLIN_RENDER_API int virtual_map_locate(int32_t name_id, int group);
     GOBLIN_RENDER_API std::string virtual_map_offmap_probe();
+    GOBLIN_RENDER_API std::string virtual_map_find(const std::string &query);
     // A9 dev/test: open the vmap item-search sidebar with a query (drives the UI list headlessly).
     GOBLIN_RENDER_API void virtual_map_item_search(const char *query);
     // Dev/test: force-open the spiderfy fan on the largest visible pile (screenshot the geometry).

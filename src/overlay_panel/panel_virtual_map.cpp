@@ -281,6 +281,56 @@ std::string virtual_map_offmap_probe()
     return out;
 }
 
+// By-name marker SOURCE finder: dump EVERY marker whose resolved name matches `query`, across all
+// layers, with its provenance (layer index, source, lotId/type, raw area/grid, world pos, off-map?).
+// The tool for "why is X on the map twice / off-map" — two hits with the SAME lotId+layer = one entity
+// double-emitted (fold/pass bug); DIFFERENT lotId/layer = a genuine extra source. `query` matches a
+// numeric name_id exactly, else a case-insensitive substring of the marker's in-game text. RPC `vmap find`.
+std::string virtual_map_find(const std::string &query)
+{
+    if (query.empty()) return "err usage: vmap find <name|name_id>";
+    // Numeric query → exact name_id match; else case-insensitive substring on the resolved text.
+    int32_t want_id = 0; bool by_id = false;
+    try { size_t used = 0; want_id = (int32_t)std::stol(query, &used, 0); by_id = (used == query.size()); }
+    catch (...) { by_id = false; }
+    auto lower = [](std::string s) { for (char &c : s) c = (char)std::tolower((unsigned char)c); return s; };
+    const std::string needle = lower(query);
+    auto srclabel = [](goblin::worldmap::Source s) {
+        switch (s) { case goblin::worldmap::Source::Baked: return "Baked";
+                     case goblin::worldmap::Source::DiskMSB: return "DiskMSB";
+                     case goblin::worldmap::Source::Live: return "Live"; }
+        return "?";
+    };
+    auto implausible = [](float x, float z) {
+        return (x == 0.f && z == 0.f) || x < -40000.f || x > 40000.f || z < -40000.f || z > 40000.f;
+    };
+    const char *const kGrp[4] = {"OW", "UG", "DLC", "DLC-UG"};
+    size_t hits = 0; int li = -1;
+    spdlog::info("[VMFIND] query='{}' ({})", query, by_id ? "name_id" : "substr");
+    for (auto *L : overlay_layers())
+    {
+        ++li;
+        if (!L) continue;
+        for (const goblin::worldmap::Marker &m : L->markers())
+        {
+            std::string nm = m.name_id >= 0 ? goblin::overlay_api::lookup_text_utf8(m.name_id) : std::string();
+            bool match = by_id ? (m.name_id == want_id) : (!nm.empty() && lower(nm).find(needle) != std::string::npos);
+            if (!match) continue;
+            ++hits;
+            const char *cl = goblin::overlay_api::category_label(m.category);
+            const bool offmap = implausible(m.worldX, m.worldZ);
+            spdlog::info("[VMFIND]   '{}' [L{}] src={} lot={}/{} area{} grid({},{}) g{}({}) [{}] w({:.0f},{:.0f}) {}",
+                         nm, li, srclabel(m.source), m.lotId, (int)m.lotType, m.raw_area, m.raw_gx, m.raw_gz,
+                         m.group, (m.group >= 0 && m.group < 4) ? kGrp[m.group] : "?", cl ? cl : "?",
+                         m.worldX, m.worldZ, offmap ? "OFFMAP" : "onmap");
+        }
+    }
+    spdlog::info("[VMFIND] {} match(es)", hits);
+    char out[128];
+    std::snprintf(out, sizeof(out), "ok vmap find '%s': %zu match(es) — see [VMFIND] log", query.c_str(), hits);
+    return out;
+}
+
 // Dev orientation calibration: set world→screen axis signs. flipX/flipZ toggle each axis relative to the
 // minimap default (+X, -Z). Lets us match the native map live without a rebuild per guess.
 void virtual_map_set_flip(bool flipX, bool flipZ)

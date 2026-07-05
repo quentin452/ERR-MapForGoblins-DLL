@@ -544,6 +544,19 @@ namespace goblin::debug_rpc
                 // which objects, which ER map (raw area), which category, and why → the [OFFMAP] log.
                 if (arg == "offmap")
                     return goblin::overlay_api::virtual_map_offmap_probe();
+                // vmap find <name|name_id> — dump EVERY marker whose name matches, across all layers, with
+                // its source/lotId/raw-area/pos/off-map flag (the [VMFIND] log). Answers "why is X twice /
+                // off-map": same lotId+layer = double-emit; different = an extra source. name = substring
+                // (case-insensitive) of the in-game text, or a numeric FMG name_id for an exact match.
+                if (arg == "find")
+                {
+                    std::string q = rest;
+                    size_t b = q.find_first_not_of(" \t");
+                    size_t e = q.find_last_not_of(" \t");
+                    q = (b == std::string::npos) ? std::string{} : q.substr(b, e - b + 1);
+                    if (q.empty()) return "err usage: vmap find <name|name_id>";
+                    return goblin::overlay_api::virtual_map_find(q);
+                }
                 // vmap relief [0|1] — toggle the terrain-relief hillshade (near raycast + D-far -1 cloud),
                 // so cloud-relief vs the native map ART tile can be A/B screenshotted at the same framing.
                 if (arg == "relief")
