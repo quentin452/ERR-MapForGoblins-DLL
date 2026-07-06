@@ -1,8 +1,8 @@
 # Changelog
 
 All notable changes to this MapForGoblins fork are documented here.
-Format follows [Keep a Changelog](https://keepachangelog.com/); this fork does not yet cut
-named releases, so everything fork-specific lives under **[Unreleased]** until the first tag.
+Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases are tagged (first: **v2.1.0**,
+2026-07-06); in-progress work accumulates under **[Unreleased]** until the next tag.
 
 ## Changelog workflow
 
@@ -21,8 +21,12 @@ named releases, so everything fork-specific lives under **[Unreleased]** until t
 
 ## [Unreleased]
 
-Everything below is specific to this fork (`master`, ~990 commits ahead of `upstream/main`) and
-not present in the upstream ELDEN RING Reforged / MapForGoblins project.
+_Nothing yet — the next cycle's entries go here._
+
+## [v2.1.0] - 2026-07-06
+
+First tagged release of this fork. Everything below is specific to it (`master`, ~990 commits ahead of
+`upstream/main`) and not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
 - **The fullscreen Virtual World Map freezes the world while it's open (safe marker browsing).** When the vmap
