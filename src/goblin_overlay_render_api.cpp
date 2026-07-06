@@ -61,6 +61,14 @@ namespace goblin::overlay_api
     void set_vmap_redirect(bool v) { g_vmap_redirect.store(v, std::memory_order_relaxed); }
     bool vmap_redirect() { return g_vmap_redirect.load(std::memory_order_relaxed); }
 
+    // vmap pad-mode: the render publishes s_pad_mode (gamepad reticle is driving, not the mouse) so the host
+    // can hide the ImGui software cursor while the pad drives — and SHOW it again on a mouse switch (the host
+    // g_last_input_was_gamepad flag doesn't clear under the redirect: the map screen moves the mouse via RAW
+    // input, so no WM_MOUSEMOVE reaches the clear; s_pad_mode clears on ImGui's io.MouseDelta, which is right).
+    static std::atomic<bool> g_vmap_pad_mode{false};
+    void set_vmap_pad_mode(bool v) { g_vmap_pad_mode.store(v, std::memory_order_relaxed); }
+    bool vmap_pad_mode() { return g_vmap_pad_mode.load(std::memory_order_relaxed); }
+
 #define GOBLIN_CFG_DEF_PTR(name) \
     decltype(&goblin::config::name) cfg_##name##_ptr() { return &goblin::config::name; }
     GOBLIN_CFG_BOOL_LIST(GOBLIN_CFG_DEF_PTR)

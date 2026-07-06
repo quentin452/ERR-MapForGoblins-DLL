@@ -293,6 +293,7 @@ namespace goblin
         // In-game minimap HUD (corner, north-up, overworld-only). Opt-in.
         extern GOBLIN_RENDER_API bool showMinimap;
         extern GOBLIN_RENDER_API float minimapZoom;     // px per world-unit
+        extern GOBLIN_RENDER_API float gamepadSensitivity; // vmap gamepad reticle/pan speed multiplier
         extern GOBLIN_RENDER_API float minimapSize;     // radius px
         extern GOBLIN_RENDER_API float minimapOpacity;  // background opacity 0..1
         extern GOBLIN_RENDER_API bool minimapAnchorRight;

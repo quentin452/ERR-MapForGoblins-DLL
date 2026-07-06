@@ -110,6 +110,7 @@ namespace goblin::config
     bool debugRegionVolumes = false; // viz: draw each MapNameOverride volume + name
     bool showMinimap = false;
     float minimapZoom = 2.0f;      // px per world-unit shown on the minimap
+    float gamepadSensitivity = 1.0f; // vmap gamepad: scales reticle-move + left-stick pan speed
     float minimapSize = 100.0f;    // minimap radius in px
     float minimapOpacity = 0.85f;  // background disc opacity 0..1
     bool minimapAnchorRight = true;   // corner: right vs left
@@ -547,6 +548,9 @@ namespace
                 IniEntry{"show_minimap", IniType::Bool, &cfg::showMinimap, "false",
                   "In-game minimap HUD: a small north-up minimap in a screen corner showing\nnearby goblin markers around the player during gameplay (not the pause-screen\nmap). OVERWORLD only for now (underground player position isn't reliable yet).\nFoundation/opt-in; off by default.",
                   false, nullptr},
+                IniEntry{"gamepad_sensitivity", IniType::F32, &cfg::gamepadSensitivity, "1.0",
+                  "Virtual World Map GAMEPAD sensitivity: scales the right-stick reticle move\nspeed + the left-stick pan speed. 1.0 = default; higher = faster.",
+                  false, nullptr, 0.2f, 4.0f},
                 IniEntry{"minimap_zoom", IniType::F32, &cfg::minimapZoom, "2.0",
                   "Minimap zoom = pixels per world-unit. Higher = more zoomed-in (less area\nshown). 2.0 = default (raised from 0.08 through live user tuning 2026-07-01 --\nthe old default and the old 0.30 slider max both read as too zoomed-out/small).",
                   false, nullptr, 0.02f, 5.0f},

@@ -249,3 +249,25 @@ gameplay; `frame` keeps advancing = NO freeze. Both keybind systems covered (fac
 - **Follow-ups (not blocking):** verify vmap fast-travel/warp still works with the native suppressed (the map's
   #1 job; the vmap has its own grace-warp — confirm live), and the in-combat warp gate. The safe (open+close)
   method + its `inject_native_map_close` are removed.
+
+## Post-redirect follow-ups (user live-test 2026-07-06)
+Redirect + mouse cursor confirmed working live. Remaining:
+1. **✅ Gamepad sensitivity** — added config `gamepad_sensitivity` (F1 slider) scaling the vmap reticle-move +
+   left-stick pan speed (was hardcoded 0.9/0.6). (`goblin_config_schema` + `panel_virtual_map`.)
+2. **✅ Cursor gamepad↔mouse switch** — the mouse cursor stayed hidden after a pad→mouse switch: the host
+   `g_last_input_was_gamepad` clears on WM_MOUSEMOVE, but under the redirect the map screen moves the mouse via
+   RAW input (no WM_MOUSEMOVE). Fixed: gate `MouseDrawCursor` on the render's `s_pad_mode` (published to host
+   via `overlay_api::{set_,}vmap_pad_mode`; it clears on ImGui `io.MouseDelta`, which is right).
+3. **★ IN-COMBAT map gate — OPEN (needs a combat flag).** Vanilla ER auto-disables the map in combat; with the
+   redirect the vmap is stuck (the create-callback isn't called in combat, so the map key can't toggle it — it
+   stays open if combat starts while open, and can't be opened). **Fix = find the combat/danger state flag →
+   force-close the vmap (clear `vmap_redirect`) while in combat + block open.** Candidates (RE README): the
+   game's own "warp allowed?" gate (must replicate for fast-travel anyway) OR a battle/danger flag on
+   WorldChrMan / LocalPlayer. Linux-doable: `mem_fwa` on the flag, or find a known combat-state read. The vmap
+   already has `world_map_open()`/state infra; add a `combat_active()` accessor + gate the redirect.
+4. **★ Refocus first-input-loss** (pre-existing, deferred) — on window unfocus→refocus the FIRST input is
+   dropped. Separate from the redirect; investigate the focus/message-pump path (see the WM_SETFOCUS handling
+   in input_wndproc + the mfg-rpc-driver-hardening refocus notes).
+5. **★ Net players (other coop/invaders) not drawn on the vmap/minimap** — the vmap shows self + graces +
+   markers but not other players. Add a net-player marker source (the native map's NetPlayerList — find the
+   live net-player positions, e.g. via WorldChrMan, and feed the vmap marker layer).

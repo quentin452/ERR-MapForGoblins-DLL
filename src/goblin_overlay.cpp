@@ -1,4 +1,5 @@
 #include "goblin_overlay.hpp"
+#include "goblin_overlay_render_api.hpp"  // overlay_api::vmap_pad_mode() — vmap cursor gate
 #include "goblin_overlay_render.hpp"
 #include "goblin_overlay_render_loader.hpp"
 #include "goblin_debug_rpc.hpp"   // pump() — drained at the end of hk_present
@@ -1903,11 +1904,14 @@ namespace
                               goblin::input::diag_set_cursor_pos_swallowed());
                 diagDl->AddText(ImVec2(10, 10), IM_COL32(255, 255, 255, 255), diagBuf);
             }
-            // Draw ImGui's software cursor ONLY while the F1 panel is up AND the world map is CLOSED.
-            // (NewFrame now runs every frame for the overlay markers/minimap, so the old init-time
-            // MouseDrawCursor=true leaked it into gameplay; and with the world map open ER already
-            // draws its own cursor → don't double it.)
-            ImGui::GetIO().MouseDrawCursor = g_show && !goblin::world_map_open();
+            // Draw ImGui's software cursor while the F1 panel is up (map closed) OR the vmap is standing in
+            // as the fullscreen map (native-map redirect: ER no longer draws its own cursor, so without this
+            // the mouse is invisible on the vmap). Gate on mouse input — in gamepad mode the vmap draws its
+            // own reticle (s_pad_cursor), so suppress the OS/ImGui cursor there. With the native map OPEN
+            // (legacy, no redirect) ER draws its own cursor → don't double it.
+            ImGui::GetIO().MouseDrawCursor =
+                (g_show && !goblin::world_map_open()) ||
+                (goblin::input::vmap_covers_map() && !goblin::overlay_api::vmap_pad_mode());
             // Slice D: hand the render module our imgui allocator triple alongside the context —
             // render-side draws grow buffers inside this host-owned context, and under /MT each
             // DLL's default imgui allocator is a different CRT heap (see OverlayFrameCtx docs).

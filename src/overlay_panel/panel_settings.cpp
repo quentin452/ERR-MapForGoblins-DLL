@@ -129,6 +129,11 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
         ImGui::Checkbox(tr("Virtual map on map key (open the Virtual World Map instead of the native map)"),
                         goblin::overlay_api::cfg_vmapOnMapKey_ptr());
 
+    // Gamepad sensitivity for the vmap (reticle move + left-stick pan speed; live, persists via Save to INI).
+    if (f.match("gamepad sensitivity vmap reticle stick pan speed controller"))
+        ImGui::SliderFloat(tr("Gamepad sensitivity (vmap reticle + pan)"),
+                           goblin::overlay_api::cfg_gamepadSensitivity_ptr(), 0.2f, 4.0f, "%.2f");
+
     // Redify boss markers (overlay port of the legacy red-skull iconId; live,
     // persists via "Save to INI"). Tints WorldBosses markers red (overworld +
     // dungeon bosses); collected/cleared graying still takes precedence.

@@ -1410,20 +1410,22 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
 
         if (lsx || lsy || rsx || rsy || zoomAx) s_pad_mode = true;
         if (io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f) s_pad_mode = false;   // real mouse → exit pad-mode
+        goblin::overlay_api::set_vmap_pad_mode(s_pad_mode);  // host reads this to hide/show the mouse cursor
         if (!s_pad_cursor_init) { s_pad_cursor = center; s_pad_cursor_init = true; }
 
         if (s_pad_mode)
         {
             const float dt = io.DeltaTime > 0.0f ? io.DeltaTime : (1.0f / 60.0f);
             const float span = canvas_end.x - origin.x;
+            const float sens = *goblin::overlay_api::cfg_gamepadSensitivity_ptr();  // user speed multiplier
             // RIGHT stick → move the virtual cursor (≈ full-canvas sweep in ~1.1s), clamp on-canvas.
-            s_pad_cursor.x += rsx * (0.9f * span) * dt;
-            s_pad_cursor.y += rsy * (0.9f * span) * dt;
+            s_pad_cursor.x += rsx * (0.9f * span * sens) * dt;
+            s_pad_cursor.y += rsy * (0.9f * span * sens) * dt;
             s_pad_cursor.x = s_pad_cursor.x < origin.x ? origin.x : (s_pad_cursor.x > canvas_end.x ? canvas_end.x : s_pad_cursor.x);
             s_pad_cursor.y = s_pad_cursor.y < origin.y ? origin.y : (s_pad_cursor.y > canvas_end.y ? canvas_end.y : s_pad_cursor.y);
             // LEFT stick → pan (push-to-pan; world units, zoom-aware; axis signs match the mouse-drag path).
-            s_cam_x += lsx * (0.6f * span) * dt / (s_sx * s_zoom);
-            s_cam_z += lsy * (0.6f * span) * dt / (s_sz * s_zoom);
+            s_cam_x += lsx * (0.6f * span * sens) * dt / (s_sx * s_zoom);
+            s_cam_z += lsy * (0.6f * span * sens) * dt / (s_sz * s_zoom);
             // TRIGGERS → zoom about the reticle (keep the world point under it fixed). R2 in, L2 out.
             if (zoomAx != 0.0f)
             {
