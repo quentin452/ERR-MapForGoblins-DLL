@@ -19,12 +19,16 @@ than suppressing it (native render flag "does not hide the map" — proven). Bot
 - **✅ VERIFIED WORKING (user, 2026-07-06g):** the fullscreen vmap visually stands in for the native map.
 - **✅ PERF: native-map marker pass SKIPPED under the fullscreen vmap** (`aad07f3`) — `render_markers`
   early-returns on `panel::virtual_map_fullscreen()` (was double-drawing hidden native markers).
-- **✅ MOUSE INPUT AUTHORITY (`e604caa`, RUNTIME-UNTESTED):** file-local `vmap_covers_map()` (`world_map_open
-  && (cfg::vmapOnMapKey || vworld::active)`, host-side) gates a wndproc branch that feeds ImGui + SWALLOWS the
-  game's mouse (moves/wheel/button presses) → the hidden native map no longer pans/zooms; wheel now forwarded
-  → vmap zoom works. Keyboard left flowing so the map-close key still closes the native map (→ vmap
-  auto-closes); releases pass through. Map pans via LEGACY mouse → raw-input hook untouched (so it never
-  blanks the raw keyboard the close key rides on). **⚠ needs 1 boot to confirm no input-trap + zoom works.**
+- **✅ MOUSE INPUT AUTHORITY — COMPLETE across all 3 hook paths (`e604caa` wndproc + `91d9c9e` cursor/raw):**
+  `vmap_covers_map()` (`world_map_open && (cfg::vmapOnMapKey || vworld::active)`, host-side, shared) gates:
+  (a) **wndproc** — feed ImGui + swallow legacy mouse (move/wheel/buttons); (b) **cursor** —
+  `hk_get_cursor_pos` fakes screen-centre so the 2D map pan freezes (the pan reads GetCursorPos delta; ImGui
+  still reads real via the `g_imgui_reading_cursor` exemption) + set/clip swallow/unclip; (c) **raw-input** —
+  blank the MOUSE raw events in BOTH `GetRawInputData` and the batched `GetRawInputBuffer` (ER's real map
+  path), harvesting the wheel first so the vmap zooms. The FIRST cut (wndproc only) missed the pan (cursor
+  pos) + zoom (raw wheel) — user caught the native map still moving; the cursor/raw gate closes it. Keyboard
+  is untouched in EVERY path (raw keyboard blank + buffer-drop stay menu-only) → map-close key still closes
+  the native map (→ vmap auto-closes; never trapped). **⚠ still wants a boot to confirm the full lockout.**
 - **★ NEXT (remaining input authority):** (1) **gamepad/right-stick pan still drives the native map** — the
   game reads XInput directly (not via wndproc), so the stick isn't gated; the vmap already has its own pad
   reticle, but the hidden native map still pans on the stick. Gate the game's XInput read (or the pad poll)
