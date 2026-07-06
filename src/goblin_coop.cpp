@@ -102,3 +102,16 @@ std::vector<void *> goblin::coop::other_players()
     int n = pr.others < kCapClamp ? pr.others : kCapClamp;
     return std::vector<void *>(buf, buf + n);
 }
+
+std::vector<goblin::coop::CoopMarker> goblin::coop::markers()
+{
+    std::vector<CoopMarker> out;
+    for (void *chr : other_players())
+    {
+        int area = 0, group = 0;
+        float wx = 0.f, wz = 0.f;
+        if (goblin::get_chr_map_pos(chr, area, wx, wz, &group))
+            out.push_back({wx, wz, group});
+    }
+    return out;
+}

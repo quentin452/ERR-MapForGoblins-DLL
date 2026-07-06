@@ -8,6 +8,7 @@
 #include "goblin_worldmap_probe.hpp" // get_live_view()
 #include "goblin_inject.hpp"         // ui::clustering_enabled / global_threshold / category_clustered
 #include "goblin_custom_markers.hpp" // player-placed markers on the minimap (#4)
+#include "goblin_coop.hpp"           // coop::markers() — co-op partner blips (MENU_MAP_Host, no rotation)
 #include "goblin_overlay.hpp"        // overlay::native_map_point_icon (native GPU map-symbol harvest)
 #include "goblin_config.hpp"         // overlay marker scale config
 #include "goblin_messages.hpp"       // lookup_text_utf8 (tooltip names)
@@ -2434,6 +2435,27 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
                              ImVec2(u0, v0), ImVec2(u1, v1));
             else
                 fg->AddCircleFilled(p, half * 0.7f, IM_COL32(200, 60, 60, 235));
+        }
+    }
+    // Co-op partner markers on the minimap — native MENU_MAP_Host figure-in-ring, NO rotation (remote facing
+    // isn't synced). Same projection + edge-clamp as the death marker; on the player's page only; drawn under
+    // the player marker (centre, below). Same-tile v1 (goblin::coop / get_chr_map_pos).
+    {
+        void *ct = nullptr; float cu0, cv0, cu1, cv1;
+        const bool have_host =
+            goblin::overlay_api::map_point_glyph_uv("MENU_MAP_Host", -1, ct, cu0, cv0, cu1, cv1) && ct;
+        for (const auto &m : goblin::coop::markers())
+        {
+            if (m.group != pgroup) continue;
+            float dx = (m.wx - pwx) * scale, dy = -(m.wz - pwz) * scale;
+            const float d = std::sqrt(dx * dx + dy * dy);
+            if (d > edgeR) { const float k = edgeR / (d > 1e-3f ? d : 1e-3f); dx *= k; dy *= k; }
+            const ImVec2 p(ctr.x + dx, ctr.y + dy);
+            if (have_host)
+                fg->AddImage((ImTextureID)ct, ImVec2(p.x - half, p.y - half), ImVec2(p.x + half, p.y + half),
+                             ImVec2(cu0, cv0), ImVec2(cu1, cv1));
+            else
+                fg->AddCircleFilled(p, half * 0.7f, IM_COL32(255, 210, 80, 235));
         }
     }
     fg->PopClipRect();

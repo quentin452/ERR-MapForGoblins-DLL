@@ -749,6 +749,60 @@ bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z,
     return true;
 }
 
+// Map-space pos for an ARBITRARY ChrIns (a co-op buddy). Reads chr+0x6C0/+0x6C8 (the same posX/posZ frame
+// as the local player) and projects using the LOCAL player's tile (from the MapId manager). v1 SAME-TILE
+// assumption: correct when the buddy shares the local player's map tile (the common co-op case — partners
+// roam together); a buddy in a DIFFERENT tile needs its own MapId (a follow-up, coop_player_list_re_prompt.md).
+// SEH-guarded; false if chr is null / not positioned / statics unresolved.
+struct ChrPosProbe { float p[3]; bool ok; };
+__declspec(noinline) static void probe_chr_pos_body(void *chr, ChrPosProbe *pr)
+{
+    auto *c = reinterpret_cast<uint8_t *>(chr);
+    pr->p[0] = *reinterpret_cast<float *>(c + 0x6C0);
+    pr->p[1] = *reinterpret_cast<float *>(c + 0x6C4);
+    pr->p[2] = *reinterpret_cast<float *>(c + 0x6C8);
+    pr->ok = true;
+}
+static void probe_chr_pos_seh(void *chr, ChrPosProbe *pr)
+{
+    pr->ok = false;
+    __try { probe_chr_pos_body(chr, pr); }
+    __except (EXCEPTION_EXECUTE_HANDLER) { pr->ok = false; }
+}
+bool goblin::get_chr_map_pos(void *chr, int &out_area, float &world_x, float &world_z, int *out_group)
+{
+    if (!chr) return false;
+    if (!g_mappos_tried) resolve_player_map_pos_statics();
+    if (!g_mapid_slot || !g_mappos_mgr_slot) return false;
+    MapPosProbe pr{};
+    probe_map_pos_seh(g_mapid_slot, g_mappos_mgr_slot, &pr);  // LOCAL player's tile (same-tile assumption)
+    ChrPosProbe cp{};
+    probe_chr_pos_seh(chr, &cp);
+    if (!pr.ok || !cp.ok) return false;
+    if (cp.p[0] == 0.0f && cp.p[2] == 0.0f) return false;    // not positioned yet (loading)
+    from::paramdef::WORLD_MAP_POINT_PARAM_ST tmp{};
+    tmp.areaNo = static_cast<uint8_t>(pr.area);
+    tmp.gridXNo = static_cast<uint8_t>(pr.gx);
+    tmp.gridZNo = static_cast<uint8_t>(pr.gz);
+    tmp.posX = cp.p[0];
+    tmp.posZ = cp.p[2];
+    if (project_dungeon_row_to_overworld(&tmp, nullptr, nullptr, /*conv_underground=*/true))
+    {
+        out_area = tmp.areaNo;
+        world_x = tmp.gridXNo * 256.0f + tmp.posX;
+        world_z = tmp.gridZNo * 256.0f + tmp.posZ;
+        if (out_group) *out_group = goblin::marker_group_from((uint8_t)pr.area, tmp.areaNo);
+    }
+    else
+    {
+        out_area = pr.area;
+        world_x = pr.gx * 256.0f + cp.p[0];
+        world_z = pr.gz * 256.0f + cp.p[2];
+        if (out_group) *out_group = goblin::marker_group_from((uint8_t)pr.area, pr.area);
+    }
+    return true;
+}
+
 // Player position in the RAW per-area frame (NO projection): out_area = the real MapId
 // area (60 overworld, 12 base underground, 61/40-43 DLC, …); wx/wz = gridX*256 + the live
 // ChrIns local. Unlike get_player_map_pos (which projects underground into the OVERLAPPING

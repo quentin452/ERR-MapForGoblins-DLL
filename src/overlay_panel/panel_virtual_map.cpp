@@ -25,6 +25,7 @@
 #include "goblin_major_regions.hpp"    // MAJOR_REGION_ANCHORS — coarse region name labels (A7 parity)
 #include "goblin_bench.hpp"            // GOBLIN_BENCH_QUIET — profile the vmap draw at high marker counts
 #include "goblin_custom_markers.hpp"   // shared player-placed marker store (vmap + minimap read it)
+#include "goblin_coop.hpp"             // coop::markers() — co-op partner blips (MENU_MAP_Host, no rotation)
 #include "goblin/goblin_map_flags.hpp" // story-state flags (Erdtree burns / charm / seal) — item-search Royal vs Ashen
 #include "overlay_panel/marker_quadtree.hpp"  // spatial index: viewport cull + LOD clustering (perf)
 
@@ -2273,6 +2274,33 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             dl->AddText(font, fontSize, tp, col, name);
             if (!on)
                 dl->AddLine(ImVec2(tp.x, p.y), ImVec2(tp.x + ts.x, p.y), col, 2.0f * uiScale);
+        }
+    }
+
+    // Co-op partner markers — the native MENU_MAP_Host figure-in-ring, drawn axis-aligned (NO rotation:
+    // remote players' facing isn't reliably synced). Under the local player cursor (below), on the current
+    // page only. Mod-agnostic (glyph resolved live); v1 same-tile (goblin::coop / get_chr_map_pos).
+    if (active_world == 0)
+    {
+        void *ct = nullptr; float cu0, cv0, cu1, cv1;
+        const bool have_host =
+            goblin::overlay_api::map_point_glyph_uv("MENU_MAP_Host", -1, ct, cu0, cv0, cu1, cv1) && ct;
+        for (const auto &m : goblin::coop::markers())
+        {
+            if (m.group != s_group) continue;
+            ImVec2 pp = w2s(m.wx, m.wz);
+            if (pp.x < origin.x || pp.x > canvas_end.x || pp.y < origin.y || pp.y > canvas_end.y) continue;
+            if (have_host)
+            {
+                const float hs = 13.0f * uiScale;   // Host glyph ≈ 74x76 (square) → keep aspect
+                dl->AddImageQuad((ImTextureID)ct,
+                                 ImVec2(pp.x - hs, pp.y - hs), ImVec2(pp.x + hs, pp.y - hs),
+                                 ImVec2(pp.x + hs, pp.y + hs), ImVec2(pp.x - hs, pp.y + hs),
+                                 ImVec2(cu0, cv0), ImVec2(cu1, cv0), ImVec2(cu1, cv1), ImVec2(cu0, cv1),
+                                 IM_COL32(255, 255, 255, 255));
+            }
+            else
+                dl->AddCircleFilled(pp, 5.0f * uiScale, IM_COL32(255, 210, 80, 255));  // fallback dot
         }
     }
 

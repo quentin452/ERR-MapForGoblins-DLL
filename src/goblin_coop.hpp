@@ -1,6 +1,8 @@
 #pragma once
 #include <vector>
 
+#include "goblin_dll_export.hpp"  // GOBLIN_RENDER_API (markers() is read by the render map/minimap)
+
 // Co-op player enumeration — mod-agnostic, ER-native (reads WorldChrMan's session player
 // array, works for Seamless Co-op / vanilla summon / any co-op mod; no ersc.dll dependency).
 //
@@ -21,7 +23,14 @@ namespace goblin::coop
     bool others_present();
 
     // Pointers to the OTHER players' ChrIns (excludes the local player). Empty solo.
-    // Foundation for co-op map/minimap markers — the world-position projection per buddy is a
-    // follow-up (needs each buddy's tile/MapId, validated on a live 2-player session).
     std::vector<void *> other_players();
+
+    // A co-op partner's projected map-space position (feeds the WorldMap + Minimap markers, drawn as the
+    // native MENU_MAP_Host figure-in-ring — no rotation, since remote facing isn't reliably synced). `group`
+    // = the map page (0 base-OW / 1 base-UG / 2 DLC-OW / 3 DLC-UG) so the marker only draws on the buddy's page.
+    struct CoopMarker { float wx, wz; int group; };
+
+    // Projected marker for each OTHER player. v1 uses the LOCAL player's tile (same-tile assumption — correct
+    // when partners are together; a buddy in a different tile is misplaced until its MapId is RE'd). Empty solo.
+    GOBLIN_RENDER_API std::vector<CoopMarker> markers();
 }

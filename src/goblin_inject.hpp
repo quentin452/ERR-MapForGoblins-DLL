@@ -123,6 +123,10 @@ namespace goblin
                             int *out_gx = nullptr, int *out_gz = nullptr,
                             int *out_group = nullptr);
 
+    // Same, for an ARBITRARY ChrIns (a co-op buddy) — projected map-space pos + group. Reads chr+0x6C0/6C8
+    // and uses the LOCAL player's tile (v1 same-tile assumption). false if null/unpositioned. See goblin_coop.
+    bool get_chr_map_pos(void *chr, int &out_area, float &world_x, float &world_z, int *out_group = nullptr);
+
     // Live player facing yaw (radians, [-pi, pi]) from LocalPlayer+0x6CC. Drives the minimap
     // heading arrow. false during a load / before the WCM static resolves.
     bool get_player_facing_yaw(float &yaw_radians);

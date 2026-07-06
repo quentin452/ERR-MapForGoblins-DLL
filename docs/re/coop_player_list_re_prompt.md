@@ -43,6 +43,17 @@ co-op session (2 machines / 2 players). Checklist: join co-op → `others_presen
 tracks their movement; open the vmap → freeze is SKIPPED (partner keeps moving, no desync); markers draw at the
 buddies' live positions.
 
+## Markers — IMPLEMENTED (v1, 2026-07-06, needs 2-player validation)
+`goblin::coop::markers()` (host, RENDER_API) → `CoopMarker{wx,wz,group}` per other player, via
+`goblin::get_chr_map_pos(chr,…)` = read `chr+0x6C0/6C8` (buddy local pos) + project with the LOCAL player's
+tile (**v1 same-tile assumption** — correct when partners are together; a buddy in a different tile is
+misplaced until its own MapId is RE'd). Drawn as the native **`MENU_MAP_Host`** figure-in-ring (glyph
+resolved live, mod-agnostic), **axis-aligned NO rotation** (remote facing `+0x6CC` isn't reliably synced),
+on the WorldMap (`panel_virtual_map.cpp`) + Minimap (`map_renderer.cpp`), on the buddy's page only. Solo =
+`markers()` empty → nothing drawn (zero risk). **Validate on a 2-player session:** buddies show as gold
+figure-in-ring blips at their live positions; confirm the position chain resolves for a remote PlayerIns and
+same-tile placement is right (then decide if the per-buddy MapId RE is worth it for cross-tile).
+
 ## Related, already DONE
 - **Auto-close the vmap on death / world-not-playable** (`goblin_overlay.cpp`): while the vmap redirect is
   open, if `get_player_world_pos()` reads false (LocalPlayer null — death→reload, area transition, quit-out)
