@@ -21,6 +21,13 @@ namespace goblin::config
     bool showRegionLabels = true;  // overlay: draw major-region name labels on the map
     bool nativeItemIcons = true;   // overlay: draw the game's real item icon (GPU harvest) when resident
     bool enemyNames = true;        // name the game's own non-boss enemy tags via the native NpcName data path
+    bool nameEnemyMobs = true;     // name regular mobs (tier-2 codex + fallback)
+    bool nameEnemyBosses = true;   // name field-bosses / minibosses (tier-3 band)
+    bool nameEnemyHostiles = true; // name hostile-team generics (teamType 24/27)
+    bool enemyNameColorize = false;// colorize the native tag by category (HTML <font> inject; speculative)
+    std::string enemyNameColorMob = "#FFFFFF";       // mob name color
+    std::string enemyNameColorBoss = "#FF6A4B";      // field-boss name color
+    std::string enemyNameColorHostile = "#FF4040";   // hostile-generic name color
     bool paramOverrides = false;   // apply param_overrides.ini at boot (regulation.bin-free field edits; OFF = ignore file)
     bool sidecarSave = false;      // shadow/sidecar save: keep a DLL-owned <save>.mfg of framework state (Phase 1 state store)
     bool diagLootFlags = false;    // one-shot [LOOTDIAG] field dump for the collected-flag RE
@@ -613,7 +620,21 @@ namespace
              "health bar and names BOSSES; this names regular (non-boss) mobs too.",
              false, {
                 B("enemy_names", enemyNames, "true",
-                  "Name the game's own non-boss enemy tags. The engine draws the red enemy\nname tag but leaves generic mobs blank; this resolves the mob's name from\nthe active install (NpcParam/NpcName/bestiary) and feeds it to the engine's\nOWN native tag (NpcParam.nameId -> NpcName), so the game renders it itself —\ncorrect font/accents, frame-synced, no overlay. Bosses are left alone.\nDefault ON. (Takes effect on the enemy's next name refresh.)"),
+                  "Name the game's own non-boss enemy tags. The engine draws the red enemy\nname tag but leaves generic mobs blank; this resolves the mob's name from\nthe active install (NpcParam/NpcName/bestiary) and feeds it to the engine's\nOWN native tag (NpcParam.nameId -> NpcName), so the game renders it itself —\ncorrect font/accents, frame-synced, no overlay. Bosses are left alone.\nDefault ON. (Takes effect on the enemy's next name refresh.) Master switch\nfor the three per-category filters below."),
+                B("name_enemy_mobs", nameEnemyMobs, "true",
+                  "Name regular mobs (resolved from the bestiary codex / name fallback).\nDefault ON."),
+                B("name_enemy_bosses", nameEnemyBosses, "true",
+                  "Name field-bosses & minibosses whose tag the game leaves blank (the\nvanilla boss NpcName band). Default ON."),
+                B("name_enemy_hostiles", nameEnemyHostiles, "true",
+                  "Name hostile-team generics (teamType 24/27) the game leaves blank.\nDefault ON."),
+                B("enemy_name_colorize", enemyNameColorize, "false",
+                  "Colorize the native name tag by category (mob / field-boss / hostile) by\ninjecting an HTML <font color> around the name. SPECULATIVE: works only if\nthe game's enemy-tag text field parses inline HTML; if not, the tags show as\nliteral text. Leave OFF until you've confirmed it renders in-world. Default OFF."),
+                IniEntry{"enemy_name_color_mob", IniType::String, &cfg::enemyNameColorMob, "#FFFFFF",
+                  "Mob name color (#RRGGBB hex) when colorize is on.", false, nullptr},
+                IniEntry{"enemy_name_color_boss", IniType::String, &cfg::enemyNameColorBoss, "#FF6A4B",
+                  "Field-boss / miniboss name color (#RRGGBB hex) when colorize is on.", false, nullptr},
+                IniEntry{"enemy_name_color_hostile", IniType::String, &cfg::enemyNameColorHostile, "#FF4040",
+                  "Hostile-generic name color (#RRGGBB hex) when colorize is on.", false, nullptr},
             }},
 
             {"Param Overrides",

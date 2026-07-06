@@ -250,6 +250,30 @@ std::wstring utf8_to_wide(const std::string &s)
 constexpr int32_t  kMfgNameIdBase     = 810000000;
 constexpr int32_t  kMfgNameIdMax      = 899000000;  // stay under the 9e8 boss band
 constexpr uint32_t kNpcNameInjectSlot = 18;         // base NpcName FMG slot the engine reads (RE-proven)
+
+// Category of a nameId==0 enemy we can name — drives the per-category name filter + color. teamType
+// 24/27 is the hostile-NPC team (same signal used for the Hostile-NPC marker category); tier 3 is the
+// vanilla field-boss / miniboss NpcName band; everything else is a regular mob.
+enum class NameCat { Mob, FieldBoss, Hostile };
+NameCat name_category(uint8_t team, int tier)
+{
+    if (team == 24 || team == 27) return NameCat::Hostile;
+    if (tier == 3)                return NameCat::FieldBoss;
+    return NameCat::Mob;
+}
+
+// Return `s` iff it is a well-formed #RRGGBB hex, else "" — a malformed config color never corrupts
+// the injected HTML (it just falls back to the plain, uncolored name).
+std::string sanitize_hex(const std::string &s)
+{
+    if (s.size() != 7 || s[0] != '#') return {};
+    for (size_t i = 1; i < 7; ++i)
+    {
+        char c = s[i];
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) return {};
+    }
+    return s;
+}
 } // namespace
 
 // Public: the enemy's display name (tiers 1-3, cached; "" = nameless). For the boss-marker
@@ -301,7 +325,15 @@ void goblin::update_native_enemy_names()
 
         // nameId == 0: can WE name it (tiers 2/3)? Empty -> truly nameless, leave vanilla-blank.
         const ResolvedName &rn = resolve_enemy_name(npcParam, pr.e[i].model);
-        if (rn.name.empty()) { s_assigned[npcParam] = 0; continue; }
+        if (rn.name.empty()) { s_assigned[npcParam] = 0; continue; }  // permanent skip (nothing to name)
+
+        // Per-category name filter. Do NOT cache a filtered-out type: toggling its category back ON
+        // should name it live next frame (resolve is cached, so the re-check is ~free).
+        const NameCat cat = name_category(team, rn.tier);
+        const bool want = (cat == NameCat::Hostile   && goblin::config::nameEnemyHostiles) ||
+                          (cat == NameCat::FieldBoss && goblin::config::nameEnemyBosses)   ||
+                          (cat == NameCat::Mob       && goblin::config::nameEnemyMobs);
+        if (!want) continue;
 
         if (s_next_id >= kMfgNameIdMax)                // band exhausted (would take ~89M distinct types)
         {
@@ -311,12 +343,26 @@ void goblin::update_native_enemy_names()
         }
         int32_t id = s_next_id++;
         s_assigned[npcParam] = id;                     // marked now so a later frame won't re-queue it
-        pending.push_back({id, utf8_to_wide(rn.name)});
+
+        // The string the engine renders. Optional per-category HTML color (SPECULATIVE — only if the
+        // tag's TextField parses inline HTML; off by default, malformed hex -> plain name).
+        std::string display = rn.name;
+        if (goblin::config::enemyNameColorize)
+        {
+            const std::string &raw = cat == NameCat::Hostile   ? goblin::config::enemyNameColorHostile
+                                   : cat == NameCat::FieldBoss ? goblin::config::enemyNameColorBoss
+                                                               : goblin::config::enemyNameColorMob;
+            std::string hex = sanitize_hex(raw);
+            if (!hex.empty())
+                display = "<font color='" + hex + "'>" + rn.name + "</font>";
+        }
+        pending.push_back({id, utf8_to_wide(display)});
         pending_param.emplace_back(npcParam, id);
 
         if (goblin::config::debugLogging)
-            spdlog::info("[ENEMYBAR] name '{}' -> NpcName[{}] for npcParam={} model={} tier={}",
-                         rn.name, id, npcParam, pr.e[i].model, rn.tier);
+            spdlog::info("[ENEMYBAR] name '{}' -> NpcName[{}] npcParam={} model={} tier={} cat={} colored={}",
+                         rn.name, id, npcParam, pr.e[i].model, rn.tier, (int)cat,
+                         goblin::config::enemyNameColorize);
     }
 
     if (pending.empty()) return;

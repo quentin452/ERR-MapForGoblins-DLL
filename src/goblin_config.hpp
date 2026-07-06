@@ -74,6 +74,18 @@ namespace goblin
         extern GOBLIN_RENDER_API bool showRegionLabels; // overlay map: draw major-region names (Limgrave, Caelid, ...)
         extern GOBLIN_RENDER_API bool nativeItemIcons;  // overlay map: real game item icon (GPU harvest) when resident
         extern GOBLIN_RENDER_API bool enemyNames;       // name the game's own non-boss enemy tags via the native NpcName data path
+        // Per-category name filters (which nameId==0 types we feed to the native tag). Category from
+        // teamType (24/27 = hostile) + resolver tier (3 = field-boss, else mob).
+        extern GOBLIN_RENDER_API bool nameEnemyMobs;    // name regular mobs (codex/tier-2 + fallback)
+        extern GOBLIN_RENDER_API bool nameEnemyBosses;  // name field-bosses / minibosses (tier-3 band)
+        extern GOBLIN_RENDER_API bool nameEnemyHostiles;// name hostile-team generics (teamType 24/27)
+        // Colorize the native tag by category — injects an HTML <font color> around the name. SPECULATIVE:
+        // relies on the engine's EnemyTag TextField parsing nested HTML; if it doesn't, the tags show as
+        // literal text -> leave OFF until verified in-world. Colors are "#RRGGBB" hex.
+        extern GOBLIN_RENDER_API bool enemyNameColorize;
+        extern GOBLIN_RENDER_API std::string enemyNameColorMob;      // mob name color
+        extern GOBLIN_RENDER_API std::string enemyNameColorBoss;     // field-boss name color
+        extern GOBLIN_RENDER_API std::string enemyNameColorHostile;  // hostile-generic name color
         extern GOBLIN_RENDER_API bool paramOverrides;   // apply param_overrides.ini at boot (regulation.bin-free field edits)
         extern GOBLIN_RENDER_API bool sidecarSave;      // shadow/sidecar save: DLL-owned <save>.mfg framework state store (Phase 1)
         extern GOBLIN_RENDER_API bool diagLootFlags;    // one-shot [LOOTDIAG]: dump all candidate pickup flags per loot lot
