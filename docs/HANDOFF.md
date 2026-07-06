@@ -44,6 +44,14 @@ than suppressing it (native render flag "does not hide the map" — proven). Bot
   live beats static here); Route 2: Ghidra render-thread DISPLAY-submit trace.** Both cheap levers still dead
   (§4c scissor / §4d MovieImpl+0xB0 clip). Not urgent (production flip gated on Track A parity + Track B
   fast-travel).
+  - **✅ Route-1 PROBE BUILT + DEPLOYED (`dc46374`):** RPC verb **`sfplayer`** (`worldmap_probe::sfplayer_*`) —
+    `dump` (hex-dump the RTTI-validated 0xe8 player @ `WorldMapDialog+0x140→+0x58`, vtable er+0x2bbb360),
+    `read <off> <sz>`, `poke <off> <sz> <val>` (snapshots orig, one field at a time), `restore`. Reuses the
+    `movieclip` cursor→dialog anchor. **★ NEXT (needs a boot, map OPEN):** `sfplayer dump` → pick candidate
+    byte/int fields → `poke` each to 0 one at a time → `screenshot` → find the field that removes the native
+    map pixels while the vmap + logic (fast-travel/page/fog) stay alive → `restore`. Then wire a per-present
+    maintain (clear the gate while `vmap_covers_map()`, restore on close), mod-agnostic (resolve by RTTI +
+    movie name `02_120_worldmap.gfx`). ⚠ poking unknown fields can crash — each `poke` snapshots+restores.
 - **★ NEXT (remaining input authority):** (1) **gamepad/right-stick pan still drives the native map** — the
   game reads XInput directly (not via wndproc), so the stick isn't gated; the vmap already has its own pad
   reticle, but the hidden native map still pans on the stick. Gate the game's XInput read (or the pad poll)
