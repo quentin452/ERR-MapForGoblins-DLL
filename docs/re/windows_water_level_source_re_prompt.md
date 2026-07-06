@@ -1,7 +1,9 @@
-> **SUPERSEDED — see `windows_water_level_source_re_findings.md` (2026-07-06).** Option 3 was investigated and
-> **ruled out**: `GXWaterHeightMap@GXSR` is a GPU render-resource for the water *interaction*/wave sim (a
-> sub-object of `GXSceneContext` @ +0xBE20), not a CPU per-(x,z) base-plane, and there is no gameplay water
-> query. The viable path is **Option 2** (a water-inclusive collision cast filter). Prompt kept for context.
+> **SUPERSEDED — see `windows_water_level_source_re_findings.md` (2026-07-06).** BOTH options ruled out.
+> Option 3 (`GXWaterHeightMap@GXSR`) is a GPU render-resource for the water *interaction*/wave sim (sub-object
+> of `GXSceneContext` @ +0xBE20), not a CPU base-plane. Option 2 (a water-surface cast filter) is impossible:
+> ER has NO water collision surface — the cast filter byte is a 7-bit collision-LAYER index and water is not a
+> collision layer; water is a ground MATERIAL (Default/Grass/Water/Swamp). The real path is a **material-based
+> sea-tag** (cast 0x5e → hit material ∈ {Water, Swamp} via `hknpMaterialLibrary`). Prompt kept for context.
 
 # RE brief — per-region WATER LEVEL source for the vmap relief sea-tag (no global sea level)
 

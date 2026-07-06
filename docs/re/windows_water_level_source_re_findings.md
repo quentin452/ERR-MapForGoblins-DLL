@@ -1,13 +1,19 @@
-# RE FINDINGS — per-region water-level source (Option 3 investigated → DEAD END; pivot to Option 2)
+# RE FINDINGS — per-region water-level source (Options 3 AND 2 both dead → the real path is material-tag / MSB)
 
 Answers `windows_water_level_source_re_prompt.md`. Static Ghidra headless on `D:\ghidra_proj2\ER`
-(`eldenring.exe` 2.6.2.0 / imagebase `0x140000000`, `-noanalysis`), 2026-07-06. Script:
-`D:\ghidra_scripts_mfg\mfg_water.java` (output `D:\ghidra_scripts\out_water.txt`).
+(`eldenring.exe` 2.6.2.0 / imagebase `0x140000000`, `-noanalysis`), 2026-07-06. Scripts:
+`D:\ghidra_scripts_mfg\mfg_water.java` + `mfg_wfilter.java` (outputs `out_water.txt` / `out_wfilter.txt`).
 
-**The user picked Option 3 (sample `GXWaterHeightMap@GXSR`). Verdict: Option 3 is the WRONG target — it is a
-GPU render-resource for the water *interaction* (ripple/wave) simulation, not a CPU-sampleable per-(x,z)
-base-water-plane. Recommendation: use Option 2 (a water-inclusive collision cast filter), which is CPU-native
-and semantically correct.** Evidence below.
+**Both prompt options investigated. Verdict:**
+- **Option 3 (sample `GXWaterHeightMap@GXSR`) — DEAD END:** a GPU render-resource for the water *interaction*
+  (ripple/wave) sim, not a CPU per-(x,z) base-plane (§1–§4).
+- **Option 2 (a water-surface cast filter) — ALSO DEAD END:** ER has **no water-surface collision**. Water is
+  a ground **MATERIAL** (Default/Grass/Water/Swamp), not a collision layer/surface, so no cast filter can
+  return a water surface Y (§9).
+- **The real, CPU-native path (recommended): a MATERIAL-based sea-tag** — cast `0x5e` (already done), read the
+  hit triangle's collision material, tag `sea = material ∈ {Water, Swamp}`. Correct per-region water *mask*
+  (blue tint at seabed Y — what the tag needs), mod-agnostic. Remaining RE scoped in §9. Fallback = MSB
+  water-plane Y.
 
 ---
 
@@ -91,33 +97,21 @@ ER having no swim system; "deep water" is instant-death via MSB hazard/kill volu
 CPU "water height at (x,z)" oracle to borrow. The base water surface exists only as **geometry** (a water-plane
 FLVER/collision per water body in the MSB), region-local — not a global queryable field.
 
-## 5. Recommendation — pivot to Option 2 (water-inclusive cast filter)
+## 5. (Was: "pivot to Option 2".) Option 2 was then investigated too — see §9. It is ALSO a dead end (no water
+collision surface). The real path is the material-tag in §9, or the MSB water-plane fallback below.
 
-Option 3 is ruled out. The two viable per-region sources, cheapest first:
-
-1. **Option 2 — a water-surface collision cast filter (RECOMMENDED).** The terrain cast already works
-   (`goblin_heightfield.cpp`, `FUN_140c70360`, filter `0x5e` = `FILTER_GROUND`, which skips the water volume
-   and hits the seabed). If the water surface carries a collision layer (plausible — the deep-water death
-   trigger needs one), a *different* filter value hits it. Then per cell: cast `0x5e` (seabed/terrain Y) **and**
-   the water filter (surface Y); `sea = surfaceY > terrainY`, and `surfaceY` is the real per-region water level.
-   CPU-native, one extra cast, no GPU readback, no manager. **Next RE step:** decode the
-   `WorldCollisionFilterCommand` query-type→layer table (referenced in
-   `windows_terrain_raycast_heightfield_re_findings.md` §3) to find the water-surface filter, or brute-force
-   candidate filter bytes live via a cast RPC over a known lake vs the ocean (expect surface>seabed, different
-   Ys per region). See that doc's §4 option (2).
-2. **Per-region MSB water plane Y (fallback if no water collision filter exists).** Water bodies are MSB parts
-   (a flat plane); their placement Y is readable through the disk-MSB path MFG already has
-   (`windows_runtime_msb_resident`). Needs a naming/material convention to pick the water parts — more work and
-   less mod-agnostic than a cast filter.
+- **Per-region MSB water plane Y (fallback).** Water bodies are MSB parts (a flat render plane); their
+  placement Y is readable through the disk-MSB path MFG already has (`windows_runtime_msb_resident`). Needs a
+  naming/material convention to pick the water parts — heavier and gives a Y, not a per-cell mask.
 
 If someone still wants the GPU interaction field (e.g. for wave-animated water rendering, not the sea-tag), the
 anchors in §1–§2 are the entry: `GXSceneContext + 0xBE20` → the manager → its GPU textures, plus a D3D readback.
 That is a much larger, render-thread effort and does not serve the sea-tag.
 
 ## 6. Code impact
-`goblin_heightfield.cpp` keeps `kSeaLevelY` as a **dormant sentinel** (unchanged) — Option 3 yielded no
-sampler, so nothing to wire yet. The `c.sea = groundY < kSeaLevelY` line stays inert until Option 2 lands the
-water filter, at which point it becomes `c.sea = waterSurfaceY > c.groundY` (second cast). The render branch
+`goblin_heightfield.cpp` keeps `kSeaLevelY` as a **dormant sentinel** (unchanged) — neither option yielded a
+per-cell water source to wire yet. The `c.sea = groundY < kSeaLevelY` line stays inert until the §9 material-tag
+lands, at which point it becomes `c.sea = (hitMaterial ∈ {Water, Swamp})`. The render branch
 (`panel_virtual_map.cpp:1545`, `c.sea` → water-blue) is already wired and unchanged.
 
 ## 7. Anchors (this build, er-relative)
@@ -132,8 +126,68 @@ WaterDepth (audio RTPC)     str er+0x2bc52f8  (reverb/RTPC name table, NOT water
 gameplay water query        NONE (Underwater/InWater/WaterField/DeepWater/WaterVolume/SwimTop = 0 hits)
 ```
 
+## 9. Option 2 investigated — the collision filter is a 128-layer matrix; WATER IS NOT A COLLISION SURFACE
+
+Decoded ER's collision filter to test the prompt's premise ("a filter value hits the water surface").
+
+**The filter mechanism (fully mapped).** ER's filter = **`CSCollisionFilter@CS`** (vt `er+0x2b91d00`, ctor
+`FUN_140c5d730`), a subclass of `hknpCollisionFilter`. It holds a **128×128-bit layer-adjacency matrix** at
+`this+0x20` (0x800 bytes), populated by **`FUN_140c5dab0`** (a 12.8 KB list of `enable(ROW,COL)` calls). Its
+`isCollisionEnabled` overloads (vtable slots 3–6: `FUN_140c61940`/`61d70`/`61be0`/`61ae0`) read each body's
+**shape tag** at `body+0x6c`: `layer = tag & 0x7f` (7-bit, 0–127), `+ group bits (>>7 &3, >>0x19 &0x1f, bit
+0x1e)`. Collision-enabled ⇔ `matrix[layerA][layerB]` bit set. **⇒ the cast "filter" byte (`0x5e`, `0x5d`,
+`0x67`…) IS the query's 7-bit collision LAYER** — the cast behaves as a body on that layer and hits whatever
+layers it is enabled against. (`0xe0`/`0x2000058` set high flag bits above the 7-bit layer.)
+
+`0x5e` (the terrain filter) is enabled against layers **2, 1, 0x52, 0x54** (layer 2 = map/terrain = the
+seabed). There is **no water layer** among them, or anywhere in the matrix, because **water is not a collision
+layer.**
+
+**Water is a ground MATERIAL, not a surface.** The only concrete "water" in the collision/character domain is a
+**surface-material blend**: the strings `{Center,FrontRight,FrontLeft,RearRight,RearLeft}_MatRatio_{Default,
+Grass,Water,Swamp}` (er+0x2bc32b8…) — a 5-contact-point (Torrent's 4 hooves + centre) material-ratio system for
+footstep VFX/SFX/movement. `Water` sits alongside `Grass`/`Swamp`/`Default` as a **ground material**, with no
+collision surface of its own. Combined with the zero string hits for `WaterSurface`/`WaterMesh`/`PhantomWater`/
+`WaterCollision`/`Wade`/`Splash` (§4-adjacent recon): **ER water has no collision body.** The seabed terrain is
+the only collision; a raycast can only ever return the seabed Y, never a water surface Y. **⇒ the literal
+Option 2 (a filter that hits the water surface) is impossible.**
+
+## 10. The real path — a MATERIAL-based sea-tag (recommended)
+
+The sea-tag only needs to *classify* a relief cell as water (paint it blue); it does not need the exact surface
+Y. Since the ground collision under water carries a **material** that can be `Water`/`Swamp`, the correct
+mod-agnostic, CPU-native tag is:
+
+> per cell: cast `0x5e` (already done in `goblin_heightfield.cpp`) → resolve the **hit triangle's collision
+> material** → `c.sea = (material ∈ {Water, Swamp})`. Blue tint is drawn at the seabed Y (fine for a 2D relief).
+
+**Remaining RE for this path (a fresh, well-scoped sub-task):**
+1. **Extract the material from a raycast hit.** `FUN_140c70360` already returns the hit body/collidable
+   (out-params `param_5`/`param_6` carry the swizzled collidable info; §2 of
+   `windows_terrain_raycast_heightfield_re_findings.md` notes the AEG variant recovers the hit body + a
+   body/material id). Resolve hit → `hknpShape`/shape-key → **`hknpMaterialLibrary`** (er+0x2ee36b0, per
+   `far_terrain_heightmap_re_findings.md` §5b) → the material id.
+2. **The `Water`/`Swamp` material id values** (the enum ordinals) — from the `MatRatio` material enum or the
+   material library. Validate live over a known lake vs dry land.
+
+This is the honest, correct sea-tag source and it reuses the existing single cast (no second cast, no GPU, no
+manager). The MSB water-plane Y (§5) remains the fallback if a true surface *height* is ever needed.
+
+## 11. Anchors — Option 2 / collision filter (this build, er-relative)
+```
+CSCollisionFilter@CS        vt er+0x2b91d00  ctor FUN_140c5d730 (er+0xc5d730) / FUN_140c5d890
+  layer matrix              this+0x20, 128x128 bits (0x800B); populate FUN_140c5dab0 (er+0xc5dab0)
+  isCollisionEnabled        vtable slots 3-6: FUN_140c61940 / 61d70 / 61be0 / 61ae0
+  body shape tag            body+0x6c;  layer = tag & 0x7f (7-bit, 0..127); groups >>7&3, >>0x19&0x1f, bit 0x1e
+  filter byte == query layer  0x5e→layer 94 (terrain, vs layers 2/1/0x52/0x54); 0x5d/0x67 = AEG; 0xe0/0x2000058 flagged
+water is a MATERIAL          {Center,FR,FL,RR,RL}_MatRatio_{Default,Grass,Water,Swamp}  str er+0x2bc32b8..0x2bc34b8
+  material library           hknpMaterialLibrary er+0x2ee36b0  (raycast hit -> shape-key -> material id)
+NO water collision surface   WaterSurface/WaterMesh/PhantomWater/WaterCollision/Wade/Splash = 0 string hits
+```
+
 ## 8. Deliverable status
-Option 3 investigated and **ruled out** (GPU wave-interaction resource, not a base-plane CPU sampler). Manager
-location + heightmap nature + the audio-RTPC false-lead: **DONE (static)**. Actionable next step handed off:
-**Option 2 — the water-surface collision filter** (`windows_terrain_raycast_heightfield_re_findings.md` §3–§4),
-verifiable live on Linux/Proton with a filter arg on the cast RPC over a lake vs the ocean.
+**Options 3 AND 2 both investigated and ruled out (static): DONE.** Option 3 = GPU wave-sim resource (§1–§4);
+Option 2 = no water collision surface, water is a ground material (§9). **Recommended path handed off: the
+material-based sea-tag** (§10) — cast `0x5e` → hit material ∈ {Water, Swamp}; remaining RE = raycast-hit
+material extraction + the Water/Swamp material ids (`hknpMaterialLibrary` er+0x2ee36b0). Fallback = MSB
+water-plane Y (§5).

@@ -117,16 +117,19 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
   Water = per-region `GXSR WaterInteractionManager`/`WaterHeightMap` (no global plane). Findings:
   `windows_terrain_raycast_heightfield_re_findings.md`. Runtime (Linux): must call on the game thread; confirm
   `0x5e` excludes objects.
-- **Water level / sea-tag source — Option 3 RULED OUT; Option 2 is the path (findings
+- **Water level / sea-tag source — Options 3 AND 2 BOTH RULED OUT; real path = a MATERIAL-tag (findings
   `windows_water_level_source_re_findings.md`, 2026-07-06).** The global `kSeaLevelY` heuristic is WRONG (no
-  `SeaLevel` const; water is per-region). **Option 3 (sample `GXWaterHeightMap@GXSR`) is a DEAD END:** that
-  class is a **GPU render-resource container** (~7 ref-counted textures for the water *interaction*/wave sim),
-  a sub-object of `GXSceneContext` at **+0xBE20** — not a CPU per-(x,z) base-plane and semantically the ripple
-  overlay, not the surface level. `WaterDepth` is an **audio RTPC**, not a level; and `Underwater`/`InWater`/
-  `DeepWater`/`WaterVolume`/`SwimTop` = 0 hits (no gameplay water query — ER has no swim; deep water = MSB
-  kill-volumes). **⇒ Option 2 (a water-INCLUSIVE collision cast filter: water cell where the water-cast Y >
-  the `0x5e` terrain Y) is the CPU-native, correct path** — decode the `WorldCollisionFilterCommand` water
-  filter or brute-force filter bytes live over a lake vs the ocean. Fallback: per-region MSB water-plane Y.
+  `SeaLevel` const). **Option 3 (`GXWaterHeightMap@GXSR`) = DEAD END:** a **GPU render-resource** (~7
+  ref-counted textures for the water *interaction*/wave sim), sub-object of `GXSceneContext` at **+0xBE20** —
+  not a CPU base-plane, and it's the ripple overlay not the surface. **Option 2 (a water-surface cast filter)
+  = ALSO DEAD END:** ER's collision filter (`CSCollisionFilter@CS` vt `er+0x2b91d00`, 128-layer matrix at
+  `this+0x20`, populate `FUN_140c5dab0`) shows the cast filter byte is just a **7-bit collision-layer index**
+  (`0x5e`=layer 94, vs terrain layer 2) — and **water is NOT a collision layer**. Water is a ground
+  **MATERIAL** (`{Center,FR,FL,RR,RL}_MatRatio_{Default,Grass,Water,Swamp}`); no water collision surface
+  exists (WaterSurface/WaterMesh/PhantomWater/… = 0 hits), so no cast returns a water surface Y. **⇒ the real
+  CPU-native sea-tag = MATERIAL-based:** cast `0x5e` (done) → hit triangle material (`hknpMaterialLibrary`
+  er+0x2ee36b0) → `sea = material ∈ {Water, Swamp}`. Follow-up RE = raycast-hit material extraction + the
+  Water/Swamp ids. Fallback: per-region MSB water-plane Y.
 - **Far-terrain elevation (the "fake 3D" distant terrain) — SCOPED (static, 2026-07-05,
   `far_terrain_heightmap_re_findings.md`).** The raycast above is loaded-region-only; the distant terrain has
   no collision. **RTTI sweep verdict: there is NO far-terrain heightmap TEXTURE** (zero non-water `*Height*`/
