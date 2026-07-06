@@ -6,7 +6,6 @@
 #include "worldmap/map_renderer.hpp"  // ui_rect_* (UI exclusion-zone editor)
 #include "goblin_i18n.hpp"
 
-#include <cstdio>
 #include <string>
 #include "goblin_overlay_render_api.hpp"
 #include "goblin_config.hpp"  // overlayLanguage (live language combo)
@@ -21,45 +20,6 @@ using goblin::i18n::tr;  // overlay UI localization (lang/<code>.txt)
 // after the settings stop drawing (F1 closed / section collapsed). map_renderer.cpp reads the accessor.
 namespace { int s_minimap_focus_frame = -1000; }
 bool minimap_settings_focused() { return ImGui::GetFrameCount() - s_minimap_focus_frame <= 1; }
-
-namespace
-{
-// "#RRGGBB" -> rgb[3] in 0..1 (silently leaves rgb untouched on a malformed value).
-void hex_to_rgb(const std::string &hex, float rgb[3])
-{
-    if (hex.size() != 7 || hex[0] != '#') return;
-    auto nib = [](char c) -> int {
-        if (c >= '0' && c <= '9') return c - '0';
-        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-        return -1;
-    };
-    for (int i = 0; i < 3; ++i)
-    {
-        int hi = nib(hex[1 + i * 2]), lo = nib(hex[2 + i * 2]);
-        if (hi < 0 || lo < 0) return;
-        rgb[i] = (hi * 16 + lo) / 255.0f;
-    }
-}
-
-// rgb[3] in 0..1 -> "#RRGGBB".
-std::string rgb_to_hex(const float rgb[3])
-{
-    auto clamp255 = [](float v) { int n = (int)(v * 255.0f + 0.5f); return n < 0 ? 0 : (n > 255 ? 255 : n); };
-    char buf[8];
-    std::snprintf(buf, sizeof(buf), "#%02X%02X%02X", clamp255(rgb[0]), clamp255(rgb[1]), clamp255(rgb[2]));
-    return buf;
-}
-
-// One #RRGGBB config-string bound to an ImGui ColorEdit3 (writes back on edit).
-void color_edit_hex(const char *label, std::string &hex_cfg)
-{
-    float rgb[3] = {1, 1, 1};
-    hex_to_rgb(hex_cfg, rgb);
-    if (ImGui::ColorEdit3(label, rgb, ImGuiColorEditFlags_NoInputs))
-        hex_cfg = rgb_to_hex(rgb);
-}
-} // namespace
 
 void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
 {
@@ -336,22 +296,10 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
         ImGui::Checkbox(tr("Regular mobs"), &goblin::config::nameEnemyMobs);
         ImGui::Checkbox(tr("Field bosses / minibosses"), &goblin::config::nameEnemyBosses);
         ImGui::Checkbox(tr("Hostile NPCs / invaders"), &goblin::config::nameEnemyHostiles);
-
-        ImGui::Separator();
-        ImGui::Checkbox(tr("Colorize names by category"), &goblin::config::enemyNameColorize);
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("%s", tr("EXPERIMENTAL. Tints each name via an HTML color tag fed into the\n"
-                                       "game's own text field. Works only if that field parses inline\n"
-                                       "HTML — if it doesn't, names show the raw <font> tags instead.\n"
-                                       "Verify in-world before relying on it. Applies to newly-named\n"
-                                       "enemies (already-named types recolor on reload)."));
-        ImGui::BeginDisabled(!goblin::config::enemyNameColorize);
-        color_edit_hex(tr("Mob color"), goblin::config::enemyNameColorMob);
-        color_edit_hex(tr("Field-boss color"), goblin::config::enemyNameColorBoss);
-        color_edit_hex(tr("Hostile color"), goblin::config::enemyNameColorHostile);
-        ImGui::EndDisabled();
         ImGui::EndDisabled();
 
+        // (No name-color option: the game's native enemy tag is always red — it force-recolors the field
+        // after we set the text, so an injected color can't take. Coloring would need a HUD gfx edit.)
         ImGui::TextDisabled("%s", tr("Live. Save to INI to persist."));
     }
 

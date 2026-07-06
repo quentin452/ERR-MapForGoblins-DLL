@@ -1,5 +1,12 @@
 # Native Scaleform enemy names (replace the ImGui overlay path)
 
+**Finding (2026-07-06, live): the native tag CANNOT be per-type colored.** Injecting an HTML
+`<font color>` around the name is overridden — the engine force-recolors the EnemyTag field red via its
+own `setTextFormat` AFTER our text is set (every enemy/boss/invader tag is red by design). Confirmed
+in-world: a colorized name still rendered red for a generic (sheep). Coloring would require editing
+`01_000_fe.gfx` (not mod-agnostic — conflicts with any HUD mod) → out of scope. The per-category split is
+kept only for the name FILTER (which enemies get named); the injected string is always the plain name.
+
 **Status:** ✅ **IMPLEMENTED 2026-07-06** — the DATA path below is wired in
 `src/goblin_enemy_names.cpp` (`update_native_enemy_names()`, host present-thread): per frame it walks
 the visible `entityHpBars`, and for each `nameId==0` type our resolver can name it injects a NpcName

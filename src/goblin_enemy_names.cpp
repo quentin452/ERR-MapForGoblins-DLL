@@ -251,28 +251,21 @@ constexpr int32_t  kMfgNameIdBase     = 810000000;
 constexpr int32_t  kMfgNameIdMax      = 899000000;  // stay under the 9e8 boss band
 constexpr uint32_t kNpcNameInjectSlot = 18;         // base NpcName FMG slot the engine reads (RE-proven)
 
-// Category of a nameId==0 enemy we can name — drives the per-category name filter + color. teamType
-// 24/27 is the hostile-NPC team (same signal used for the Hostile-NPC marker category); tier 3 is the
-// vanilla field-boss / miniboss NpcName band; everything else is a regular mob.
+// Category of a nameId==0 enemy we can name — drives the per-category name filter. teamType 24/27 is the
+// hostile-NPC team (same signal used for the Hostile-NPC marker category); tier 3 is the vanilla
+// field-boss / miniboss NpcName band; everything else is a regular mob.
+//
+// NB: per-category NAME COLOR was tried (inject an HTML <font color> around the name) and does NOT work —
+// the native EnemyTag is force-recolored red by the engine's own setTextFormat AFTER our text is set, so
+// an inline color is always overridden (every enemy/boss/invader tag is red by design). Coloring the tag
+// would need a gfx edit of 01_000_fe.gfx, which is NOT mod-agnostic (conflicts with any HUD mod) — out of
+// scope. So the category only gates the name FILTER; the string we feed is always the plain name.
 enum class NameCat { Mob, FieldBoss, Hostile };
 NameCat name_category(uint8_t team, int tier)
 {
     if (team == 24 || team == 27) return NameCat::Hostile;
     if (tier == 3)                return NameCat::FieldBoss;
     return NameCat::Mob;
-}
-
-// Return `s` iff it is a well-formed #RRGGBB hex, else "" — a malformed config color never corrupts
-// the injected HTML (it just falls back to the plain, uncolored name).
-std::string sanitize_hex(const std::string &s)
-{
-    if (s.size() != 7 || s[0] != '#') return {};
-    for (size_t i = 1; i < 7; ++i)
-    {
-        char c = s[i];
-        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) return {};
-    }
-    return s;
 }
 } // namespace
 
@@ -292,22 +285,9 @@ struct TypeState
     int  kind = 0;          // 0 = nameable (we own it), 1 = engine already names it, 2 = truly nameless
     int32_t id = 0;         // reserved MFG NpcName id (stable across enable/disable); 0 until reserved
     bool applied = false;   // is NpcParam.nameId currently == id (i.e. WE wrote it)?
-    std::string injected;   // last FMG string we injected for `id` ("" = never / needs (re)inject)
+    bool injected = false;  // has the NpcName string for `id` been injected yet?
     NameCat cat = NameCat::Mob;
 };
-
-// The string the engine will render for a name, with optional per-category HTML color (SPECULATIVE —
-// only renders colored if the enemy tag's TextField parses inline HTML; malformed hex -> plain name).
-std::string build_display(const std::string &name, NameCat cat)
-{
-    if (!goblin::config::enemyNameColorize) return name;
-    const std::string &raw = cat == NameCat::Hostile   ? goblin::config::enemyNameColorHostile
-                           : cat == NameCat::FieldBoss ? goblin::config::enemyNameColorBoss
-                                                       : goblin::config::enemyNameColorMob;
-    std::string hex = sanitize_hex(raw);
-    if (hex.empty()) return name;
-    return "<font color='" + hex + "'>" + name + "</font>";
-}
 
 bool category_enabled(NameCat cat)
 {
@@ -360,7 +340,7 @@ void goblin::update_native_enemy_names()
 
         // First sighting: classify the type (before we ever touch its nameId, so a live read is the
         // ORIGINAL value). nameId != 0 -> engine owns the tag; empty resolve -> nameless; else ours.
-        if (st.kind == 0 && st.id == 0 && st.injected.empty() && !st.applied)
+        if (st.kind == 0 && st.id == 0 && !st.injected && !st.applied)
         {
             uint8_t team = 0; int32_t nameId = 0;
             bool ok = goblin::npc_team_and_name((uint32_t)npcParam, &team, &nameId);
@@ -384,12 +364,11 @@ void goblin::update_native_enemy_names()
         const bool want = category_enabled(st.cat);
         if (want)
         {
-            const ResolvedName &rn = resolve_enemy_name(npcParam, pr.e[i].model);  // cached
-            std::string display = build_display(rn.name, st.cat);
-            if (st.injected != display)                                // first time OR color changed
+            if (!st.injected)                                          // inject the NpcName string once
             {
-                pending.push_back({st.id, utf8_to_wide(display)});
-                st.injected = display;
+                const ResolvedName &rn = resolve_enemy_name(npcParam, pr.e[i].model);  // cached
+                pending.push_back({st.id, utf8_to_wide(rn.name)});
+                st.injected = true;
             }
             if (!st.applied) { set_name.emplace_back(npcParam, st.id); st.applied = true; }
         }
@@ -408,7 +387,7 @@ void goblin::update_native_enemy_names()
         // Force a retry next frame for the affected types (their string didn't land).
         for (auto &e : pending)
             for (auto &kv : s_state)
-                if (kv.second.id == e.id) kv.second.injected.clear();
+                if (kv.second.id == e.id) kv.second.injected = false;
         return;
     }
     for (auto &pp : set_name)

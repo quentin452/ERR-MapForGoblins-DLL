@@ -196,9 +196,10 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   font/accents, frame-synced with the bar, no jitter or edge-clamp on camera swings. Replaces the old
   overlay-drawn label (removed, along with its offset/size sliders). Bosses already named are untouched;
   a mob with no name in the game data stays unnamed. Mod-agnostic (it is the engine's own data path).
-  The F1 "Enemy bars" tab now has per-category name filters (regular mobs / field-bosses / hostile NPCs)
-  and an experimental per-category color option (tints the native tag via an HTML color tag — takes
-  effect only if the game's text field parses inline HTML; off by default, verify in-world).
+  The F1 "Enemy bars" tab has per-category name filters (regular mobs / field-bosses / hostile NPCs),
+  applied live — toggling a category names or un-names those enemies without a reload. (Name color is
+  not offered: the native tag is always red — the engine force-recolors the field after our text, so an
+  injected color can't take; coloring it would need a non-mod-agnostic HUD gfx edit.)
 - **Overlay uses one font throughout (embedded DejaVu Sans), no more bitmap+TTF mix.** ASCII was ImGui's
   ProggyClean bitmap and only accents/extended glyphs were a DejaVu TTF merged on top — two rasterizers
   with different baselines, so accented chars (é in "Varré", œ, →) read raised/blurry beside the pixel

@@ -24,10 +24,6 @@ namespace goblin::config
     bool nameEnemyMobs = true;     // name regular mobs (tier-2 codex + fallback)
     bool nameEnemyBosses = true;   // name field-bosses / minibosses (tier-3 band)
     bool nameEnemyHostiles = true; // name hostile-team generics (teamType 24/27)
-    bool enemyNameColorize = false;// colorize the native tag by category (HTML <font> inject; speculative)
-    std::string enemyNameColorMob = "#FFFFFF";       // mob name color
-    std::string enemyNameColorBoss = "#FF6A4B";      // field-boss name color
-    std::string enemyNameColorHostile = "#FF4040";   // hostile-generic name color
     bool paramOverrides = false;   // apply param_overrides.ini at boot (regulation.bin-free field edits; OFF = ignore file)
     bool sidecarSave = false;      // shadow/sidecar save: keep a DLL-owned <save>.mfg of framework state (Phase 1 state store)
     bool diagLootFlags = false;    // one-shot [LOOTDIAG] field dump for the collected-flag RE
@@ -627,14 +623,6 @@ namespace
                   "Name field-bosses & minibosses whose tag the game leaves blank (the\nvanilla boss NpcName band). Default ON."),
                 B("name_enemy_hostiles", nameEnemyHostiles, "true",
                   "Name hostile-team generics (teamType 24/27) the game leaves blank.\nDefault ON."),
-                B("enemy_name_colorize", enemyNameColorize, "false",
-                  "Colorize the native name tag by category (mob / field-boss / hostile) by\ninjecting an HTML <font color> around the name. SPECULATIVE: works only if\nthe game's enemy-tag text field parses inline HTML; if not, the tags show as\nliteral text. Leave OFF until you've confirmed it renders in-world. Default OFF."),
-                IniEntry{"enemy_name_color_mob", IniType::String, &cfg::enemyNameColorMob, "#FFFFFF",
-                  "Mob name color (#RRGGBB hex) when colorize is on.", false, nullptr},
-                IniEntry{"enemy_name_color_boss", IniType::String, &cfg::enemyNameColorBoss, "#FF6A4B",
-                  "Field-boss / miniboss name color (#RRGGBB hex) when colorize is on.", false, nullptr},
-                IniEntry{"enemy_name_color_hostile", IniType::String, &cfg::enemyNameColorHostile, "#FF4040",
-                  "Hostile-generic name color (#RRGGBB hex) when colorize is on.", false, nullptr},
             }},
 
             {"Param Overrides",
