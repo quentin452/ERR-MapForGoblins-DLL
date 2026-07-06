@@ -950,6 +950,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         if (ImGui::SmallButton(tr("Refresh"))) s_graces_built = false;
         ImGui::SetNextItemWidth(-1.0f);
         ImGui::InputTextWithHint("##gfilter", tr("search"), s_grace_filter, sizeof(s_grace_filter));
+        draw_gamepad_keyboard_button("##vmap_gracefilter_kbd", s_grace_filter, sizeof(s_grace_filter));
         std::string flt = s_grace_filter;
         for (char &c : flt) c = (char)std::tolower((unsigned char)c);
 
@@ -1025,6 +1026,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         ImGui::Text(tr("Item search"));
         ImGui::SetNextItemWidth(-1.0f);
         ImGui::InputTextWithHint("##ifilter", tr("item name (2+ chars)"), s_item_filter, sizeof(s_item_filter));
+        draw_gamepad_keyboard_button("##vmap_itemfilter_kbd", s_item_filter, sizeof(s_item_filter));
 
         // Mark-all-results controls: toggle, max count, Clear. Changing the toggle/max re-runs the marks
         // against the current query (force a rebuild by resetting the query sentinel).
