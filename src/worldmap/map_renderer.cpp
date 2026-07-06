@@ -2767,10 +2767,14 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
             // a bright tint over the sprite so it reads clearly on any tile. The halo fades as the minimap
             // zooms IN (same behaviour as the vmap player halo) so it stops blobbing over the centre —
             // keyed on minimapZoom (px/world; higher = zoomed in), unaffected at normal zoom.
+            // minimapZoom = px/world; DEFAULT is 2.0, range 0.02..5.0. The halo (pop the pin off nearby
+            // markers) only helps when zoomed OUT (many markers clustered near centre); zoomed in it's just
+            // clutter over the player. Fade it out from 1.0 (full) → gone by the default 2.0, so a normal/
+            // zoomed-in minimap shows NO halo, only a zoomed-out one does.
             int haloA = 95;
-            if (scale > 1.5f)
+            if (scale > 1.0f)
             {
-                const float f = 1.0f - (scale - 1.5f) / 2.5f;   // 1 at 1.5 px/world → 0 by ~4.0
+                const float f = 1.0f - (scale - 1.0f);      // 1 at 1.0 px/world → 0 at 2.0 (default)
                 haloA = f > 0.0f ? (int)(95.0f * f) : 0;
             }
             if (haloA > 0)
