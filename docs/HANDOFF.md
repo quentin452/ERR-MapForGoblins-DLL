@@ -17,11 +17,20 @@ New setting **Virtual map on map key** (`vmap_on_map_key`, F1 ▸ Settings, off 
 than suppressing it (native render flag "does not hide the map" — proven). Both builds green, deployed.
 
 - **✅ VERIFIED WORKING (user, 2026-07-06g):** the fullscreen vmap visually stands in for the native map.
-- **⚠ KNOWN LIMITATION / ★ NEXT (follow-up):** the native (vanilla) map is still **authoritative on INPUT** —
-  it stays open underneath, so game map inputs (pan/zoom/close, stick/scroll) still drive the native map, not
-  the vmap. Logical for v1 (visual cover only). Follow-up = route the map inputs to the vmap when
-  `vmap_on_map_key` is on (steal/consume the game-map input, or drive vmap pan/zoom/close from the same keys),
-  so the vmap becomes the interactive surface. Not yet wired.
+- **✅ PERF: native-map marker pass SKIPPED under the fullscreen vmap** (`aad07f3`) — `render_markers`
+  early-returns on `panel::virtual_map_fullscreen()` (was double-drawing hidden native markers).
+- **✅ MOUSE INPUT AUTHORITY (`e604caa`, RUNTIME-UNTESTED):** file-local `vmap_covers_map()` (`world_map_open
+  && (cfg::vmapOnMapKey || vworld::active)`, host-side) gates a wndproc branch that feeds ImGui + SWALLOWS the
+  game's mouse (moves/wheel/button presses) → the hidden native map no longer pans/zooms; wheel now forwarded
+  → vmap zoom works. Keyboard left flowing so the map-close key still closes the native map (→ vmap
+  auto-closes); releases pass through. Map pans via LEGACY mouse → raw-input hook untouched (so it never
+  blanks the raw keyboard the close key rides on). **⚠ needs 1 boot to confirm no input-trap + zoom works.**
+- **★ NEXT (remaining input authority):** (1) **gamepad/right-stick pan still drives the native map** — the
+  game reads XInput directly (not via wndproc), so the stick isn't gated; the vmap already has its own pad
+  reticle, but the hidden native map still pans on the stick. Gate the game's XInput read (or the pad poll)
+  when `vmap_covers_map()`. (2) Optional: feed keyboard to ImGui when vmap-fullscreen so the vmap SEARCH box
+  is typable (currently keyboard → game only, to keep close working — would need to let close-key through but
+  route other keys to ImGui).
 
 ## ⇒ SESSION WRAP 2026-07-06g (Linux/Opus) — water Probe 2: offline dvdbnd→collision chain BUILT + VALIDATED, Oodle is the one wall
 
