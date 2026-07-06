@@ -1934,7 +1934,27 @@ namespace
             // vmap redirect is open (ER's own cutscene freeze, SetDisableAllChrUpdate). Enemies can't act → no
             // combat can start → the map is always openable, and resume is instant on close. Own freeze reason,
             // OR-combined with the F1-panel/manual pause. (game_timestep_freeze_re_findings.md "SOLVED", #3)
-            goblin::pause::request_freeze(goblin::pause::FREEZE_VMAP, goblin::overlay_api::vmap_redirect());
+            {
+                bool redirect = goblin::overlay_api::vmap_redirect();
+                // Auto-close the vmap if the world becomes NOT-PLAYABLE while it's open (death→reload, area
+                // transition, quit-out). Solo the freeze prevents dying with the map up, but in co-op the vmap
+                // isn't frozen (a partner is present) so you CAN die with it open — force-close so the death /
+                // respawn flow isn't stuck behind the map. Signal = LocalPlayer null (get_player_world_pos()
+                // returns false — the codebase's clean in-world signal). Debounced 2 frames so a torn mid-frame
+                // read can't spuriously close it. (coop_player_list_re_prompt.md follow-up)
+                if (redirect)
+                {
+                    static int s_not_playable = 0;
+                    float px, py, pz;
+                    s_not_playable = goblin::get_player_world_pos(px, py, pz) ? 0 : (s_not_playable + 1);
+                    if (s_not_playable >= 2)
+                    {
+                        goblin::overlay_api::set_vmap_redirect(false);
+                        redirect = false;
+                    }
+                }
+                goblin::pause::request_freeze(goblin::pause::FREEZE_VMAP, redirect);
+            }
             if (minimap)
                 goblin::overlay_render_loader::call_draw_minimap_hud(frame_ctx);   // minimap HUD (self-gates overworld-only)
 

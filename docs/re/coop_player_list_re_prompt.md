@@ -43,6 +43,13 @@ co-op session (2 machines / 2 players). Checklist: join co-op → `others_presen
 tracks their movement; open the vmap → freeze is SKIPPED (partner keeps moving, no desync); markers draw at the
 buddies' live positions.
 
+## Related, already DONE
+- **Auto-close the vmap on death / world-not-playable** (`goblin_overlay.cpp`): while the vmap redirect is
+  open, if `get_player_world_pos()` reads false (LocalPlayer null — death→reload, area transition, quit-out)
+  for 2 consecutive frames, the vmap force-closes (and its freeze releases). Matters in co-op (the vmap isn't
+  frozen there, so you can die with it open); harmless solo (the freeze prevents dying with it up). Testable
+  solo by triggering a loading screen (warp) with the vmap open.
+
 ## Wiring once resolved
 - `goblin_overlay.cpp` vmap gate: `request_freeze(FREEZE_VMAP, vmap_redirect() && !goblin::coop::others_present())`.
 - Markers: feed `goblin::coop::players()` into the WorldMap/Minimap marker pass (new "co-op player" marker type).
