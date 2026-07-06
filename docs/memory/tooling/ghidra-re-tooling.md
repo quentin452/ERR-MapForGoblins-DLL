@@ -47,6 +47,14 @@ load). See [[ghidra-worldmap-re]] for the headless setup. Committed in repo `too
   9760 classes / 10202 vtables. Grep instead of re-deriving RTTI by hand: `grep 'MapIns@CS@@$'`,
   `grep -i worldgeom`, `grep $'\t0x6c5900'` (which class owns ctor @ that RVA). RVAs are er_base-relative
   for one build → regenerate after a patch (`rtti_index.java`; header records imagebase).
+- **⚠ The whole `-scriptPath` dir compiles as ONE OSGi bundle.** A compile error in ANY `.java` in
+  `D:\ghidra_scripts` makes EVERY script fail to load with a misleading `"class could not be found / Failed
+  to get OSGi bundle"` — and the real javac diagnostic reaches NEITHER stdout NOR `application.log`. So a
+  script that ran yesterday can suddenly "vanish" because a *sibling* you just added is broken. Triage: this
+  is why `query.java`/`rtti_index.java` are the sweet spot (fewer files to break). To get the real error,
+  compile the one file with Windows `javac` against a jar glob
+  (`Get-ChildItem D:\ghidra\ghidra_12.1.2_PUBLIC -r -Filter *.jar | ?{$_.Name -match 'Base|Decompiler|Docking|Generic|SoftwareModeling|Utility|Project|Gui'}`,
+  join with `;`). Deleting/fixing the broken sibling restores all the others.
 - **`<ghidra_scripts>\query.java`** — parametrized decompile, no per-RE script:
   `analyzeHeadless ... -postScript query.java <0xADDR|name:SUBSTR> ...` → fn decomp + entry AOB +
   rip-relative static globals + callers, OR RTTI-walk a class → vtable/vmethods/ctors. Output →

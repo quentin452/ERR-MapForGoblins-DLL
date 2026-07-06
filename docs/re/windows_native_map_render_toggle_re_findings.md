@@ -119,11 +119,13 @@ map-viewport diagnostic; `hide/show` are kept as reusable scaffolding (resolve +
 
 **⇒ What's actually left for the cull** (all NOT cheap, and the production flip is GATED on Track A parity +
 Track B fast-travel anyway, so this is not urgent):
-- **Candidate 1 — the Scaleform DRAW vfunc no-op** (skip submitting the movie's GFx render pass). Needs the draw
-  slot — findings §4 flagged this as "several uncertain Ghidra runs" (Windows). The real remaining path.
-  **← CHOSEN 2026-07-06 (user): pursue this. Sharpened Windows prompt written →
-  `windows_native_map_drawvfunc_re_prompt.md`** (has the anchors, the two dead levers to skip, and a
-  fallback B = a render-enable field on `CSScaleformSwfPlayer`/MovieImpl).
+- **Candidate 1 — the Scaleform DRAW vfunc no-op** (skip submitting the movie's GFx render pass).
+  **← RE'd on Windows 2026-07-06 → `windows_native_map_drawvfunc_re_findings.md`. RESULT: goal A is DEAD —
+  there is NO per-menu draw vfunc.** `WorldMapDialog`'s vtable is 13 slots (enumerated), none submit the movie,
+  and `CSMenuManImp` registers only the UPDATE task (no draw task). The map draws through a **central
+  CSScaleform pass on the render thread**. The remaining lever is **goal B — a per-movie render/visible gate**
+  on the now-mapped `CSScaleformSwfPlayer` (0xe8 struct, via `WorldMapDialog+0x140→+0x58`); pin it via a
+  Linux-live RPM A/B of that struct (reuse the `movieclip` scaffolding) or a Ghidra render-thread trace.
 - **A movie/player visible/enable flag** — blind RPM field-scan of MovieImpl / `CSScaleformSwfPlayer`
   (`movieHandle+0x58`) for a boolean that gates render. Linux-doable but a risky spike (flipping unknown fields
   can crash); reuse the `movieclip` scaffolding.

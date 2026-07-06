@@ -32,12 +32,18 @@ than suppressing it (native render flag "does not hide the map" — proven). Bot
 - **✅ F1-CLOSED vmap interaction FIXED (`6c20613`):** the ImGui click/wheel/keyboard poll block in hk_present
   was gated `g_show` (F1) only — ER's map screen posts no legacy WM clicks/wheel, so F1-closed the vmap got
   nothing ("only worked with F1"). Now gated `g_show || vmap_covers_map()`. User-confirmed working.
-- **★ NATIVE MAP RENDER CULL — routed to Windows RE (user chose candidate 1, 2026-07-06).** The vmap covers +
-  input-locks the native map, but it still RENDERS underneath (wasted GPU). Both cheap Linux levers PROVEN
-  DEAD (`windows_native_map_render_toggle_re_findings.md` §4c D3D12 scissor / §4d MovieImpl+0xB0 clip write).
-  Chosen path = **no-op the WorldMapDialog Scaleform DRAW vfunc** (keep the update tick FUN_140766980 live).
-  Sharpened Windows/Ghidra prompt written → `docs/re/windows_native_map_drawvfunc_re_prompt.md` (anchors +
-  dead-levers + fallback B = a render-enable field). RE README frontier updated. **→ Windows session.**
+- **★ NATIVE MAP RENDER CULL — candidate 1 RE'd on Windows, goal A DEAD; goal B (a render/visible gate) is
+  the path (2026-07-06, Windows/Ghidra).** `docs/re/windows_native_map_drawvfunc_re_findings.md`:
+  **there is NO per-menu draw vfunc to no-op** — `WorldMapDialog`'s vtable (er+0x2b2d7d8) is a fully-enumerated
+  13 slots, none submit the movie; and `CSMenuManImp` registers only ONE per-frame task (the UPDATE tick
+  FUN_140766980), no draw task. The native map draws through a **central CSScaleform pass on the render
+  thread**, not the menu vtable. Now mapped end-to-end (singleton er+0x3d83148, `CSScaleformSystem` movie mgr
+  @ imp+8 / list @ +0x9b0, Step FUN_140d6e6f0, `CSScaleformSwfPlayer` = thin 0xe8 struct via
+  `WorldMapDialog+0x140→+0x58`). **NEXT = pin the per-movie render/visible gate — Route 1 (recommended):
+  Linux-live RPM A/B of the now-narrow 0xe8 player struct via the existing `movieclip` scaffolding (B3 proved
+  live beats static here); Route 2: Ghidra render-thread DISPLAY-submit trace.** Both cheap levers still dead
+  (§4c scissor / §4d MovieImpl+0xB0 clip). Not urgent (production flip gated on Track A parity + Track B
+  fast-travel).
 - **★ NEXT (remaining input authority):** (1) **gamepad/right-stick pan still drives the native map** — the
   game reads XInput directly (not via wndproc), so the stick isn't gated; the vmap already has its own pad
   reticle, but the hidden native map still pans on the stick. Gate the game's XInput read (or the pad poll)
