@@ -8,6 +8,8 @@
 #include <spdlog/spdlog.h>
 
 #include "goblin_inject.hpp"          // goblin::world_map_open()
+#include "goblin_config.hpp"          // goblin::config::vmapOnMapKey — vmap-covers-map input gate
+#include "goblin_virtual_world.hpp"   // goblin::vworld::active() — custom-world open-on-map-key path
 #include "goblin_overlay_render_loader.hpp"  // call_inworld_hovered()
 
 // ImGui's Win32 backend message handler (defined in imgui_impl_win32.cpp) — not declared by
@@ -71,6 +73,17 @@ bool note_user_input(int src)
     if (src == 1) return false;
     g_last_user_input_tick.store(now, std::memory_order_relaxed);
     return true;
+}
+
+bool vmap_covers_map()
+{
+    // Fullscreen vmap standing in for the native map: the game map is open, AND we open the vmap on
+    // the map key (either the vmap_on_map_key opt-in for the base world, or a custom virtual world is
+    // active — the "M, not F1" path). Both bits are host-side (config + vworld are host-exported), so
+    // this needs no render call. Approximates panel::virtual_map_fullscreen()'s s_from_map for input
+    // gating (true over the same open→close window).
+    return goblin::world_map_open() &&
+           (goblin::config::vmapOnMapKey || goblin::vworld::active() != 0);
 }
 
 LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
@@ -230,10 +243,35 @@ LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             break;
         }
     }
-    // F1 panel CLOSED but the world map is open: feed ImGui the mouse so in-world chips
-    // (region toggles) stay clickable, and consume the L-button PRESS for the game ONLY
-    // when the cursor is over a chip (map pan/select elsewhere is untouched). Releases
-    // always pass through to the game (never swallow an UP → no "held forever" bug).
+    else if (goblin::world_map_open() && vmap_covers_map())
+    {
+        // Fullscreen vmap covers the native map: feed ImGui and SWALLOW the game's mouse (moves,
+        // wheel, button PRESSES) so the hidden native map can't pan/zoom/select — the vmap owns the
+        // pointer. Wheel is forwarded here (branch below never did), so vmap zoom works too. Keyboard
+        // is NOT touched (falls through to the game) so the map-close key still closes the native map,
+        // which then auto-closes the vmap — the user is never trapped. Releases pass through (feeding
+        // ImGui) so nothing is "held forever".
+        switch (msg)
+        {
+        case WM_MOUSEMOVE:
+        case WM_MOUSEWHEEL: case WM_MOUSEHWHEEL:
+        case WM_LBUTTONDOWN: case WM_LBUTTONDBLCLK:
+        case WM_RBUTTONDOWN: case WM_RBUTTONDBLCLK:
+        case WM_MBUTTONDOWN: case WM_MBUTTONDBLCLK:
+        case WM_XBUTTONDOWN:
+            ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp);
+            return 1; // game never sees it
+        case WM_LBUTTONUP: case WM_RBUTTONUP: case WM_MBUTTONUP: case WM_XBUTTONUP:
+            ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp);
+            break; // release passes through to the game (no "held forever")
+        default:
+            break; // keyboard / everything else → game (map-close key still works)
+        }
+    }
+    // F1 panel CLOSED, native map open (and NOT a fullscreen-vmap stand-in): feed ImGui the mouse so
+    // in-world chips (region toggles) stay clickable, and consume the L-button PRESS for the game ONLY
+    // when the cursor is over a chip (map pan/select elsewhere is untouched). Releases always pass
+    // through to the game (never swallow an UP → no "held forever" bug).
     else if (goblin::world_map_open())
     {
         switch (msg)
