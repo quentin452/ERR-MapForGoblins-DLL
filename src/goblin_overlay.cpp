@@ -1731,7 +1731,11 @@ namespace
             // GetCursorPos for the position). Poll the async button state — exactly how the F1 toggle
             // key is already read (GetAsyncKeyState, focus/message-independent) — and feed ImGui. Only
             // while the panel is up, foreground-guarded so a background click can't leak in.
-            if (g_show)
+            // Runs while the F1 panel is up OR the fullscreen vmap covers the native map — with F1
+            // CLOSED the vmap is the interactive surface, and ER's map screen posts no legacy WM
+            // clicks/wheel, so without this poll its clicks + wheel-zoom would be dead. Keyboard poll
+            // is non-consuming (GetAsyncKeyState) → the map-close key still reaches the game.
+            if (g_show || goblin::input::vmap_covers_map())
             {
                 // present.inputpoll = the F1-panel-only win32 input reads (GetCursorPos, GetAsyncKeyState
                 // x6, poll_keyboard_text_input). Under Wine each is a potential wineserver round-trip, so
