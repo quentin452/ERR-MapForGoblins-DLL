@@ -6,6 +6,7 @@
 #include "goblin_sidecar.hpp"     // pump_present() — sidecar flag replay (slice 1b)
 #include "goblin_config.hpp"
 #include "goblin_pause.hpp"       // pause-on-open (config::pauseOnOpen) — freeze world sim while F1 is up
+#include "goblin_coop.hpp"        // coop::others_present() — skip the vmap freeze in seamless co-op (desync)
 #include "goblin_quest_steps.hpp"
 #include "goblin_debug_events.hpp"
 #include "goblin_freeze_watchdog.hpp"
@@ -1934,7 +1935,14 @@ namespace
             // vmap redirect is open (ER's own cutscene freeze, SetDisableAllChrUpdate). Enemies can't act → no
             // combat can start → the map is always openable, and resume is instant on close. Own freeze reason,
             // OR-combined with the F1-panel/manual pause. (game_timestep_freeze_re_findings.md "SOLVED", #3)
-            goblin::pause::request_freeze(goblin::pause::FREEZE_VMAP, goblin::overlay_api::vmap_redirect());
+            //
+            // CO-OP GATE: SetDisableAllChrUpdate is a LOCAL sim freeze → freezing while a seamless partner keeps
+            // simulating would desync the session. So skip the freeze when other players are present.
+            // goblin::coop reads the WorldChrMan session player array (mod-agnostic, no ersc dependency); solo →
+            // others_present() is false → no change. (docs/re/coop_player_list_re_prompt.md "SOLVED")
+            goblin::pause::request_freeze(
+                goblin::pause::FREEZE_VMAP,
+                goblin::overlay_api::vmap_redirect() && !goblin::coop::others_present());
             if (minimap)
                 goblin::overlay_render_loader::call_draw_minimap_hud(frame_ctx);   // minimap HUD (self-gates overworld-only)
 

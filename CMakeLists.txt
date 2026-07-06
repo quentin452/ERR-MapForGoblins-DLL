@@ -200,6 +200,8 @@ set(GOBLIN_HOST_SOURCES
   src/goblin_section_visibility.cpp
   src/goblin_world_position.cpp
   src/goblin_enemy_names.cpp
+  src/goblin_coop.hpp
+  src/goblin_coop.cpp
   src/goblin_tutorial_popup.cpp
   src/goblin_grace_suppression.cpp
   src/goblin_native_map_redirect.cpp
