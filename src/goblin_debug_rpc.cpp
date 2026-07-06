@@ -47,6 +47,8 @@
 #include <cstdio>
 #include <cstring>
 #include <deque>
+#include <fstream>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -553,6 +555,34 @@ namespace goblin::debug_rpc
                 std::snprintf(head, sizeof(head), "ok assets_probe shape=%s loose=%d packed=%d missing=%d |",
                               overall, nloose, npacked, nmiss);
                 return std::string(head) + per;
+            }
+            // dcx_file <in.dcx> <out> — decompress a raw DCX blob on disk with the game's in-process
+            // Oodle (KRAK support) and write the plain bytes to <out>. Bridges the offline C# collision
+            // reader (tools/collision_offline) past the Oodle wall: native-Linux dotnet can't load
+            // oo2core, so it slices the raw inner hkx.dcx out of the dvdbnd/BXF and hands it here to
+            // decompress. See docs/re/far_water_surface_disk_re_findings.md §8.
+            if (cmd == "dcx_file")
+            {
+                std::string in = next_token(rest), out = next_token(rest);
+                if (in.empty() || out.empty()) return "err usage: dcx_file <in.dcx> <out>";
+                std::ifstream f(in, std::ios::binary);
+                if (!f) return "err cannot open input: " + in;
+                std::vector<uint8_t> raw((std::istreambuf_iterator<char>(f)),
+                                         std::istreambuf_iterator<char>());
+                if (raw.empty()) return "err empty input: " + in;
+                bool krak = false;
+                auto dec = goblin::worldmap::dcx_decompress_bytes(raw.data(), raw.size(), &krak);
+                if (dec.empty())
+                    return "err decompress failed (krak=" + std::to_string(krak) +
+                           ", Oodle missing?) for " + in;
+                std::ofstream o(out, std::ios::binary);
+                if (!o) return "err cannot open output: " + out;
+                o.write(reinterpret_cast<const char *>(dec.data()),
+                        static_cast<std::streamsize>(dec.size()));
+                char b[192];
+                std::snprintf(b, sizeof(b), "ok dcx_file in=%zu out=%zu krak=%d -> %s", raw.size(),
+                              dec.size(), krak ? 1 : 0, out.c_str());
+                return std::string(b);
             }
             // w2s_probe [dot on|off | conv <0..3> | fovy <rad>] — 3D world-to-screen calibration
             // (docs/re/windows_world_to_screen_camera_re_findings.md). Bare: dump the live camera VIEW

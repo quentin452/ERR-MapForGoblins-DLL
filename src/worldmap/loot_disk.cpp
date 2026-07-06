@@ -247,6 +247,24 @@ std::vector<uint8_t> read_loose_file_decompressed(const std::string &rel_path)
     return msbe::dcx_decompress(raw.data(), raw.size(), &krak, resolve_oodle());
 }
 
+std::vector<uint8_t> dcx_decompress_bytes(const uint8_t *data, size_t len, bool *isKrak)
+{
+    // Decompress a raw DCX blob in memory with the game's loaded Oodle (KRAK support).
+    // For inner-BXF hkx.dcx that have no vpath (collision meshes live inside hkxbhd/hkxbdt),
+    // so read_game_file_decompressed can't reach them — the offline C# reader slices the raw
+    // KRAK blob out and hands it here (see docs/re/far_water_surface_disk_re_findings.md §8).
+    if (!data || len < 4) return {};
+    if (!(data[0] == 'D' && data[1] == 'C' && data[2] == 'X' && data[3] == 0))
+    {
+        if (isKrak) *isKrak = false;
+        return std::vector<uint8_t>(data, data + len);  // not a DCX — pass through
+    }
+    bool krak = false;
+    auto out = msbe::dcx_decompress(data, len, &krak, resolve_oodle());
+    if (isKrak) *isKrak = krak;
+    return out;
+}
+
 std::map<std::string, std::vector<uint8_t>>
 read_item_icon_sheets(const std::vector<std::string> &names)
 {

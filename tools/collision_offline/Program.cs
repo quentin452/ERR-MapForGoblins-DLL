@@ -129,6 +129,30 @@ static class Program {
             Console.WriteLine($"total={i}");
             return 0;
         }
+        if(args[0]=="dump-inner" && args.Length>=4){
+            // dump-inner <mMM_XX_YY_ZZ> <innerNameSubstr> <out>  — write one inner hkx.dcx (raw, still
+            // KRAK) from the hi-collision BXF to disk, ready for the `dcx_file` RPC verb to decompress.
+            var m=args[1]; var mm=m.Substring(0,3); var needle=args[2];
+            var map=Dvdbnd.OpenMap();
+            var bhd=Dvdbnd.Slice(map,$"map/{mm}/{m}/h{m.Substring(1)}.hkxbhd");
+            var bdt=Dvdbnd.Slice(map,$"map/{mm}/{m}/h{m.Substring(1)}.hkxbdt");
+            if(bhd==null||bdt==null){ Console.Error.WriteLine($"no hi-collision for {m}"); return 2; }
+            var bxf=Dvdbnd.T("SoulsFormats.BXF4");
+            var read=bxf.GetMethods(BindingFlags.Public|BindingFlags.Static).First(x=>x.Name=="Read"
+                && x.GetParameters().Length==2 && x.GetParameters().All(p=>p.ParameterType==typeof(Memory<byte>)));
+            var b=read.Invoke(null,new object[]{new Memory<byte>(bhd),new Memory<byte>(bdt)});
+            var files=(System.Collections.IEnumerable)bxf.GetProperty("Files").GetValue(b);
+            foreach(var f in files){ var ft=f.GetType();
+                string name=(string)ft.GetProperty("Name").GetValue(f);
+                if(!name.Contains(needle)) continue;
+                var bm=ft.GetProperty("Bytes").GetValue(f);
+                byte[] by = bm is byte[] ba ? ba : bm is Memory<byte> mmb ? mmb.ToArray() : null;
+                File.WriteAllBytes(args[3],by);
+                Console.WriteLine($"wrote {by.Length} bytes ({name}) -> {args[3]}");
+                return 0;
+            }
+            Console.Error.WriteLine($"no inner file matching '{needle}' in {m} hi-collision"); return 2;
+        }
         if(args[0]=="extract" && args.Length>=3){
             var arch = args[1].StartsWith("map/") ? Dvdbnd.OpenMap() : Dvdbnd.Open("Data0",K.DATA0_MOD,K.DATA0_EXP);
             var b=Dvdbnd.Slice(arch,args[1]);

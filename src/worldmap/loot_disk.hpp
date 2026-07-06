@@ -280,6 +280,13 @@ std::vector<uint8_t> read_game_file_decompressed(const std::string &rel_path);
 // file isn't present loose. Lets callers prefer a mod's own file over vanilla.
 std::vector<uint8_t> read_loose_file_decompressed(const std::string &rel_path);
 
+// Decompress a raw DCX blob (DFLT/zlib or KRAK/Oodle) already in memory, using the game's
+// loaded Oodle for KRAK. Pass-through if the blob isn't a DCX. For inner-BXF hkx.dcx that
+// aren't addressable as a vpath (collision meshes live inside hkxbhd/hkxbdt) — the offline
+// C# collision reader (tools/collision_offline) slices the raw KRAK blob and hands it to the
+// `dcx_file` debug-RPC verb, since native-Linux dotnet can't load oo2core. `isKrak` optional.
+std::vector<uint8_t> dcx_decompress_bytes(const uint8_t *data, size_t len, bool *isKrak = nullptr);
+
 // Extract one or more item-icon ATLAS SHEET DDS images from the menu texture pack
 // menu/hi/01_common.tpf.dcx (read via read_game_file_decompressed, so loose mod overlay
 // first, then the packed dvdbnd). The pack decompresses to a ~194 MB PC TPF holding the
