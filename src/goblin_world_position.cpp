@@ -61,11 +61,12 @@ static bool project_dungeon_row_to_overworld(
     // the overworld map-space (one converter, no area-12 converter) — the underground map is
     // a LAYER of the same space — so area 12 IS projected to unified coords (its conv rows
     // map area-12-local → area-60 geographic), and the overlay draws it on the UG layer
-    // (gated separately by ORIGINAL areaNo). DLC underground (40-43) stays native for now
-    // (DLC is still on the eyeball path).
-    if (d->areaNo >= 40 && d->areaNo <= 43)
-        return false;
-    if (d->areaNo == 12 && !conv_underground)
+    // (gated separately by ORIGINAL areaNo). DLC underground (40-43) folds the SAME way:
+    // WorldMapLegacyConvParam maps them onto the ONE Land-of-Shadow page (area 61) — legacy_fold
+    // reproduces the engine exactly (validated project()==live for area 40, test_converter_offvm.py),
+    // so on the overlay path they unify to DLC-OW map-space instead of staying native (off-map). Group
+    // stays plain DLC (marker_group_from keys off the ORIGINAL area: 40-43 → group 2, not UG).
+    if ((d->areaNo == 12 || (d->areaNo >= 40 && d->areaNo <= 43)) && !conv_underground)
         return false;
 
     // Prefer the LIVE param fold (goblin_legacy_fold): full-block key (area,gx,gz),

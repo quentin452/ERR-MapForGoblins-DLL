@@ -42,6 +42,13 @@ Implements + validates the "Remaining" step of the resident-converter-affine RE 
   direct shortcut. Validated `test_converter_offvm.py` **11/11**: live `proj` == forced off-VM `proj_nvm`
   (same u,v,page) over base + legacy m10/m11/m30/m35 + DLC-UG m40 + base-UG m12 (8/8 placed, all agree). New
   RPC `proj_nvm` forces the no-VM path so the test can compare with the map open (VM cache would shadow it).
+- **✅ DLC-UNDERGROUND (areas 40–43) PROJECTION DONE (2026-07-06f2).** `project_dungeon_row_to_overworld`
+  used to return false for 40–43 UNCONDITIONALLY (the dead "DLC eyeball path") → DLC-UG markers drawn by
+  WORLD coords stayed native (off the DLC page). Now gated on `!conv_underground` like area 12, so the
+  overlay path folds 40–43 → area 61 via the resident `WorldMapLegacyConvParam` (`legacy_fold`, same as the
+  validated `project()` path). Verified live: `vmap dump_markers` → 349 area-40–43 markers, all group 2 (DLC),
+  world coords `X[11201..13312] Z[10170..12217]` INSIDE the DLC-OW (area 61) cluster (was native ~0–1000, off
+  page); none in the 19 `vmap offmap` margins. Group stays plain DLC (marker_group_from keys off original area).
 - **★ NEXT (follow-up, not blocking):** the vmap now has full map-closed projection — could drop any
   remaining "open the native map once" UX for projection (tile RESIDENCY still needs it; projection doesn't).
 
