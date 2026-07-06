@@ -108,6 +108,46 @@ long (StepTemplate.Update → CSTaskGroup tick → frame root), so FWA-live is f
 scale the computed delta (whole-game timescale/freeze), OR hook `FUN_140623410` for a MoveMap-group-scoped
 freeze (partial — the original path B). External RPM writes to any `FD4Time+0x08` are always overwritten.
 
+## ★ SOLVED — the real freeze gate = `CS::CSEventUtility::SetDisableAllChrUpdate(bool)` (2026-07-06, live)
+The whole `FUN_140623410`/master-dt track was the WRONG target for a freeze. Confirmed live by **RET-testing**
+(patch the entry byte `40`→`C3` via external RPM): RETing `FUN_140623410` had **zero effect on gameplay** →
+`MoveMapStep` is a transition/streaming step machine, **not** the per-frame chr update. (Its dt patch also
+persisted with no effect.) So the goal here (freeze/stop chr+AI updates) is served by a completely different,
+purpose-built engine function — no dt/timescale hooking needed.
+
+**Gate = `FUN_1405f4d40` (er+0x5f4d40) = `CS::CSEventUtility::SetDisableAllChrUpdate(bool)`** (symbol proven by
+the `…SetDisableAllChrUpdate(bool)'::__l5::ChrFinderImp::vftable` string in its body). It:
+1. writes the flag `[WorldChrManDbg+0x8]` (singleton ptr `[er+0x3d66198]`), AND
+2. **runs a ChrFinder that propagates the freeze onto every ChrIns** (`FUN_14050aa30`). This propagation is the
+   whole point — see below.
+
+**Effect (live-verified):** freezes ALL characters (player + enemies + NPCs) in pose, still rendered; camera/
+UI/input keep running. **Resume is INSTANT even after 10 min frozen** — because a disabled chr simply isn't
+updated (no dt accumulates), there is nothing to catch up on. This beats the old branch-flip pause (whose
+resume hitch was proportional to freeze duration) and beats any dt=0 scheme (which the engine would still
+accumulate). This is ER's own cutscene freeze.
+
+**⚠ You must CALL the function, not poke the flag.** Poking `[WorldChrManDbg+0x8]=1` (or `+0xa`/`+0xb`) by RPM
+is a **NO-OP** — the per-chr effect only happens through the ChrFinder propagation inside the function. Live
+invocation that works: **`CreateRemoteThread(er+0x5f4d40, arg)`**, arg=1 freeze / 0 resume (`void f(char)`,
+arg in rcx). No crash, clean, reversible. Scripts: `scratchpad/remote_call.py`.
+
+**Entry AOB** (RVA 0x5f4d40 preferred; mask the rip disp): `40 53 48 83 EC 40 48 C7 44 24 20 FE FF FF FF 48
+83 3D ?? ?? ?? ?? 00 0F`.
+
+**Enemies-frozen / player-free variant (UNTESTED theory):** the per-chr effective-disable reads as
+`[WorldChrManDbg+0x8] XOR [ChrIns+0x531]` (fn `FUN_1405ed590`). So setting `[LocalPlayer+0x531]` bit0=1 before
+the call should exempt the player (`1 XOR 1 = 0` = active) while enemies freeze (`1 XOR 0 = 1`). LocalPlayer =
+`[[er+0x3d65f88]+0x1e508]`. Script `scratchpad/freeze_enemies.py` — needs live confirm near enemies.
+
+**Mod wiring (production, replaces all the external RPM):** resolve `SetDisableAllChrUpdate` by AOB/RVA and
+call it in-process behind a `freeze`/`freeze_ai` toggle (RPC verb). For the enemies-only mode, set the player
+exempt bit first. No CreateRemoteThread, no per-frame race — one function call.
+
+**Superseded:** the "hook `FUN_140623410` / find the FD4 root dt" recommendations above are for a *timescale/
+slowmo* lever (a different feature). For **freeze/stop-updates**, use `SetDisableAllChrUpdate` — it's cleaner,
+race-free, instant-resume, and already exists.
+
 ## Method note (reusable)
 
 Live disasm beat static here: RPM-read the function bytes at `er_base+RVA`, `capstone` (CS_MODE_64) with
