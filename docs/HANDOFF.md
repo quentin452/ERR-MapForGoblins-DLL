@@ -49,6 +49,16 @@ Implements + validates the "Remaining" step of the resident-converter-affine RE 
   validated `project()` path). Verified live: `vmap dump_markers` → 349 area-40–43 markers, all group 2 (DLC),
   world coords `X[11201..13312] Z[10170..12217]` INSIDE the DLC-OW (area 61) cluster (was native ~0–1000, off
   page); none in the 19 `vmap offmap` margins. Group stays plain DLC (marker_group_from keys off original area).
+- **M1 sea-tag — global constant is WRONG; routed to proper per-region RE (2026-07-06f2).** User flagged
+  sea level varies by world/location. Confirmed via `strings` on `eldenring.exe` + prior RE: NO `SeaLevel`
+  const; water is per-region `GXWaterHeightMap@GXSR` (vt `er+0x30370b0`, ctor `er+0x1b78960`) +
+  `GXWaterInteractionManager`/`Param`/`GXWaveTerrain`. NavMesh = Havok AI (`hkai*`) = walkability, not water.
+  So headless "calibrate one `kSeaLevelY`" is a dead end (over-tags low coastal land, misses elevated water)
+  — left the sentinel dormant + documented WHY in `goblin_heightfield.cpp`. Wrote
+  `docs/re/windows_water_level_source_re_prompt.md` (Windows/Ghidra): Option 2 = a water-INCLUSIVE cast filter
+  (water cell where water-cast Y > the `0x5e` terrain Y — cheapest, Linux-testable once the filter is found),
+  Option 3 = sample `GXWaterHeightMap`. RE README indexed. → M1 sea-tag now blocked on this RE, not on a live
+  measurement.
 - **vmap gamepad M4 — reticle → hover/warp/place LANDED (2026-07-06f2, needs PAD live-test).** The
   right-stick reticle (`s_pad_cursor`) is now the effective canvas pointer in pad-mode: it drives the
   single-marker/grace **hover tooltip** (accumulator uses `vptr`/`hovered_eff`), **FaceUp (Y/△)** warps a

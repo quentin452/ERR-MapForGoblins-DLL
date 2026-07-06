@@ -32,11 +32,17 @@ constexpr uint32_t  FILTER_GROUND = 0x5e;        // walkable-ground / map query 
 // a coarse relief hillshade. Tune live if spurious high patches show under bridges/city geometry.
 constexpr float kCastAbove = 3000.f;
 constexpr float kCastDepth = 10000.f;
-// M1 — sea-tag. filter 0x5e skips the water VOLUME but still hits the SEABED beneath it at a low Y. A hit
-// whose groundY sits under this level = underwater seabed → classify the cell as sea (water-blue) rather
-// than trying to "fix" the water skip. PROVISIONAL/DORMANT: sentinel -1e30 tags nothing until a live
-// shoreline `hf_probe` gives the real sea Y — then flip this one constant to activate it (render branch is
-// already wired in panel_virtual_map.cpp).
+// M1 — sea-tag. filter 0x5e skips the water VOLUME but still hits the SEABED beneath it at a low Y.
+// ⚠ A GLOBAL sea-level constant is the WRONG model (confirmed 2026-07-06): ER has NO single water plane —
+// water levels vary per region (Liurnia lake ≠ the ocean ≠ Siofra/Ainsel underground rivers). eldenring.exe
+// has NO `SeaLevel`/`WaterLevel` constant; water is a per-region height field, class `GXWaterHeightMap@GXSR`
+// (+ `GXWaterInteractionManager`/`Param`, `GXWaveTerrain`). So a single threshold over-tags low coastal land
+// and misses elevated water. The RIGHT source is per-region — see
+// `docs/re/windows_water_level_source_re_prompt.md` (Option 3: sample `GXWaterHeightMap`; Option 2: a
+// water-INCLUSIVE cast filter → water cell where the water-cast Y > the 0x5e terrain-cast Y). NavMesh
+// (Havok `hkai*`) is walkability, not a water surface — not the source. kSeaLevelY stays a DORMANT sentinel
+// (tags nothing) until that RE lands; do NOT "calibrate" it to a single number. Render branch is wired
+// (panel_virtual_map.cpp), so activating = swap `c.sea` to the per-region water-Y test.
 constexpr float kSeaLevelY = -1e30f;
 
 CastRayFn g_cast = nullptr;

@@ -114,9 +114,15 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
   "TtWorldCastRay"); `ctx = *(DAT_143d76060 + 0x98)` (`CS::PhysWorld` singleton, RTTI `PhysWorld@CS@@`). END =
   start+segDir; returns ground point + surface normal (→ hillshade) + distance, in the marker world frame.
   Terrain filter = **`0x5e`** (the engine's snap-to-ground value; AEG shape cast `0x5d/0x67`, char probe `0xe0`).
-  Water = per-region `GXSR WaterInteractionManager`/`WaterHeightMap` (no global plane → use a sea-level
-  heuristic first). Findings: `windows_terrain_raycast_heightfield_re_findings.md`. Runtime (Linux): must call
-  on the game thread; confirm `0x5e` excludes objects; pick sea-level const.
+  Water = per-region `GXSR WaterInteractionManager`/`WaterHeightMap` (no global plane). Findings:
+  `windows_terrain_raycast_heightfield_re_findings.md`. Runtime (Linux): must call on the game thread; confirm
+  `0x5e` excludes objects.
+- **Water level / sea-tag source — OPEN (prompt `windows_water_level_source_re_prompt.md`, 2026-07-06).** The
+  global `kSeaLevelY` heuristic is WRONG — confirmed no `SeaLevel` const in the exe; water is per-region
+  `GXWaterHeightMap@GXSR` (vt `er+0x30370b0`, ctor `er+0x1b78960`) + `GXWaterInteractionManager`/`Param`.
+  NavMesh (`hkai*`) is walkability, not water. Two paths: (2) a water-INCLUSIVE cast filter (water cell where
+  water-cast Y > the `0x5e` terrain Y — cheapest), or (3) sample `GXWaterHeightMap`. Then the relief tags
+  water per-region instead of a bad single constant.
 - **Far-terrain elevation (the "fake 3D" distant terrain) — SCOPED (static, 2026-07-05,
   `far_terrain_heightmap_re_findings.md`).** The raycast above is loaded-region-only; the distant terrain has
   no collision. **RTTI sweep verdict: there is NO far-terrain heightmap TEXTURE** (zero non-water `*Height*`/
