@@ -1,8 +1,11 @@
 # RE plan — game timestep / clean freeze (fix the pause resume-latency; add `set_timescale`)
 
-**Status:** SCOPED 2026-07-06. Linux-runtime-doable (in-DLL FWA/RPM proven) + a short static
-decompile on Windows (`D:\ghidra_proj2\ER`). The RE is ~70% done — the per-frame time driver is
-already identified; this plan finds the exact dt lever and reworks the pause onto it.
+**Status:** SCOPED 2026-07-06. **Q1/Q2/Q3 ANSWERED live 2026-07-06 (Windows)** →
+`game_timestep_freeze_re_findings.md`: `dt` is a raw `xmm1` arg to `FUN_140623410` (7 call sites, all pass
+`timeObj+0x08` unscaled — **no time-scale global**, so prompt path A is out); `FD4Time.deltaTime` is at
+**+0x08**. Remaining = choose the lever: **B (hook er+0x623410, scale xmm1) is confirmed viable**; the
+hook-free **A' (patch the writer of the master `timeObj+0x08`)** is better but needs the `mem_fwa off`
+disarm verb landed first, then an FWA-write to find the frame timer. Implement on the Linux daily-build box.
 
 ## Why
 `goblin_pause.cpp` flips `PAUSE_BRANCH` (je↔jne) — it gates the world STEP but **not the world CLOCK**,
