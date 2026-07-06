@@ -1,5 +1,13 @@
 # RE prompt (Windows/Ghidra) — which container + ChrIns carries the live "in-combat" AI state?
 
+> **✅ RESOLVED (2026-07-06, Windows Ghidra) — see `combat_state_gate_re_findings.md` § "RESOLVED — 0xC950 is
+> a CS::CSAiThink member".** The premise was wrong: `0xC950` is NOT an `EnemyIns`/`ChrIns` offset — it is a
+> member of a separate **`CS::CSAiThink`** object (sizeof 0xF0D0, pooled). `IsBattleState`'s arg is a CSAiThink,
+> so `[EnemyIns+0xC950]` is garbage by construction. Entity→CSAiThink is manager-mediated (no fixed offset);
+> the `FUN_1405d8790` aggregate is entity-ID-keyed (not a nearby scan); no clean global bool exists. Drop the
+> `[[EnemyIns+0xC950]+0x30C]` plan → keep the HP-bar stopgap, or LIVE pointer-scan for an EnemyIns→CSAiThink
+> cache, or iterate the CSAiThink pool. Q1–Q4 answered in the findings. Kept below for history.
+
 **For the Windows Ghidra agent** (`D:\ghidra_proj2\ER`, build 2.6.2.0, imagebase 0x140000000). Follow-up to
 `combat_state_gate_re_findings.md`. A first Linux-live implementation walked the wrong container and reads
 garbage — `combat_active()`'s `battle` count is **always 0** even in real combat. Need the exact structure.

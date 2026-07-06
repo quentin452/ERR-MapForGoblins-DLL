@@ -168,3 +168,53 @@ EnemyIns+0xC950 = AI-think module (null → skip) ;  [+0xC950]+0x30C = FSM state
 
 Cross-ref for the raw walk: `tools/` ad-hoc `mem_dump` probing this session (not committed); RTTI read via
 vtable[-1]→COL+0xC (RVA)→TypeDescriptor+0x10 name.
+
+## RESOLVED — 0xC950 is a CS::CSAiThink member, NOT an EnemyIns offset (2026-07-06, Windows Ghidra)
+Answers `combat_enemy_list_structure_re_prompt.md`. The container hunt was chasing a mirage: **`0xC950` is
+never a `CS::EnemyIns`/`CS::ChrIns` offset.** `IsBattleState`'s argument is a **`CS::CSAiThink`** object.
+
+**Proof.** `IsBattleState` (`FUN_1402c31d0`) reads `[[arg+0xC950]+0x30C]`. The only writers of `[x+0xC950]`
+are the CSAiThink **ctor `FUN_1402bda30`** and **dtor `FUN_1402be390`**. Disassembling the ctor: entry
+`MOV R14,RCX` ⇒ **R14 = `this`** (the object being constructed), and every init in the body writes `[R14+…]`
+members — including `er+0x2bdbd4: MOV [R14+0xC950], RBX` (RBX=0, null-init of a member). The ctor installs
+`CS::CSAiThink::SelfTarget`, `CSAiThink::CSIAiReplanningCtrlImpl`, `CSTargetingSystemOwner` vtables ⇒ the
+object IS a **CS::CSAiThink**. So `+0xC950` is a member *inside* CSAiThink (a sub-state object, null-init in
+ctor, later assigned), and `[CSAiThink+0xC950]+0x30C]` = the AI FSM state (6 = battle). **`[EnemyIns+0xC950]`
+reads a `GXFlverTexture`/float because that offset simply isn't a pointer field on EnemyIns — the earlier
+"EnemyIns+0xC950 = AI module" note above is WRONG, and the live `{0,1,3}` reading was coincidental bytes.**
+
+**CSAiThink is a separate, pooled object — `sizeof = 0xF0D0`** (allocator `FUN_1402cf3d0`: `FUN_141eb9ed0
+(0xf0d0,0x10)`, pool-slotted as `idx*0xF0D0 + [pool+8]`). Its **entity link is manager-mediated, NOT a fixed
+EnemyIns field**: the AI manager (`FUN_14037b3d0`, mgr has the pool at `+0x7a38`, registries at `+0x30` stride
+0x80 and `+0x6820`) attaches a freshly-built CSAiThink to a ChrIns via `FUN_140388250`/`FUN_140385490`. So
+**there is no clean `EnemyIns + const → CSAiThink` to hardcode.** (Small-offset caches like `[[EnemyIns+0xC0]
++0xC950]+0x30C]` appear in direct callers e.g. `FUN_1403d06c0` and are worth a LIVE pointer-scan, but are
+unconfirmed as an EnemyIns field.)
+
+### Answers to the prompt's 4 questions
+1. **Class + AI-module offset:** the arg is `CS::CSAiThink` (0xF0D0, pooled); `+0xC950` is a CSAiThink member,
+   `+0x30C` the FSM state. NOT `CS::EnemyIns`. EnemyIns→CSAiThink is manager-mediated (no fixed offset).
+2. **The real roster ER battle-tests:** the `FUN_1405d8790` "count" aggregate is **entity-ID-keyed, not a
+   nearby-enemy scan** — `FUN_1405c54f0` = `(id%10000)/1000 ∈ {5,6,7}` (an entity-TYPE digit test), and
+   `FUN_140494B30` does a **keyed** `std::_Tree` lookup on `block+0x48` by that id. It answers "is entity X in
+   battle" for a specific X (AI-script use), so it is NOT a general "am I in combat" source.
+3. **block+0x18 vs block+0x48:** `+0x18` = a volatile flat `EnemyIns*` pool (render/stream churn — the 33→0);
+   `+0x48` = the id-keyed `std::_Tree` (node value the ChrIns). Neither exposes the AI state directly (that's
+   on the separate CSAiThink), so enumerating either still needs the CSAiThink resolve.
+4. **Simpler global flag?** None clean. `EcTestFieldBattleBgmSoundPlaying` (`FUN_14057c250`) reads the sound
+   singleton `DAT_143d83cd8`→`+0x328` filtered by a **BGM-id param** (`[cond+0x28]`) — parameterized and music
+   -tail-laggy, not a boolean "in combat". The map-open combat block itself stays VMP/indirect (see the prompt).
+
+### Recommendation for MFG `combat_active()`
+Per-enemy AI-state is **not implementable from a fixed EnemyIns offset** — drop the `[[EnemyIns+0xC950]+0x30C]`
+plan. Realistic options, best-first:
+- **Keep the shipped HP-bar-presence stopgap** (`ce82c58c`) for locked combat — simplest, no new RE.
+- **LIVE pointer-scan** for an EnemyIns→CSAiThink cache: for an aggroed enemy, find the EnemyIns field `f` such
+  that `[[EnemyIns+f]+0xC950]+0x30C]==6` flips with aggro (try `+0xC0` first). If one exists and is stable,
+  `combat_active()` = any nearby EnemyIns whose CSAiThink state==6 — proximity-correct.
+- **Iterate the CSAiThink pool** (resolve the AI-think-manager singleton → active pool, stride 0xF0D0) and OR
+  `[+0xC950]+0x30C]==6` — gives "any AI anywhere in battle", coarser (not proximity-filtered) but robust.
+
+Ghidra anchors added: CSAiThink ctor `FUN_1402bda30`, dtor `FUN_1402be390`, allocator `FUN_1402cf3d0`
+(sizeof 0xF0D0), attach `FUN_14037b3d0`, `EcTestFieldBattleBgmSoundPlaying::Evaluate` `FUN_14057c250`
+(sound singleton `er+0x3d83cd8`).
