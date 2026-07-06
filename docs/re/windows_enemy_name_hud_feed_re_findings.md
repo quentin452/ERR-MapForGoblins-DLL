@@ -113,3 +113,41 @@ everything above:
 On Linux use the equivalent (`process_vm_readv` / `/proc/<pid>/mem`, module base from `/proc/<pid>/maps`)
 or an in-DLL probe. `mem_dump <addr> <len>` (RPC) confirms a candidate through the DLL's own view before
 arming.
+
+## ⇒ LINUX LIVE CAPTURE PROGRESS (2026-07-06, headless) — buffer located live; write-RIP one step away
+
+Ran the whole flow headless on the daily-build box (fresh `mem_fwa off` disarm verb + the new
+present-heartbeat build). Real progress; the write site itself not yet captured.
+
+- **Full headless loop proven:** cold-boot ER via me3 (`boot_hold.py`, no RPC-ping in the hold loop —
+  a persistent ping CONTENDS with one-shot `mfg rpc` and hangs), load save, drive to the **Tree Sentinel**
+  at Gatefront (move with **`key w`** — forward is `w`/WASD, NOT AZERTY `z`), engage → the **boss bar
+  "Tree Sentinel"** shows. `pause` to freeze the fight (survive) while scanning; `frame=` in `status`
+  confirms the render thread stays alive while paused.
+- **Located the live HUD name buffer:** the SetTextHTML source `<FONT LETTERSPACING='0'>Tree Sentinel
+  </FONT></TEXTFORMAT>` (ASCII/UTF-8), e.g. `0xde27bdec` this session. When NOT engaged, the same slots
+  sit EMPTY as `<FONT LETTERSPACING='0'></FONT></TEXTFORMAT>` (found in the pre-engage scan) → these are
+  **pre-allocated TextField HTML slots**, written into (likely in-place) when a name shows.
+- **`mem_fwa <buf> 4 w` arms fine** (105 threads, write-watch) — the disarm verb + WRITE/READ label work.
+- **The write is ONE-SHOT on bar-show:** unpausing with the bar already up did NOT re-fire (no per-frame
+  rewrite); damaging the boss did NOT re-fire (HP fill ≠ name text). So a watch armed AFTER the bar shows
+  never catches its (already-past) write.
+- **The buffer is freed on DEATH/RELOAD** (a full reload re-lays the GFx arena → `0xde27bdec` became
+  pointers, 0 hits). So death is fatal to the address; a **no-reload de-aggro** is required.
+- **★ SAFETY LESSON (caused the D-state freeze earlier):** scan **rw-p PRIVATE/anonymous heap only**,
+  size- + total-capped (`scan2.py`). The first pass (`scan.py`) read the WHOLE 4 GB address space incl.
+  swapped/reserved regions → massive swap-in → the game wedged in **uninterruptible D-state** (unkillable
+  until the I/O returned; needed the GPU/IO to abort). NEVER full-address-space scan a live game.
+
+### ⇒ FINISH RECIPE (next run — the write-RIP is ~1 iteration away)
+1. Engage the boss → `pause` → scan (`scan2.py`, heap-only) → note buffer `Y`.
+2. **De-aggro WITHOUT a reload** so `Y` stays put: `warp <gatefront_grace>` (test if the soft-load keeps `Y`
+   stable via `mem_dump Y`), OR flee to break the leash (no death). Confirm `Y` is back to the empty
+   `<FONT…></FONT>` in-place.
+3. `mem_fwa Y 4 w` while the bar is down.
+4. Re-engage → the engine writes the name back into `Y` → `[FWA] … WRITE … rip=er+0x…` = the name-feed
+   function. Author the AOB with `offset_resolver.py`.
+5. **Easier alternative:** use a NON-boss NAMED enemy (a hostile NPC/invader) — its small **EnemyTag**
+   nameplate clears when it leaves the screen and re-populates on look-back, so the refresh is a trivial
+   camera turn (`mouse_drag x0 y0 x1 y1`, needs 4 args) with NO combat/reload — arm the EnemyTag buffer,
+   look away, look back → write fires.
