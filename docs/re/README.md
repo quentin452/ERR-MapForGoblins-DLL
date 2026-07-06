@@ -129,7 +129,9 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
   exists (WaterSurface/WaterMesh/PhantomWater/… = 0 hits), so no cast returns a water surface Y. **⇒ the real
   CPU-native sea-tag = MATERIAL-based:** cast `0x5e` (done) → hit triangle material (`hknpMaterialLibrary`
   er+0x2ee36b0) → `sea = material ∈ {Water, Swamp}`. Follow-up RE = raycast-hit material extraction + the
-  Water/Swamp ids. Fallback: per-region MSB water-plane Y.
+  Water/Swamp ids. That reaches only the NEAR field (streamed collision); **whole-map / far water = a DISK
+  source** (`far_water_surface_disk_re_prompt.md`): the `hkxpwv` collision Water/Swamp material (rides the
+  far-terrain bake — mask free with the elevation) or the MSB water-plane part Y.
 - **Far-terrain elevation (the "fake 3D" distant terrain) — SCOPED (static, 2026-07-05,
   `far_terrain_heightmap_re_findings.md`).** The raycast above is loaded-region-only; the distant terrain has
   no collision. **RTTI sweep verdict: there is NO far-terrain heightmap TEXTURE** (zero non-water `*Height*`/
@@ -138,7 +140,9 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
   prompt's "resident heightmap" (shape A) doesn't exist; whole-map ELEVATION means **parsing low-LOD terrain
   FLVERs from disk** = opening the README-#4 FLVER frontier (a project, not a quick add). Cheap alternatives:
   the shaded `71_MapTile` COLOR tiles already give a visual relief backdrop (mod-baked); `WorldMapPieceParam`
-  is a cheap probe to rule out a coarse per-piece elevation. Sea level = `GXWaterHeightMap`/`GXWaveTerrain`.
+  is a cheap probe to rule out a coarse per-piece elevation. **Water for the far field RIDES this bake:** the
+  `hkxpwv` collision's Water/Swamp material gives the sea mask free with the elevation
+  (`far_water_surface_disk_re_prompt.md`) — NOT `GXWaterHeightMap` (a GPU wave-sim, ruled out).
 - **WorldMapTile placement/rect — SOLVED (static, calibration fixed 2026-07-04).** The engine positions
   tiles on a `floor(mapU/cellSize)` grid with a **FLIPPED Z axis**, base 0: `gridX = clamp(floor(mapU/cs),
   0, N-1)`, `gridZ = clamp((N-1) − floor(mapV/cs), 0, N-1)`, per-tier `cs/N = {256/41, 342/31, 1288/9}`

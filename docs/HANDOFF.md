@@ -496,9 +496,11 @@ quality win); extend `vmap offmap` to catch UG/DLC (0,0) render-side; A15 legacy
 pure-Linux parity gap); `active_world`/`s_group`/PlayerDim auto-follow. **Meanwhile the Windows/Ghidra agent
 runs** — priority `windows_world_to_screen_camera_re_prompt.md` (w2s3d = unblocker for the ImGui virtual world),
 then optional `windows_havok_vdb_standup_re_prompt.md` + `windows_debug_render_flag_re_prompt.md` (#2a) +
-**the vmap sea-tag MATERIAL-tag follow-up** (`windows_water_level_source_re_findings.md` §10, 2026-07-06 —
-Options 3 AND 2 both ruled out; water has no collision surface, it's a ground material. Remaining = raycast-hit
-material extraction + the Water/Swamp material ids via `hknpMaterialLibrary` er+0x2ee36b0; Linux-testable).**
+**the vmap sea-tag water source** (`windows_water_level_source_re_findings.md` §10, 2026-07-06 — Options 3 AND 2
+both ruled out; water has no collision surface, it's a ground material). Two follow-ups by coverage: (near) the
+runtime MATERIAL-tag — raycast-hit material extraction + Water/Swamp ids via `hknpMaterialLibrary` er+0x2ee36b0,
+Linux-testable; (far/whole-map) the DISK source — `far_water_surface_disk_re_prompt.md`, the `hkxpwv` collision
+Water/Swamp material RIDES the far-terrain bake (mask free with elevation), or the MSB water-plane part Y.**
 The tracks are independent.
 
 **SHIPPED this session (all committed + in-game verified where noted):**

@@ -100,9 +100,11 @@ FLVER/collision per water body in the MSB), region-local — not a global querya
 ## 5. (Was: "pivot to Option 2".) Option 2 was then investigated too — see §9. It is ALSO a dead end (no water
 collision surface). The real path is the material-tag in §9, or the MSB water-plane fallback below.
 
-- **Per-region MSB water plane Y (fallback).** Water bodies are MSB parts (a flat render plane); their
-  placement Y is readable through the disk-MSB path MFG already has (`windows_runtime_msb_resident`). Needs a
-  naming/material convention to pick the water parts — heavier and gives a Y, not a per-cell mask.
+- **Per-region DISK water (whole-map / far water).** The runtime material-tag (§10) only reaches STREAMED
+  collision (near field) — distant water has no streamed collision, same wall as the far relief. For a
+  whole-map water source, read it from DISK: the `hkxpwv` collision `Water`/`Swamp` material (rides the
+  far-terrain collision bake — the mask comes free with the elevation) or the MSB water-plane part Y. Scoped in
+  **`far_water_surface_disk_re_prompt.md`** (pairs with `far_terrain_heightmap_re_findings.md`).
 
 If someone still wants the GPU interaction field (e.g. for wave-animated water rendering, not the sea-tag), the
 anchors in §1–§2 are the entry: `GXSceneContext + 0xBE20` → the manager → its GPU textures, plus a D3D readback.
