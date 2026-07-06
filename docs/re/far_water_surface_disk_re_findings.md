@@ -142,11 +142,29 @@ inner hkx.dcx  == DCX-**KRAK (Oodle)**                                ✗ WALL
    under Proton/Wine on this box, dumps decompressed hkx to disk; C# decodes offline. ⇒ offline, no game, no
    new dep, reuses proven C++. Cost: a new C++ target + Wine invocation.
 
-**Recommendation for the material SPIKE (prove per-triangle material is recoverable, cheapest):** route 2
-(RPC hybrid) — one verb, extract a couple Liurnia/Siofra inner hkx decompressed, then reverse the
-`FSNPCustomParamCompressedMeshShape` `Unk68/Unk80/UnkA8` layout + `HKNPCompressedMeshShapeData.primitives`
-offline to map material→triangle. Decide the whole-map BAKE's Oodle route (1 vs 3) AFTER material decode is
-proven — no point building the fast offline path if the material can't be read.
+**Route 2 (RPC hybrid) CHOSEN + the bridge is BUILT/DEPLOYED (2026-07-06g).** New host helper
+`worldmap::dcx_decompress_bytes` + debug-RPC verb **`dcx_file <in.dcx> <out>`** decompress a raw DCX blob
+with the game's in-process Oodle under Proton (commit `a98b4c8`; both builds green; deployed to
+`ERR/dll/offline/`). The offline tool gained `dump-inner` to stage a raw inner hkx. So the material spike is
+now turnkey — see "Next run" below.
+
+### Next run (turnkey — needs ER booted once)
+```
+# 1. stage a KNOWN-water inner collision mesh offline (m14 = Academy, sits in Liurnia lake):
+cd tools/collision_offline
+dotnet run -- dump-inner m14_00_00_00 _001000 /tmp/m14.hkx.dcx      # raw DCX-KRAK, 1017885 B
+# 2. boot ER (Steam up) and decompress it via the in-process Oodle:
+python tools/mfg.py repl --boot        # or `rpc` if already running (verify: mfg_build, status in-world)
+#   > dcx_file /tmp/m14.hkx.dcx /tmp/m14.hkx      # -> "ok dcx_file in=1017885 out=… krak=1"
+# 3. offline: SoulsFormats.HKX.Read(/tmp/m14.hkx) -> HKNPCompressedMeshShapeData (geometry, decode
+#    already confirmed) + FSNPCustomParamCompressedMeshShape. Then REVERSE the material rider: correlate
+#    .primitives / sections with the CustomParam Unk68/Unk80/UnkA8 buffers; histogram material ids over the
+#    in-lake mesh vs a dry mesh (m10 Stormveil) to IDENTIFY the Water/Swamp ordinal empirically (present on
+#    the lakebed, absent on dry). Cross-check the ordinal at runtime: raycast a lake vs dry ground and dump
+#    the hit material (the near-field tag, windows_water_level_source_re_findings.md §10).
+```
+Decide the whole-map BAKE's Oodle route (1 ooz.so vs 3 Wine-C++) AFTER material decode is proven — no point
+building the fast offline path if the material can't be read.
 
 ### Still open
 - Which overworld tile(s) cover the Liurnia lake / open ocean (need a KNOWN-water tile for the histogram).
@@ -154,4 +172,7 @@ proven — no point building the fast offline path if the material can't be read
   a safe first water target; Siofra `m12_01_00_00` for a river.
 - **DLC RSA key** still missing → DLC maps (m40-43, DLC-OW tiles) can't be read offline yet; base-game water
   (Data2, keys present) is enough for first validation.
-- Tool: `tools/collision_offline/` (selftest / list-collision / extract). Reflection scratch retired.
+- Tool: `tools/collision_offline/` (selftest / list-collision / dump-inner / extract). Reflection scratch retired.
+- The material Unk-layout reverse is the remaining hard part — SoulsFormats leaves the ER per-triangle
+  material as un-typed `Unk68/Unk80/UnkA8` on `FSNPCustomParamCompressedMeshShape`; needs a real decompressed
+  file (now one `dcx_file` call away) to work out the mapping.
