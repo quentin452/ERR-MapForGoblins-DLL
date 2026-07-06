@@ -1405,7 +1405,15 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // actions exactly like the mouse. Buttons chosen to NOT collide with ImGui nav (FaceDown=Activate,
     // FaceRight=Cancel, dpad/LStick=widget nav): FaceUp (Y/△) = activate (warp a hovered discovered grace),
     // FaceLeft (X/□) = place / delete a custom marker (the right-click equivalent). Mouse path unchanged.
-    const ImVec2 vptr = s_pad_mode ? s_pad_cursor : io.MousePos;
+    // Point ImGui's mouse at the reticle in pad-mode so canvas TOOLTIPS — which anchor to io.MousePos —
+    // render at the reticle, not the stale real-mouse spot (that mismatch is invisible now but becomes
+    // obvious once the vmap is fullscreen over the ER map). SAVED here + RESTORED before End() so the mouse
+    // DELTA the pad-latch reads next frame (io.MouseDelta, used above to exit pad-mode) isn't corrupted by
+    // the override. Only affects tooltips created below (the sidebar, drawn earlier, keeps ImGui-nav focus
+    // tooltips). vptr then == io.MousePos == reticle in pad-mode, real mouse otherwise.
+    const ImVec2 saved_mouse = io.MousePos;
+    if (s_pad_mode) io.MousePos = s_pad_cursor;
+    const ImVec2 vptr = io.MousePos;
     const bool pad_over_canvas = s_pad_mode && s_pad_cursor.x >= origin.x && s_pad_cursor.x <= canvas_end.x &&
                                  s_pad_cursor.y >= origin.y && s_pad_cursor.y <= canvas_end.y;
     const bool hovered_eff = hovered || pad_over_canvas;
@@ -2324,6 +2332,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // marker icon draw), then (slice C) tag markers to a synthetic group / bundle-backed custom world.
     dl->PopClipRect();
 
+    if (s_pad_mode) io.MousePos = saved_mouse;   // restore the real mouse (see the pad-mode override above)
     ImGui::End();
 }
 

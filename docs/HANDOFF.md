@@ -64,6 +64,11 @@ Implements + validates the "Remaining" step of the resident-converter-affine RE 
   reticle hover WITHOUT Ctrl (`mod_ok || s_pad_mode`; right-stick reticle is separate from left-stick pan,
   and no-steal/keep-open prevents thrash). Fan draw path smoke-verified (`vmap spiderfy 1` renders the radial
   fan, no crash); mouse path byte-identical. **STILL OPEN:** live-tune stick pan/zoom speeds + signs (pad).
+- **✅ Pad TOOLTIP position fixed (2026-07-06f2, user-spotted).** ImGui tooltips anchor to `io.MousePos`, so
+  in pad-mode the canvas tooltip floated at the stale REAL-mouse spot, not the reticle (harmless now, wrong
+  once the vmap is fullscreen over the ER map). Fix: in pad-mode point `io.MousePos` at the reticle for the
+  canvas-draw region (SAVED + RESTORED before `ImGui::End()` so `io.MouseDelta` — which the pad-latch reads
+  to exit pad-mode — isn't corrupted). Sidebar tooltips (drawn earlier) keep ImGui-nav focus positioning.
 - **✅ PLAYER-DIMENSION AUTO-FOLLOW VERIFIED LIVE (2026-07-06f2).** The vmap auto-switches PAGE to the
   player's dimension on a crossing (`s_follow_player_dim`, edge-detect on `get_player_map_pos` group). Drove
   it live via grace warps with the vmap open: OW(0) → Nokstella base-UG → page auto-followed to group 1
