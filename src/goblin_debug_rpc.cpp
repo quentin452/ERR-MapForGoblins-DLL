@@ -424,7 +424,7 @@ namespace goblin::debug_rpc
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp coords warp_local warp_xyz we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
-                       " | mfg_build er_base er_version proj mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset spawn_cap4e80 spawn_capreg add_collision hf_probe hf_probe_present hf_sample hf_shape_probe far_relief_probe far_relief w2s_probe"
+                       " | exit mfg_build er_base er_version proj mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset spawn_cap4e80 spawn_capreg add_collision hf_probe hf_probe_present hf_sample hf_shape_probe far_relief_probe far_relief w2s_probe"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
             if (cmd == "idlediag")
@@ -442,6 +442,18 @@ namespace goblin::debug_rpc
                               s[0], s[1], s[2], s[3], idle, goblin::config::rpcAutoIdle ? 1 : 0,
                               (goblin::config::rpcAutoIdle && idle < kUserIdleWindowMs) ? 1 : 0);
                 return std::string(b);
+            }
+            // exit / quit / kill_game — self-terminate the game from inside (dev escape hatch for a
+            // FROZEN game: the RPC listener is a separate thread, so this runs even when the render/main
+            // thread is soft-hung on a futex/spinlock). TerminateProcess skips DLL_PROCESS_DETACH/atexit
+            // (which could deadlock on a lock the frozen thread holds). CAVEAT: a thread wedged in
+            // UNINTERRUPTIBLE (D) kernel I/O — GPU/driver/swap — cannot be reaped by this either (same
+            // kernel rule as SIGKILL); that class needs the I/O to return or a reboot.
+            if (cmd == "exit" || cmd == "quit" || cmd == "kill_game")
+            {
+                spdlog::warn("[RPC] exit requested — TerminateProcess(self) now.");
+                TerminateProcess(GetCurrentProcess(), 0);
+                return "ok exiting";   // usually not reached — the process is already gone
             }
             if (cmd == "status")
             {
