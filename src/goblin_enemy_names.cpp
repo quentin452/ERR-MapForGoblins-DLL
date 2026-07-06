@@ -153,6 +153,43 @@ void probe_bars_seh(void **feman_slot, void **wcm_slot, GetChrInsFn getChr, BarP
     __except (EXCEPTION_EXECUTE_HANDLER) { pr->count = 0; }
 }
 
+// ── IN-COMBAT state (docs/re/combat_state_gate_re_findings.md) ────────────────────────────────
+// ER's per-entity battle state is the AI-FSM enum at [[ChrIns+0xC950]+0x30C] (state 6 = BATTLE; the
+// player has no AI module so +0xC950 is null → skipped). "in combat" = ANY nearby enemy in state 6.
+// Reuse the same CSFeMan entityHpBars[8] list the name feature walks (that IS ER's near-enemy set).
+constexpr size_t kChrAiModule = 0xC950;  // ChrIns → AI think module (null for the player)
+constexpr size_t kAiFsmState  = 0x30C;   // AI think module → FSM state int (6 = battle)
+constexpr int    kFsmBattle   = 6;
+
+bool any_enemy_in_battle_body(void **feman_slot, void **wcm_slot, GetChrInsFn getChr)
+{
+    if (!feman_slot || !wcm_slot || !getChr) return false;
+    auto *feMan = *reinterpret_cast<uint8_t **>(feman_slot);
+    if (!feMan) return false;
+    void *wcm = *reinterpret_cast<void **>(wcm_slot);
+    if (!wcm) return false;
+    uint8_t *arr = feMan + kEntityArrOff;
+    for (int i = 0; i < kEntityBars; ++i)
+    {
+        uint8_t *ent = arr + static_cast<size_t>(i) * kEntityStride;
+        uint64_t handle = *reinterpret_cast<uint64_t *>(ent + kOffHandle);
+        if (handle == kEmptyHandle) continue;
+        uint64_t h = handle;
+        void *chr = getChr(wcm, &h);
+        if (!chr) continue;
+        auto *ai = *reinterpret_cast<uint8_t **>(reinterpret_cast<uint8_t *>(chr) + kChrAiModule);
+        if (!ai) continue;  // player / no AI module
+        if (*reinterpret_cast<int *>(ai + kAiFsmState) == kFsmBattle) return true;
+    }
+    return false;
+}
+
+bool any_enemy_in_battle_seh(void **feman_slot, void **wcm_slot, GetChrInsFn getChr)
+{
+    __try { return any_enemy_in_battle_body(feman_slot, wcm_slot, getChr); }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
 // Strip the codex-entry prefix from a TutorialTitle bestiary name: "116. Tree Sentinel" ->
 // "Tree Sentinel", "172a. Troll" -> "Troll". Pattern: ^\d+[a-z]?\.\s*
 std::string strip_codex_prefix(const std::string &s)
@@ -315,6 +352,15 @@ bool category_enabled(NameCat cat)
 // on re-names them, flipping colorize recolors them — all without a reload. Must therefore run EVERY
 // frame regardless of the master toggle (so it can revert when master is turned off). Present thread,
 // host-side; per-type NpcName injects are batched into one FMG rebuild per frame.
+// True if any nearby enemy (the CSFeMan HUD enemy-bar set) is in AI battle state — ER's own "in combat".
+// Reuses the name-feature's resolved slots (resolve_once is idempotent). SEH-guarded; false on any read miss.
+// Used to force-close the fullscreen vmap in combat, mirroring ER's native map-disable.
+bool goblin::combat_active()
+{
+    resolve_once();
+    return any_enemy_in_battle_seh(g_feman_slot, g_wcm_slot, g_get_chrins);
+}
+
 void goblin::update_native_enemy_names()
 {
     resolve_once();

@@ -1947,6 +1947,12 @@ namespace
             // when the master toggle is OFF — otherwise it could never revert a name after you disable
             // it. Self-gates internally on CSFeMan/WCM resolve + settings; cheap when idle. Host-only.
             goblin::update_native_enemy_names();
+            // COMBAT gate for the native-map redirect: ER auto-disables the map in combat, but our redirect
+            // hooks the map-open create-callback which ER doesn't call in combat → a vmap already OPEN would
+            // be stuck. So while the vmap stands in as the map, force-close it the instant combat starts
+            // (any nearby enemy in AI battle state), mirroring the native map. (native_map_redirect_linux_re_plan.md #3)
+            if (goblin::overlay_api::vmap_redirect() && goblin::combat_active())
+                goblin::overlay_api::set_vmap_redirect(false);
             if (minimap)
                 goblin::overlay_render_loader::call_draw_minimap_hud(frame_ctx);   // minimap HUD (self-gates overworld-only)
 
