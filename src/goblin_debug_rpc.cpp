@@ -155,7 +155,14 @@ namespace goblin::debug_rpc
             {
                 if (GetForegroundWindow() == hwnd && goblin::input::has_focus())
                 {
-                    Sleep(40); // one-two frames of settle so the game's own focus handling runs
+                    // Focus is confirmed, but the GAME's own input path opens one frame LATER — the
+                    // FIRST injected command right after a refocus is still dropped even though we
+                    // report foreground + g_has_focus (user 2026-07-06). A wall-clock Sleep is fuzzy;
+                    // instead wait for the PRESENT counter to advance a couple of focused frames, so
+                    // the game has actually rendered with focus before we SendInput.
+                    const uint64_t base = goblin::freeze_watchdog::present_beat();
+                    for (int j = 0; j < 30 && goblin::freeze_watchdog::present_beat() < base + 2; ++j)
+                        Sleep(8);
                     return true;
                 }
                 Sleep(20);
