@@ -11,6 +11,16 @@ Linux box (ERR under Proton at `~/Games/ERRv2.2.9.6`, DLL deployed + played dail
 "no live game on Linux" line in [[linux.md]]/`docs/memory/linux.md` conflates "no Windows RE
 tooling comfort" with "no live target". The live target is here; the tooling gap is the question.
 
+## ⚠ HARD LIMIT (learned 2026-07-06): external full-memory SCANS can wedge the game into D-state
+A large **external** `/proc/<pid>/mem` scan of the running game is dangerous on Proton: reading the
+WHOLE address space (incl. swapped/reserved regions) forces a mass swap-in → swap thrash → the game
+wedges in **uninterruptible D-state** (blocked in the kernel; SIGKILL/pkill/Alt-F4/internal `exit` all
+pended, unkillable until the I/O returns — took a GPU/IO abort + a long wait, effectively a reboot).
+So for scan-heavy RE (needle-hunt across the heap), **prefer the Windows box** (native `ReadProcessMemory`,
+no Proton swap fragility). If you MUST scan on Linux: scope to **rw-p PRIVATE/anonymous heap regions only**,
+size- + total-capped (`scan2.py` pattern — survived twice at ~1–3 GB), never the full space. In-DLL probes
+(path 1 below) read only the game's own resident working set → safe; prefer them over external scans.
+
 ## Candidate paths (untested unless noted, ranked by expected fit)
 
 1. **In-DLL instrumentation — PROVEN 2026-07-02, now the default** (Group 2 solved end-to-end

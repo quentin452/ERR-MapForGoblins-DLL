@@ -139,6 +139,16 @@ present-heartbeat build). Real progress; the write site itself not yet captured.
   swapped/reserved regions → massive swap-in → the game wedged in **uninterruptible D-state** (unkillable
   until the I/O returned; needed the GPU/IO to abort). NEVER full-address-space scan a live game.
 
+### ⇒ ROUTING DECISION (user, 2026-07-06): do the WRITE-SITE capture on the WINDOWS box, not Linux
+Memory-scan-heavy RE is dangerous on Linux/Proton: the game runs under Proton and a large external
+`/proc/<pid>/mem` read forces swapped-out pages back in → swap thrash → the process wedges in
+**uninterruptible D-state** (unkillable until the I/O returns; this session it took an Alt+F4-triggered
+GPU/IO abort + a long wait to clear). A SCOPED heap-only scan (`scan2.py`, rw-p private, capped) survived
+twice, but the margin is thin. The Windows box uses native `ReadProcessMemory` (no Proton swap fragility)
+and already did the recon — hand the write-site capture back to it. **Linux's role here is DONE:** it
+confirmed the live buffer shape + the `mem_fwa off`/WRITE-label tooling the capture needs. Windows executes
+the finish recipe below.
+
 ### ⇒ FINISH RECIPE (next run — the write-RIP is ~1 iteration away)
 1. Engage the boss → `pause` → scan (`scan2.py`, heap-only) → note buffer `Y`.
 2. **De-aggro WITHOUT a reload** so `Y` stays put: `warp <gatefront_grace>` (test if the soft-load keeps `Y`
