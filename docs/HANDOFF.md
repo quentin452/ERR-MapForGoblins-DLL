@@ -78,10 +78,13 @@ reproducible with the native map NEVER opened, so the VM/"silent prime" coupling
   (`s_assigned`). **ImGui path DELETED**: `draw_enemy_bar_names`, the `get_enemy_bar_labels`/`EnemyBarLabel`
   render feed + its overlay-api export, the `enemyNameScale`/`enemyNameOffsetY` cfg + F1 sliders. Kept
   `enemy_display_name` (map boss-marker supplement) + the `enemyNames` on/off toggle. Both builds (single +
-  hot-reload split) link green; deployed. **NOT yet in-world verified** — next: boot ER, confirm a generic
-  (e.g. an Aigle / sheep) shows its name in the native tag, accents correct, no dup, no gameplay side-effect
-  from setting nameId (invader/summon/aggro text). Open risk from the plan: validate the `810000000` band
-  is unused by NpcName across installs; confirm nameId is display-only.
+  hot-reload split) link green; deployed. **✅ IN-WORLD VERIFIED 2026-07-06f2** (Linux/Proton): an aggroed
+  generic **Godrick Soldier** (vanilla nameId=0 → normally blank) rendered "Godrick Soldier" in the engine's
+  NATIVE red tag, with `[ENEMYBAR] reconcile: +1 named, -0 reverted, 1 (re)injected` in the log. Single tag
+  (no dup), correct name, no visible gameplay side-effect (soldier aggroed/attacked normally), `810000000`
+  band resolved cleanly (no garbage → free on this install). Screenshot en3_fight. Residual (low): accents on
+  a FR install + the invader/summon/aggro-text side-effect aren't stress-tested, but the FMG path is UTF-8
+  and nameId read as display-only in the earlier RE — treat as done unless a report surfaces.
 - **Overlay font → single embedded DejaVu Sans** (dropped the ProggyClean+TTF merge + the GlyphOffset fudge;
   15px, live-tuning knob). Needs game restart (host-side atlas). Commit `4fc548c`.
 
