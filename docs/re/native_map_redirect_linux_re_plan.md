@@ -47,6 +47,16 @@ regardless of the player's fields; no safe pokeable gate exists (the two fields 
 present). Redirect sidesteps that entire subsystem — the native map simply isn't open, so there's nothing to
 cull.
 
+## Follow-up — ER cursor render self-disables (needs a left-click to re-arm)
+User-reported (2026-07-06): the ER mouse cursor's RENDER turns off after a while idle; a **left-click**
+re-enables it. This matters for the vmap redirect (the vmap needs a live cursor). Same method as above —
+another `mem_fwa` / find-what-reads target: arm on the cursor **visible/enable** byte (the game reads it each
+frame to decide whether to draw the cursor) and watch what CLEARS it on idle + what SETS it on left-click. Then
+the mod can keep it armed while the vmap is up (write the enable byte each present, like `movieclip_maintain`).
+Candidate anchors: the cursor is `CS::WorldMapCursorControl`-adjacent (`CURSOR_VTABLE_RVA`, published as
+`g_active_cursor`), but the OS/UI cursor render flag is likely a CSMenuMan / input-manager field — find it live.
+Not blocking the redirect; do it alongside (both are `mem_fwa` recon on the running game).
+
 ## Anchors
 ```
 map-open state   CSMenuMan[0xCD]==7        (world_map_open(); CSMENUMAN_SLOT AOB)
