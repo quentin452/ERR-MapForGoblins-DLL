@@ -396,7 +396,15 @@ bool category_enabled(NameCat cat)
 bool goblin::combat_active()
 {
     resolve_once();
-    return any_enemy_in_battle_seh(g_feman_slot, g_wcm_slot, g_get_chrins);
+    // The precise AI-FSM state ([[ChrIns+0xC950]+0x30C]==6, combat_state_gate_re_findings.md) reads NULL on
+    // the HP-bar ChrIns even for a normal enemy (live 2026-07-06) — the entityHpBars give a different ChrIns
+    // than ER's WorldChrMan enemy list that the getter expects (precise path = a follow-up). Practical signal
+    // that WORKS: any enemy HP bar present = engaged/in combat (bars appear when you fight; gone otherwise).
+    // This must auto-close the vmap because the map key can't close it in combat (ER blocks the create-cb).
+    if (!g_feman_slot || !g_wcm_slot || !g_get_chrins) return false;
+    BarProbe pr;
+    probe_bars_seh(g_feman_slot, g_wcm_slot, g_get_chrins, &pr);
+    return pr.count > 0;
 }
 
 int goblin::combat_diag(char *buf, int cap)
