@@ -89,3 +89,20 @@ if (ai && *(int*)((char*)ai + 0x30C) == 6) combat = true;   // any enemy in batt
 
 Cross-ref: `combat_state_gate_re_prompt.md` (the brief), `native_map_redirect_linux_re_plan.md` (the redirect +
 create-callback `FUN_1407fd4b0`), `windows_input_path_re.md` (why the map-command edge is VMP/opaque).
+
+## LIVE (2026-07-06) — the entityHpBars source is WRONG (lock-on only) + the HP-bar ChrIns has no AI module
+Wired `combat_active()` first over the name feature's **entityHpBars[8]** list (reuse). Two live problems:
+1. **`[[HP-bar ChrIns + 0xC950] + 0x30C]` reads NULL** even for a normal enemy (Godrick Soldier, chr valid — has
+   modules at +0x190, vtable ok). So the ChrIns that `GetChrInsFromHandle` returns from an HP-bar handle is a
+   DIFFERENT object than the one ER's getter `FUN_1405f0750`/`IsBattleState` expects — its `+0xC950` (AI think
+   module) is unpopulated. The findings' offset is for the **WorldChrMan-list** ChrIns, not the HP-bar one.
+2. **entityHpBars only populate on LOCK-ON** (user live): an enemy attacking you unlocked shows no HP bar →
+   `combat_active()` misses it → the vmap stays open. Too narrow — ER's "in combat" is any nearby enemy in
+   battle state regardless of lock.
+⇒ **Shipped a practical stopgap** (`ce82c58c`): `combat_active()` = any enemy HP bar present (closes the vmap
+in locked combat; the map key can't close it in combat since ER blocks the create-cb, so auto-close is the
+only way). **★ PRECISE follow-up = iterate the WorldChrMan enemy list** (NOT the HP bars): either drive
+`FUN_1405d8790(param_1, {&count, selector=3})` (er+0x5d8790, builds the list from WorldChrMan DAT_143d65f88 via
+FUN_140507ca0 + counts battle-state), or RE the WorldChrMan enemy-ChrIns array offset and iterate it directly
+checking `[[chr+0xC950]+0x30C]==6`. That chr HAS the AI module (unlike the HP-bar chr). Live-doable on this box
+(WCM resolves via WCM_FINDER / er+0x3D65F88).
