@@ -9,6 +9,20 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
+## ⇒ 2026-07-06g — vmap-on-map-key F1 option SHIPPED + verified working (input authority = follow-up)
+
+New setting **Virtual map on map key** (`vmap_on_map_key`, F1 ▸ Settings, off by default; commits `3cc19e9`
++ `b6b8f75`). Map key → fullscreen-opaque vmap over the native map. Extends the existing custom-vworld
+"open on map key" path (`panel_virtual_map.cpp` Slice D) to the base world; covers the native map rather
+than suppressing it (native render flag "does not hide the map" — proven). Both builds green, deployed.
+
+- **✅ VERIFIED WORKING (user, 2026-07-06g):** the fullscreen vmap visually stands in for the native map.
+- **⚠ KNOWN LIMITATION / ★ NEXT (follow-up):** the native (vanilla) map is still **authoritative on INPUT** —
+  it stays open underneath, so game map inputs (pan/zoom/close, stick/scroll) still drive the native map, not
+  the vmap. Logical for v1 (visual cover only). Follow-up = route the map inputs to the vmap when
+  `vmap_on_map_key` is on (steal/consume the game-map input, or drive vmap pan/zoom/close from the same keys),
+  so the vmap becomes the interactive surface. Not yet wired.
+
 ## ⇒ SESSION WRAP 2026-07-06g (Linux/Opus) — water Probe 2: offline dvdbnd→collision chain BUILT + VALIDATED, Oodle is the one wall
 
 Water sea-tag RE, disk source. Converged prior sessions to **Source A = hkxpwv collision `Water`/`Swamp`
