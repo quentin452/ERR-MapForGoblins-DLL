@@ -1,3 +1,9 @@
+> **Probe 1 DONE (2026-07-06) → `far_water_surface_disk_re_findings.md`.** Source B (MSB water-plane) is
+> RULED OUT: ER MSBs have no water part/region/model name, MapPiece/Collision parts sit at origin (surface Y is
+> in the FLVER, not the MSB), `HitFilterID` has no water value, and overworld tiles carry no MSB collision at
+> all. ⇒ **Source A (the `hkxpwv` collision `Water`/`Swamp` material, riding the far-terrain bake) is the
+> path.** Remaining = Probe 2 (material ids + offline hkxpwv decode). This brief kept for context.
+
 # RE brief — per-region WATER from DISK (whole-map / far water for the relief sea-tag)
 
 **Why.** The runtime material-tag (`windows_water_level_source_re_findings.md` §10) can tag water only where

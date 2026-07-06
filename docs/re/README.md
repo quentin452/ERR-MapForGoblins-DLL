@@ -130,8 +130,11 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
   CPU-native sea-tag = MATERIAL-based:** cast `0x5e` (done) → hit triangle material (`hknpMaterialLibrary`
   er+0x2ee36b0) → `sea = material ∈ {Water, Swamp}`. Follow-up RE = raycast-hit material extraction + the
   Water/Swamp ids. That reaches only the NEAR field (streamed collision); **whole-map / far water = a DISK
-  source** (`far_water_surface_disk_re_prompt.md`): the `hkxpwv` collision Water/Swamp material (rides the
-  far-terrain bake — mask free with the elevation) or the MSB water-plane part Y.
+  source** (`far_water_surface_disk_re_prompt.md`). **Probe 1 DONE (`far_water_surface_disk_re_findings.md`,
+  2026-07-06): the MSB water-plane (Source B) is RULED OUT** — ER MSBs have no water part/region/model name,
+  parts sit at origin (surface Y is in the FLVER), `HitFilterID` isn't water, overworld tiles have no MSB
+  collision. ⇒ only disk water source = the `hkxpwv` collision `Water`/`Swamp` material (rides the far-terrain
+  bake, mask free with elevation); remaining = Probe 2 (material ids + offline hkxpwv decode).
 - **Far-terrain elevation (the "fake 3D" distant terrain) — SCOPED (static, 2026-07-05,
   `far_terrain_heightmap_re_findings.md`).** The raycast above is loaded-region-only; the distant terrain has
   no collision. **RTTI sweep verdict: there is NO far-terrain heightmap TEXTURE** (zero non-water `*Height*`/

@@ -499,8 +499,11 @@ then optional `windows_havok_vdb_standup_re_prompt.md` + `windows_debug_render_f
 **the vmap sea-tag water source** (`windows_water_level_source_re_findings.md` §10, 2026-07-06 — Options 3 AND 2
 both ruled out; water has no collision surface, it's a ground material). Two follow-ups by coverage: (near) the
 runtime MATERIAL-tag — raycast-hit material extraction + Water/Swamp ids via `hknpMaterialLibrary` er+0x2ee36b0,
-Linux-testable; (far/whole-map) the DISK source — `far_water_surface_disk_re_prompt.md`, the `hkxpwv` collision
-Water/Swamp material RIDES the far-terrain bake (mask free with elevation), or the MSB water-plane part Y.**
+Linux-testable; (far/whole-map) the DISK source — `far_water_surface_disk_re_prompt.md`. **Probe 1 DONE
+(`far_water_surface_disk_re_findings.md`): MSB water-plane (Source B) RULED OUT — no water part/region/model
+name in ER MSBs, parts at origin (surface Y is in the FLVER), HitFilterID isn't water, overworld tiles have no
+MSB collision. ⇒ only disk water source = the `hkxpwv` collision Water/Swamp material (rides the far-terrain
+bake); remaining = Probe 2 (material ids in Ghidra + offline hkxpwv decode). Probes: `tools/_probe_water_*.py`.**
 The tracks are independent.
 
 **SHIPPED this session (all committed + in-game verified where noted):**
