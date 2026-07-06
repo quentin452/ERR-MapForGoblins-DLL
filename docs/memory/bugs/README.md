@@ -73,3 +73,10 @@ Complex bugs — resolved and open — with the durable root-cause/fix takeaway.
   (Oodle-blocked on Linux). → [extra-graces-siofra](extra-graces-siofra.md)
 - **Per-tile walk-fog** [open RE] — real explored-fog lives in `CS::WorldMapTiledLayer`; `tile_fogged()`
   third gate unbuilt (needs Ghidra). The redundant piece-flag gate was removed. → [worldmap-tile-fog-re](worldmap-tile-fog-re.md)
+- **Enemy names coupled to the minimap** [FIXED 2026-07-06] — `draw_enemy_bar_names` is called from
+  `draw_minimap_hud`, which was gated `if (minimap)` in `goblin_overlay.cpp` — so enemy names only drew
+  when `show_minimap` was on. Looked "Linux works / Windows doesn't" purely because the two boxes' inis
+  differ (`show_minimap=false` on Windows). Fix: call the HUD `if (minimap || config::enemyNames)` — the
+  minimap self-gates internally (`draw_minimap` checks `showMinimap`, `map_renderer.cpp`). Diagnostic:
+  the `[ENEMYBAR] resolve …` log line only prints when the draw runs; the sigs (CSFeMan/WCM/GetChrIns)
+  were fine all along. Host-side → needs a game restart.

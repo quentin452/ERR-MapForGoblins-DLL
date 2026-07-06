@@ -1929,8 +1929,13 @@ namespace
             goblin::overlay_render_loader::call_draw_virtual_map(frame_ctx);
             if (proto)
                 goblin::overlay_render_loader::call_draw_worldmap_markers(g_show, frame_ctx);
-            if (minimap)
-                goblin::overlay_render_loader::call_draw_minimap_hud(frame_ctx);   // gameplay HUD (map closed) — self-gates overworld-only
+            // Enemy-bar names are drawn inside draw_minimap_hud but are INDEPENDENT of the minimap
+            // (draw_minimap itself self-gates on showMinimap, map_renderer.cpp). Run the HUD if EITHER
+            // the minimap OR enemy-names is enabled, so enemy names still show with the minimap OFF.
+            // (Bug fix 2026-07-06: names were coupled to show_minimap → invisible on the Windows box
+            // where show_minimap=false, while working on Linux where it's on.)
+            if (minimap || goblin::config::enemyNames)
+                goblin::overlay_render_loader::call_draw_minimap_hud(frame_ctx);   // enemy names (self-gated) + minimap HUD (self-gates overworld-only)
 
             // 3D world-to-screen calibration dot (present-thread; self-gates off unless `w2s_probe dot on`).
             // Reads the live camera VIEW + player pos on THIS frame → no read-tearing. See goblin_w2s.
