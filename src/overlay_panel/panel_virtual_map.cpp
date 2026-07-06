@@ -1400,6 +1400,41 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         }
     }
 
+    // ── Gamepad reticle → hover / activate / place (M4). The RIGHT-stick reticle (s_pad_cursor) becomes
+    // the effective canvas pointer in pad-mode, so the pad hovers marker/grace tooltips and targets
+    // actions exactly like the mouse. Buttons chosen to NOT collide with ImGui nav (FaceDown=Activate,
+    // FaceRight=Cancel, dpad/LStick=widget nav): FaceUp (Y/△) = activate (warp a hovered discovered grace),
+    // FaceLeft (X/□) = place / delete a custom marker (the right-click equivalent). Mouse path unchanged.
+    const ImVec2 vptr = s_pad_mode ? s_pad_cursor : io.MousePos;
+    const bool pad_over_canvas = s_pad_mode && s_pad_cursor.x >= origin.x && s_pad_cursor.x <= canvas_end.x &&
+                                 s_pad_cursor.y >= origin.y && s_pad_cursor.y <= canvas_end.y;
+    const bool hovered_eff = hovered || pad_over_canvas;
+    const bool pad_activate = s_pad_mode && ImGui::IsKeyPressed(ImGuiKey_GamepadFaceUp, false);
+    const bool pad_place    = s_pad_mode && ImGui::IsKeyPressed(ImGuiKey_GamepadFaceLeft, false);
+    // Pad place/delete a custom marker at the reticle (mirrors the right-click path above; s_pad_cursor is
+    // now current this frame). Near an existing same-group pin → delete, else drop a new one (cap-enforced).
+    if (pad_place && pad_over_canvas && active_world == 0)
+    {
+        float mwx, mwz;
+        s2w(s_pad_cursor, mwx, mwz);
+        auto cm = goblin::custom_markers::snapshot();
+        int hit = -1;
+        float bestd = 14.0f * 14.0f;
+        for (int i = 0; i < (int)cm.size(); ++i)
+        {
+            if (cm[i].group != s_group) continue;
+            ImVec2 ps = w2s(cm[i].wx, cm[i].wz);
+            float dx = ps.x - s_pad_cursor.x, dy = ps.y - s_pad_cursor.y, d = dx * dx + dy * dy;
+            if (d < bestd) { bestd = d; hit = i; }
+        }
+        if (hit >= 0)
+            goblin::custom_markers::remove_at((size_t)hit);
+        else if (!goblin::custom_markers::add(mwx, mwz, s_group,
+                     std::string("Marker ") + std::to_string(s_custom_seq++), IM_COL32(90, 200, 255, 255)))
+            s_tile_status = "custom marker cap reached for this map";
+        s_show_custom = true;
+    }
+
     ImDrawList *dl = ImGui::GetWindowDrawList();
     dl->PushClipRect(origin, canvas_end, true);
     dl->AddRectFilled(origin, canvas_end, IM_COL32(18, 20, 26, 255));  // dark canvas backdrop
@@ -1592,9 +1627,9 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                 dl->AddCircleFilled(ps, 3.0f * uiScale, col ? col : IM_COL32(235, 130, 90, 255));
         }
         drawn++;
-        if (hovered)
+        if (hovered_eff)
         {
-            float dx = ps.x - io.MousePos.x, dy = ps.y - io.MousePos.y, d = dx * dx + dy * dy;
+            float dx = ps.x - vptr.x, dy = ps.y - vptr.y, d = dx * dx + dy * dy;
             const int prio = (cat == kGraceCat) ? 1 : 0;   // graces (drawn on top) win the hover
             if (d < icoHalf * icoHalf * 2.0f && (prio > hoverPrio || (prio == hoverPrio && d < hoverBestD)))
             { hoverBestD = d; hoverPrio = prio; hoverName = nameId; hoverCat = cat; hoverV = vname ? vname : ""; hoverRow = rowId; hoverDisc = discFlag; hoverWx = wx; hoverWz = wz; hoverArea = mp ? mp->raw_area : -1; }
@@ -2019,8 +2054,9 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             ImGui::EndTooltip();
         }
         // Double-click a DISCOVERED grace → fast-travel. Deferred to next frame's top (warp tears down UI
-        // state; firing mid-ImGui-draw is unsafe). Double-click avoids the drag-pan click conflict.
-        if (graceDiscovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+        // state; firing mid-ImGui-draw is unsafe). Double-click avoids the drag-pan click conflict. Gamepad:
+        // FaceUp (pad_activate) over a hovered discovered grace does the same (no mouse double-click by pad).
+        if (graceDiscovered && (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) || pad_activate))
         {
             s_warp_pending = hoverRow;
             // Log WHAT we're warping to — the name + rowId + world pos let us catch a bad grace→rowId

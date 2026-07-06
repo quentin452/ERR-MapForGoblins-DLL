@@ -49,6 +49,17 @@ Implements + validates the "Remaining" step of the resident-converter-affine RE 
   validated `project()` path). Verified live: `vmap dump_markers` → 349 area-40–43 markers, all group 2 (DLC),
   world coords `X[11201..13312] Z[10170..12217]` INSIDE the DLC-OW (area 61) cluster (was native ~0–1000, off
   page); none in the 19 `vmap offmap` margins. Group stays plain DLC (marker_group_from keys off original area).
+- **vmap gamepad M4 — reticle → hover/warp/place LANDED (2026-07-06f2, needs PAD live-test).** The
+  right-stick reticle (`s_pad_cursor`) is now the effective canvas pointer in pad-mode: it drives the
+  single-marker/grace **hover tooltip** (accumulator uses `vptr`/`hovered_eff`), **FaceUp (Y/△)** warps a
+  hovered discovered grace, **FaceLeft (X/□)** places/deletes a custom marker at the reticle. Buttons chosen
+  to NOT collide with ImGui nav (FaceDown=Activate, FaceRight=Cancel, dpad/LStick=widget nav). **Mouse path
+  byte-identical** when not in pad-mode (`vptr=io.MousePos`, `hovered_eff=hovered`, pad buttons false) —
+  smoke-verified no regression (vmap renders, mouse right-click place + `vmap group` read OK). The OSK (item
+  #1) was already done (`draw_gamepad_keyboard_button` = a real A–Z popup + Space/Bksp/Clear/Done, nav'able).
+  **⚠ CANNOT live-test the pad from Linux RPC (no XInput injection) → USER must pad-test.** **STILL OPEN:**
+  (a) pile/fan CLUSTER pad-hover (piles/spiderfy still read `io.MousePos` — reticle only hovers SINGLE
+  markers so far; matters zoomed-out); (b) live-tune stick pan/zoom speeds + signs.
 - **✅ PLAYER-DIMENSION AUTO-FOLLOW VERIFIED LIVE (2026-07-06f2).** The vmap auto-switches PAGE to the
   player's dimension on a crossing (`s_follow_player_dim`, edge-detect on `get_player_map_pos` group). Drove
   it live via grace warps with the vmap open: OW(0) → Nokstella base-UG → page auto-followed to group 1
