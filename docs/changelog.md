@@ -189,6 +189,12 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   the map" game-state flag (`CSMenuMan+0x104`). Gated by the `clip_game_ui` setting.
 
 ### Changed
+- **Overlay uses one font throughout (embedded DejaVu Sans), no more bitmap+TTF mix.** ASCII was ImGui's
+  ProggyClean bitmap and only accents/extended glyphs were a DejaVu TTF merged on top — two rasterizers
+  with different baselines, so accented chars (é in "Varré", œ, →) read raised/blurry beside the pixel
+  ASCII and needed a hand-tuned offset to sit right. Now DejaVu Sans is the single font for the whole
+  overlay (ASCII + extended), so every glyph shares one baseline and the raised/blurry-accent class is
+  gone. Text is antialiased rather than pixel-bitmap; embedded, so identical under Wine/Proton.
 - **Patch-resilience: PhysWorld + hknp body pipeline now AOB-pinned.** The last un-hardened hot RVA
   (the CS::PhysWorld singleton slot used by the terrain raycast + collision injection) and the three
   hknp body functions (cinfo init / allocateBody / addBody) resolve AOB-first with the RVA as a

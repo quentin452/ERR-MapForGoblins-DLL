@@ -1223,31 +1223,22 @@ namespace
         // hook below for why the game doesn't ALSO react to the same stick/button input.
         ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
 
-        // Fonts: ImGui's default (ProggyClean) only has Latin-1 glyphs (0x20-0xFF), so any
-        // char beyond — œ (U+0153) in French item names, em-dash, Cyrillic, Greek — renders
-        // as the fallback '?'. Keep the default for the ASCII look, then MERGE an EMBEDDED
-        // broad-Latin font (DejaVu Sans, compressed into the DLL via dejavu_sans_ttf.h) for the
-        // EXTENDED glyphs only. Embedded — NOT C:\Windows\Fonts — so it renders identically under
-        // Wine/Proton/Linux where the Windows font paths differ or are absent. FMG labels are
-        // already UTF-8 via lookup_text_utf8. CJK/Thai/Arabic need a far bigger atlas + a CJK
-        // font — out of scope here (European coverage only). A system-font merge stays as a
-        // last-ditch fallback if the embedded decompress ever fails.
+        // Fonts: ONE font for the whole overlay — the EMBEDDED DejaVu Sans (compressed into the DLL
+        // via dejavu_sans_ttf.h) as the single primary, covering ASCII AND extended glyphs (accents,
+        // œ, em-dash, Greek, Cyrillic, arrows, math, currency). Previously ASCII was ImGui's default
+        // ProggyClean BITMAP and only the extended range was a DejaVu TTF merged on top — two
+        // rasterizers with different hinting/oversample/baseline, so accented chars (é in "Varré")
+        // read raised/blurry next to the crisp pixel ASCII and needed a hand-tuned GlyphOffset.y fudge
+        // to sit right. A single rasterizer shares one baseline → that mismatch is structurally
+        // impossible; no offset fudge. Embedded — NOT C:\Windows\Fonts — so it renders identically
+        // under Wine/Proton/Linux where the Windows font paths differ or are absent. FMG labels are
+        // already UTF-8 via lookup_text_utf8. CJK/Thai/Arabic need a far bigger atlas + a CJK font —
+        // out of scope (European coverage only). A system-font load stays as a last-ditch fallback if
+        // the embedded decompress ever fails.
         {
             ImGuiIO &io = ImGui::GetIO();
-            // ProggyClean for ASCII ONLY (0x20-0x7E). Its DEFAULT range is 0x20-0xFF, which OVERLAPS the
-            // DejaVu merge below at 0x00A0-0x00FF — and ImGui merge = FIRST font wins, so ProggyClean would
-            // shadow DejaVu for accented Latin-1 like 'é' (U+00E9 in "White Mask Varré"). ProggyClean has no
-            // real glyph there → the accent renders blank → "Varre". (œ U+0153 worked only because it's
-            // outside the overlap, so DejaVu already owned it.) Restrict ProggyClean to ASCII → DejaVu owns
-            // every accent/extended glyph → "Varré" renders correctly, matching ERR's native name.
-            static const ImWchar kAsciiRange[] = { 0x0020, 0x007E, 0 };
-            ImFontConfig baseCfg;
-            baseCfg.OversampleH = baseCfg.OversampleV = 1;
-            baseCfg.PixelSnapH = true;                 // crisp ProggyClean bitmap look (AddFontDefault sets
-            baseCfg.GlyphRanges = kAsciiRange;         // these only when no template is passed — set here)
-            io.Fonts->AddFontDefault(&baseCfg);        // ProggyClean, ASCII-only (no longer shadows accents)
-            static const ImWchar kExtRanges[] = {
-                0x00A0, 0x00FF,  // Latin-1 Supplement (accents) — merge-safe overlap
+            static const ImWchar kFontRanges[] = {
+                0x0020, 0x00FF,  // ASCII + Latin-1 Supplement (accents) — one contiguous block
                 0x0100, 0x024F,  // Latin Extended-A + B (œ ligature, more accents)
                 0x0370, 0x03FF,  // Greek
                 0x0400, 0x04FF,  // Cyrillic
@@ -1258,41 +1249,45 @@ namespace
                 0,
             };
             ImFontConfig cfg;
-            cfg.MergeMode = true;            // graft these glyphs onto the default font
-            cfg.PixelSnapH = true;
-            // ALIGN to ProggyClean's baseline: AddFontDefault sets ProggyClean's GlyphOffset.y = 1.0 at 13px
-            // (see its `font_cfg.GlyphOffset.y = 1.0f * IM_TRUNC(SizePixels/13)`), but this merge cfg defaults
-            // to 0 → DejaVu accents (é/ê/è…) sat ~1px HIGHER than the ASCII letters ("raised"). Match it.
-            cfg.GlyphOffset.y = 1.0f;
-            // A touch of horizontal oversampling sharpens the antialiased TTF glyphs (ProggyClean is a crisp
-            // bitmap; DejaVu is a rasterized TTF at 13px → inherently softer). PixelSnapH keeps them on-grid.
+            // NO MergeMode, NO AddFontDefault, NO GlyphOffset fudge — single primary font.
+            // Horizontal oversampling + PixelSnapH sharpen the antialiased TTF at small px (ProggyClean
+            // was a crisp bitmap; a rasterized TTF is inherently softer — this pulls it back toward crisp).
             cfg.OversampleH = 2;
             cfg.OversampleV = 1;
+            cfg.PixelSnapH  = true;
+            // DejaVu Sans has a smaller x-height per em than ProggyClean, so DejaVu at 13px reads SMALLER
+            // than the old ProggyClean ASCII at 13px. Bump the size for matching perceived readability.
+            // LIVE-TUNING KNOB, not a derivable constant — nudge ±1px after a screenshot compare.
+            const float kFontPx = 15.0f;
             // DejaVu Sans (Bitstream Vera / Arev license — freely redistributable, embeddable).
             // AddFontFromMemoryCompressedTTF decompresses into an atlas-owned buffer; the static
             // compressed array is only read, never retained.
             if (io.Fonts->AddFontFromMemoryCompressedTTF(
-                    DejaVuSans_compressed_data, DejaVuSans_compressed_size, 13.0f, &cfg, kExtRanges))
+                    DejaVuSans_compressed_data, DejaVuSans_compressed_size, kFontPx, &cfg, kFontRanges))
             {
-                spdlog::info("[FONT] merged extended Unicode glyphs from embedded DejaVu Sans");
+                spdlog::info("[FONT] loaded embedded DejaVu Sans as the single overlay font ({}px)", kFontPx);
             }
             else
             {
-                // Only reachable if the embedded decompress failed — fall back to a system font.
+                // Only reachable if the embedded decompress failed — fall back to a system font, then
+                // ImGui's built-in ProggyClean so the UI still draws (ASCII-only, no accents).
                 const char *kFontCandidates[] = {
                     "C:\\Windows\\Fonts\\segoeui.ttf",
                     "C:\\Windows\\Fonts\\arial.ttf",
                     "C:\\Windows\\Fonts\\tahoma.ttf",
                 };
-                bool merged = false;
+                bool loaded = false;
                 for (const char *p : kFontCandidates)
                 {
                     if (GetFileAttributesA(p) == INVALID_FILE_ATTRIBUTES) continue;
-                    if (io.Fonts->AddFontFromFileTTF(p, 13.0f, &cfg, kExtRanges)) { merged = true;
-                        spdlog::info("[FONT] embedded font failed; merged from {}", p); break; }
+                    if (io.Fonts->AddFontFromFileTTF(p, kFontPx, &cfg, kFontRanges)) { loaded = true;
+                        spdlog::info("[FONT] embedded font failed; loaded {}", p); break; }
                 }
-                if (!merged)
-                    spdlog::warn("[FONT] embedded + system font merge failed — non-Latin-1 chars will show '?'");
+                if (!loaded)
+                {
+                    spdlog::warn("[FONT] embedded + system font load failed — falling back to ProggyClean (ASCII only)");
+                    io.Fonts->AddFontDefault();
+                }
             }
         }
         // Software cursor: the game hides the OS cursor, so ImGui draws its own — but ONLY while the
