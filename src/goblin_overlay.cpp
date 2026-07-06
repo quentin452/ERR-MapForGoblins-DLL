@@ -1260,6 +1260,14 @@ namespace
             ImFontConfig cfg;
             cfg.MergeMode = true;            // graft these glyphs onto the default font
             cfg.PixelSnapH = true;
+            // ALIGN to ProggyClean's baseline: AddFontDefault sets ProggyClean's GlyphOffset.y = 1.0 at 13px
+            // (see its `font_cfg.GlyphOffset.y = 1.0f * IM_TRUNC(SizePixels/13)`), but this merge cfg defaults
+            // to 0 → DejaVu accents (é/ê/è…) sat ~1px HIGHER than the ASCII letters ("raised"). Match it.
+            cfg.GlyphOffset.y = 1.0f;
+            // A touch of horizontal oversampling sharpens the antialiased TTF glyphs (ProggyClean is a crisp
+            // bitmap; DejaVu is a rasterized TTF at 13px → inherently softer). PixelSnapH keeps them on-grid.
+            cfg.OversampleH = 2;
+            cfg.OversampleV = 1;
             // DejaVu Sans (Bitstream Vera / Arev license — freely redistributable, embeddable).
             // AddFontFromMemoryCompressedTTF decompresses into an atlas-owned buffer; the static
             // compressed array is only read, never retained.
