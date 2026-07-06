@@ -58,6 +58,7 @@ namespace goblin
         extern GOBLIN_RENDER_API bool clusterDebugRadius;
         extern GOBLIN_RENDER_API bool clusterDebugMarkers;   // per-marker projection/tile state dots (cluster diagnosis)
         extern GOBLIN_RENDER_API bool showRegionLabels; // overlay map: draw major-region names (Limgrave, Caelid, ...)
+        extern GOBLIN_RENDER_API bool vmapOnMapKey;     // open the Virtual World Map on the game map key (base world)
         extern GOBLIN_RENDER_API bool nativeItemIcons;  // overlay map: real game item icon (GPU harvest) when resident
         extern GOBLIN_RENDER_API bool enemyNames;       // name the game's own non-boss enemy tags via the native NpcName data path
         // Per-category name filters (which nameId==0 types we feed to the native tag). Category from

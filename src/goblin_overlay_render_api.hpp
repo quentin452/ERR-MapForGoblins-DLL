@@ -31,12 +31,12 @@
 
 namespace goblin::overlay_api
 {
-    // ── goblin::config::* (59 of 64 globals — the other 5 are `inline constexpr`, already free) ──
+    // ── goblin::config::* (60 of 65 globals — the other 5 are `inline constexpr`, already free) ──
     // Scalars are exposed as pointer-getters (works uniformly for read AND for the ImGui widgets
     // that bind `&goblin::config::X` directly) via one shared macro shape.
 #define GOBLIN_CFG_BOOL_LIST(X) \
     X(requireMapFragments) X(bakedOnly) X(collectedGraying) X(hideCollected) X(stackIdenticalItems) \
-    X(clusterDebugRadius) X(clusterDebugMarkers) X(showRegionLabels) X(nativeItemIcons) X(diagLootFlags) \
+    X(clusterDebugRadius) X(clusterDebugMarkers) X(showRegionLabels) X(vmapOnMapKey) X(nativeItemIcons) X(diagLootFlags) \
     X(diagLootPos) X(debugLogging) X(anonymousLoot) X(dropMerchantPhantoms) X(redifyBossIcons) \
     X(enableMarkerDump) X(debugEventFlags) \
     X(debugItemGrants) X(debugFlagCapture) X(debugWorldmapProbe) X(dumpIconTextures) \

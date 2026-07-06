@@ -123,6 +123,12 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
         ImGui::Checkbox(tr("Show region labels (major-region names on the map)"),
                         goblin::overlay_api::cfg_showRegionLabels_ptr());
 
+    // Virtual map on the game map key: open the fullscreen Virtual World Map when the
+    // player opens the map, instead of the native map (live; persists via "Save to INI").
+    if (f.match("virtual map on map key vmap native fullscreen open"))
+        ImGui::Checkbox(tr("Virtual map on map key (open the Virtual World Map instead of the native map)"),
+                        goblin::overlay_api::cfg_vmapOnMapKey_ptr());
+
     // Redify boss markers (overlay port of the legacy red-skull iconId; live,
     // persists via "Save to INI"). Tints WorldBosses markers red (overworld +
     // dungeon bosses); collected/cleared graying still takes precedence.

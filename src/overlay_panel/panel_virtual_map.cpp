@@ -50,6 +50,7 @@ namespace
     // View state (world-space). cam = the world XZ at the canvas centre; zoom = pixels per world unit.
     // Persisted across frames; the whole map lives in ER world units (same space as marker world pos).
     bool s_open = false;
+    bool s_from_map = false;  // vmap was opened by the game MAP KEY (→ draw fullscreen over the native map)
     float s_cam_x = 0.0f, s_cam_z = 0.0f;
     float s_zoom = 0.05f;  // 0.05 px/unit → ~10k-unit ER map spans ~525px; a sane default overview
     // Orientation calibration (dev): sign per axis for world→screen. Minimap convention = +X, -Z
@@ -740,9 +741,13 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // opened it (so a Dev-toggle-opened vmap isn't closed by the game map). Runs every frame (this entry is
     // called unconditionally, independent of the F1 panel).
     {
-        static bool s_prev_map = false, s_from_map = false;
+        static bool s_prev_map = false;  // s_from_map is file-scope (read at the fullscreen Begin below)
         const bool map_now = goblin::overlay_api::world_map_open();
-        if (map_now && !s_prev_map && goblin::vworld::active() != 0) { s_open = true; s_from_map = true; }
+        // Open on the game MAP KEY when: a custom world is active (the "M, not F1" UX), OR the user
+        // opted into "Virtual map on map key" for the BASE world too (config vmap_on_map_key). In the
+        // base-world case the vmap draws FULLSCREEN over the native map (see s_from_map below).
+        const bool open_on_key = goblin::vworld::active() != 0 || *goblin::overlay_api::cfg_vmapOnMapKey_ptr();
+        if (map_now && !s_prev_map && open_on_key) { s_open = true; s_from_map = true; }
         else if (!map_now && s_prev_map && s_from_map) { s_open = false; s_from_map = false; }
         s_prev_map = map_now;
     }
@@ -756,9 +761,28 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     }
     if (!s_open) return;
 
-    ImGui::SetNextWindowSize(ImVec2(720.0f, 560.0f), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowPos(ImVec2(470.0f, 40.0f), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin(tr("MapForGoblins \xE2\x80\x94 Virtual World Map (WIP)"), &s_open))
+    // Opened by the game MAP KEY (s_from_map) → draw FULLSCREEN + opaque so it stands in for the
+    // native map (which still renders underneath; we cover it rather than suppress it — the native
+    // render flag "does not hide the map", proven live). Otherwise a floating dev window.
+    const bool fullscreen = s_from_map;
+    ImGuiWindowFlags win_flags = 0;
+    if (fullscreen)
+    {
+        ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+        ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.05f, 0.05f, 0.06f, 1.0f));  // opaque cover
+        win_flags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
+                    ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoBringToFrontOnFocus;
+    }
+    else
+    {
+        ImGui::SetNextWindowSize(ImVec2(720.0f, 560.0f), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowPos(ImVec2(470.0f, 40.0f), ImGuiCond_FirstUseEver);
+    }
+    const bool vmap_visible =
+        ImGui::Begin(tr("MapForGoblins \xE2\x80\x94 Virtual World Map (WIP)"), &s_open, win_flags);
+    if (fullscreen) ImGui::PopStyleColor();
+    if (!vmap_visible)
     {
         ImGui::End();
         return;

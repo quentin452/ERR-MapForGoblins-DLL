@@ -19,6 +19,7 @@ namespace goblin::config
     bool hideCollected = false;
     bool stackIdenticalItems = true;  // merge co-located identical-item loot markers into one "xN"
     bool showRegionLabels = true;  // overlay: draw major-region name labels on the map
+    bool vmapOnMapKey = false;     // open the Virtual World Map when the game map key is pressed (base world)
     bool nativeItemIcons = true;   // overlay: draw the game's real item icon (GPU harvest) when resident
     bool enemyNames = true;        // name the game's own non-boss enemy tags via the native NpcName data path
     bool nameEnemyMobs = true;     // name regular mobs (tier-2 codex + fallback)
@@ -198,6 +199,10 @@ namespace
                 B("show_region_labels", showRegionLabels, "true",
                   "Overlay map: draw the major-region names (Limgrave, Caelid, Liurnia,\n"
                   "Altus Plateau, ...) on the open map page, beneath the markers."),
+                B("vmap_on_map_key", vmapOnMapKey, "false",
+                  "When you open the game map, show the MapForGoblins Virtual World Map\n"
+                  "(fullscreen) instead of the native map. FALSE = native map (the vmap\n"
+                  "still opens for custom virtual worlds and via the Dev toggle)."),
                 B("native_item_icons", nativeItemIcons, "true",
                   "Overlay map: for categories that have a real in-game world-map symbol\n"
                   "(MENU_MAP_<NN>), draw that native GPU symbol when it is resident, instead of\n"
