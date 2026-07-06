@@ -1199,6 +1199,51 @@ namespace goblin::debug_rpc
                 std::snprintf(b, sizeof(b), "ok proj area=%d grid=(%d,%d) -> u=%.2f v=%.2f page=%d", area, gx, gz, u, v, page);
                 return std::string(b);
             }
+            // proj_conv <area> <gxbase> <gzbase> <ox> <oz> <bx> <bz> <scale> <gx> <gz> [px] [pz] —
+            // fd0ad45 validation: build an OFF-VM converter slot from the given fields (in our own memory)
+            // and project ONE point through the engine fn FUN_140876140 — the native map NEVER opened, no
+            // live VM. Lets the test confirm the world→map-space affine is reproducible MAP-CLOSED: pick the
+            // exe-invariant fields, compare du/dv to the map-open `proj` reference (must be 0). legacyNode=0
+            // (base affine only; the legacy-dungeon fold stays with goblin::legacy_fold).
+            if (cmd == "proj_conv")
+            {
+                std::string as = next_token(rest), gxbs = next_token(rest), gzbs = next_token(rest),
+                            oxs = next_token(rest), ozs = next_token(rest), bxs = next_token(rest),
+                            bzs = next_token(rest), scs = next_token(rest), gxs = next_token(rest),
+                            gzs = next_token(rest), pxs = next_token(rest), pzs = next_token(rest);
+                int area = 0, gxb = 0, gzb = 0, gx = 0, gz = 0;
+                float ox = 0, oz = 0, bx = 0, bz = 0, sc = 1.f, px = 0.f, pz = 0.f;
+                try {
+                    area = std::stoi(as); gxb = std::stoi(gxbs); gzb = std::stoi(gzbs);
+                    ox = std::stof(oxs); oz = std::stof(ozs); bx = std::stof(bxs); bz = std::stof(bzs);
+                    sc = std::stof(scs); gx = std::stoi(gxs); gz = std::stoi(gzs);
+                    if (!pxs.empty()) px = std::stof(pxs); if (!pzs.empty()) pz = std::stof(pzs);
+                } catch (...) {
+                    return "err usage: proj_conv <area> <gxbase> <gzbase> <ox> <oz> <bx> <bz> <scale> <gx> <gz> [px] [pz]";
+                }
+                float u = 0.f, v = 0.f;
+                bool ok = goblin::worldmap_probe::project_offvm(area, gxb, gzb, ox, oz, bx, bz, sc, gx, gz, px, pz, u, v);
+                char b[160];
+                if (!ok) { std::snprintf(b, sizeof(b), "err proj_conv: FUN_140876140 unresolved or point rejected"); return std::string(b); }
+                std::snprintf(b, sizeof(b), "ok proj_conv area=%d grid=(%d,%d) -> u=%.2f v=%.2f", area, gx, gz, u, v);
+                return std::string(b);
+            }
+            // conv_affine <area> — dump the LIVE per-area converter slot fields (origin/bias/scale/gridbase)
+            // read from the resolved VM (needs the map opened once). Lets the test CAPTURE the exe-invariant
+            // fields, close the map, then replay them through proj_conv (off-VM) and assert du/dv==0.
+            if (cmd == "conv_affine")
+            {
+                int area = 0;
+                try { area = std::stoi(next_token(rest)); } catch (...) { return "err usage: conv_affine <area>"; }
+                goblin::worldmap_probe::ConvAffine a{};
+                if (!goblin::worldmap_probe::get_converter_affine(area, a))
+                    return "err conv_affine: no live converter for that area (map never opened?)";
+                char b[192];
+                std::snprintf(b, sizeof(b),
+                              "ok conv_affine area=%d gxbase=%d gzbase=%d origin=%.3f,%.3f bias=%.3f,%.3f scale=%.4f",
+                              a.area, a.gridXbase, a.gridZbase, a.originX, a.originZ, a.biasX, a.biasZ, a.scale);
+                return std::string(b);
+            }
             // dbgrender_probe — greybox #2a: probe ER's debug-draw gate DAT_143d85b18 (er+0x3d85b18).
             // `read` (classifies flag vs pointer), `set <hex>` (SEH write). See
             // windows_debug_render_flag_re_findings.md. Pair with `screenshot` to see if debug primitives draw.

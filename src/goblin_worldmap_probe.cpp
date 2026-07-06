@@ -1097,6 +1097,44 @@ bool project(int area, int gridX, int gridZ, float posX, float posZ, float &mapU
     return false; // no converter accepts it
 }
 
+// Off-VM projection (fd0ad45 validation — the resident-affine "Remaining" step). Build a converter
+// slot in OUR OWN memory from caller-supplied fields (origin/bias/scale/gridbase; legacyNode left 0 —
+// base affine ONLY, the legacy-dungeon fold is handled resident by goblin::legacy_fold) and run the
+// engine's per-converter projection FUN_140876140 on it — with the native map NEVER opened / no live
+// VM. Proves the world→map-space affine is reproducible map-closed: du/dv==0 vs the map-open VM path
+// (project()) ⇒ the "silent prime" + VM coupling is droppable. The engine fn only reads +0x08..+0x28
+// of the slot and writes out[2]; all memory here is ours, node=0 skips the fold deref → no fault.
+// Returns false only if FUN_140876140 is unresolved or the point's packed area != this converter's.
+bool project_offvm(int area, int gridXbase, int gridZbase, float originX, float originZ, float biasX,
+                   float biasZ, float scale, int gridX, int gridZ, float posX, float posZ,
+                   float &mapU, float &mapV)
+{
+    ProjPointFn fn = resolve_proj_point();
+    if (!fn)
+        return false;
+    alignas(16) uint8_t conv[0x30];
+    std::memset(conv, 0, sizeof(conv));
+    uint32_t key = ((uint32_t)(area & 0xff) << 24) | ((uint32_t)(gridXbase & 0xff) << 16) |
+                   ((uint32_t)(gridZbase & 0xff) << 8);
+    std::memcpy(conv + 0x08, &key, 4);
+    std::memcpy(conv + 0x0C, &originX, 4);
+    std::memcpy(conv + 0x14, &originZ, 4);
+    std::memcpy(conv + 0x18, &biasX, 4);
+    std::memcpy(conv + 0x1C, &biasZ, 4);
+    std::memcpy(conv + 0x20, &scale, 4);
+    // +0x28 legacyConvNode intentionally left 0 (no fold) — base affine only.
+    uint32_t packed = ((uint32_t)(area & 0xff) << 24) | ((uint32_t)(gridX & 0xff) << 16) |
+                      ((uint32_t)(gridZ & 0xff) << 8);
+    float world[3] = {posX, 0.0f, posZ};
+    float out[2] = {0.0f, 0.0f};
+    char ok = fn(reinterpret_cast<void *>(conv), out, &packed, world);
+    if (!ok)
+        return false;
+    mapU = out[0];
+    mapV = out[1];
+    return true;
+}
+
 // Harvest the LIVE resident WorldMapTile rects (position only — no textures). Chain (findings
 // windows_worldmap_tile_rect_reach_re_findings.md §3): active cursor → WorldMapDialog (cursor-0x2DB0) →
 // scan its fields for the WorldMapArea (vtable er+0x2b2cb08) → area+0x390 inline layer vector (stride 0x110)

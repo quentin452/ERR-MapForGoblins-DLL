@@ -9,6 +9,28 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
+## ⇒ SESSION WRAP 2026-07-06f (Linux/Opus) — off-VM converter affine: validation HARNESS built (fd0ad45), empirical run env-blocked
+
+Implements the "Remaining" step of the resident-converter-affine RE (`fd0ad45` /
+`docs/re/windows_worldmap_affine_resident_source_re_findings.md`): prove the world→map-space affine is
+reproducible with the native map NEVER opened, so the VM/"silent prime" coupling can be dropped.
+
+- **Off-VM projection wired, no engine-builder needed.** `worldmap_probe::project_offvm(...)` builds a
+  0x30 converter slot in OUR memory from caller fields (`legacyNode=0`, base affine only — legacy fold
+  stays with `legacy_fold`) and runs the resolved `FUN_140876140` map-closed. So the
+  `WORLDMAP_VM_CTOR`/`WORLDMAP_CONV_BUILDER` AOBs the findings mentioned were NOT required (skipped).
+- **RPC verbs** `proj_conv` (off-VM proj) + `conv_affine` (capture live slot fields) → `rpc-commands.md`.
+- **Test** `tools/rpc_tests/test_converter_offvm.py` (registered in `.vscode/tasks.json`): (1) never-opened,
+  projects `60/42/36` under BOTH candidate constructions — `unified` (origin 7168/16384, gridbase 0) vs
+  `static` (origin 0, gridbase 28/64) — to settle the findings' origin-0-vs-7168 caveat by which hits
+  `u=3712 v=7296`; (2) capture-replay open→capture→close→off-VM, assert `du/dv==0`.
+- **Both builds green + deployed.** 
+- **★ NEXT (env-blocked this session):** the box had a pre-existing **D-state `eldenring.exe` husk** (RSS 0,
+  unreapable GPU/IO wedge — the documented freeze) so a cold-boot was unsafe → the empirical run is PENDING.
+  On a clean box: `python tools/rpc_tests/test_converter_offvm.py`; the `[OFFVM]` line names the winning
+  construction, `du/dv==0` confirms droppability. **Only after a green run** wire `project()`/
+  `get_converter_affine()` to the off-VM fallback + drop the prime (do NOT ship the fallback unverified).
+
 ## ⇒ SESSION WRAP 2026-07-06e (Linux/Opus) — ★ native enemy names IMPLEMENTED (data path shipped, ImGui path deleted) + all-DejaVu overlay font
 
 - **✅ NATIVE ENEMY NAMES — IMPLEMENTED (the 07-06d plan below is DONE).** `src/goblin_enemy_names.cpp`

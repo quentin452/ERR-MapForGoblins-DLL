@@ -60,6 +60,28 @@ is exactly what the empirical test must confirm:
   to the static 0 — that isolates whether map-open repopulates origin from map data (would be the only
   remaining map-open dependency) or whether the offset is purely in the grid decode (fully static).
 
+## Validation HARNESS — IMPLEMENTED 2026-07-06 (Linux); empirical RUN still pending
+
+The off-VM validation path is now wired end-to-end (no engine-builder needed — we populate a 0x30 converter
+slot directly and run the resolved `FUN_140876140`, so the `WORLDMAP_VM_CTOR`/`WORLDMAP_CONV_BUILDER` AOBs
+were NOT required):
+
+- `worldmap_probe::project_offvm(...)` (`src/goblin_worldmap_probe.cpp`) — builds a converter slot in our
+  own memory from caller-supplied fields (`legacyNode=0`, base affine only) and runs `FUN_140876140`
+  map-closed. Both builds (single + hot-reload split) link green; DLL deployed.
+- RPC verbs `proj_conv` (off-VM projection) + `conv_affine` (capture the live slot fields).
+- `tools/rpc_tests/test_converter_offvm.py` — two checks: (1) **never-opened** projects `60/42/36` off-VM
+  under BOTH candidate constructions — `unified` (origin 7168/16384, gridbase 0/0) vs `static` (origin 0/0,
+  gridbase 28/64) — to settle the origin-0-vs-7168 caveat by which reproduces `u=3712 v=7296`; (2)
+  **capture-replay** — open once, capture the live fields + a live `proj`, close, replay off-VM, assert
+  `du/dv==0`. Registered in `.vscode/tasks.json`.
+
+**RUN STILL PENDING (env-blocked 2026-07-06):** the daily box had a pre-existing **D-state `eldenring.exe`
+husk** (RSS 0, unreapable — the documented GPU/IO wedge) so a fresh cold-boot was unsafe. Run
+`python tools/rpc_tests/test_converter_offvm.py` on a clean box → the `[OFFVM]` line names the winning
+construction and the `du/dv==0` check confirms droppability. Only AFTER a green run wire `project()` /
+`get_converter_affine()` to the off-VM fallback + drop the prime.
+
 ## Deliverable / next
 
 The base affine has **no mod-variable param source** → the implementation can populate the converter array

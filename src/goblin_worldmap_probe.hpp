@@ -151,6 +151,16 @@ namespace goblin::worldmap_probe
     GOBLIN_RENDER_API bool project(int area, int gridX, int gridZ, float posX, float posZ, float &mapU,
                  float &mapV, int &page);
 
+    // Off-VM projection (fd0ad45 "Remaining" validation — resident converter affine). Build a converter
+    // slot in our OWN memory from caller-supplied exe-invariant fields (origin/bias/scale/gridbase;
+    // legacyNode=0 — base affine only, legacy fold stays with goblin::legacy_fold) and run the engine's
+    // per-converter FUN_140876140 (WORLDMAP_PROJ_POINT) on it — with the native map NEVER opened / no
+    // live VM. du/dv==0 vs project() ⇒ the affine is reproducible map-closed, the VM/prime coupling is
+    // droppable. Returns false only if FUN_140876140 is unresolved. Test primitive (RPC proj_conv).
+    GOBLIN_RENDER_API bool project_offvm(int area, int gridXbase, int gridZbase, float originX, float originZ,
+                       float biasX, float biasZ, float scale, int gridX, int gridZ, float posX,
+                       float posZ, float &mapU, float &mapV);
+
     // The live per-area converter affine (VM+0xF8 slot, findings §1) — the map-space transform the map ART
     // tiles must share so they align with markers (endgame phase-1a slice 3). Read LIVE from the active VM
     // (never hardcoded — see docs/plans/procedural_map_derivation_design.md), cached per area once the map

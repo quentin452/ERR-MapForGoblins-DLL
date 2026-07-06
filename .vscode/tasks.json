@@ -124,6 +124,7 @@
         "test_spawn_probe.py",
         "test_add_collision.py",
         "test_converter_residency.py",
+        "test_converter_offvm.py",
         "test_goods_count.py",
         "test_custom_item.py",
         "test_author_items.py",
