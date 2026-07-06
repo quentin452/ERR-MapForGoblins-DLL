@@ -183,6 +183,14 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
   the gap = DECODE its command→binding table + the command ids, so mod hotkeys respect remapping and work on a
   pad (today = hardcoded `GetAsyncKeyState` VK, kb-only). Cheap intermediate needing NO decode: feed the
   engine's polled `XINPUT_STATE` (`DAT_1430b92e0`) into ImGui gamepad nav.
+- **★ World→map-space affine RESIDENT source — OPEN, `windows_worldmap_affine_resident_source_re_prompt.md`.**
+  The vmap-only migration's real unblocker: project `(area,grid,pos)→map (u,v)` with the native map NEVER
+  opened, so we can close the menu (stop its double draw AND input) and still place markers. The affine math +
+  converter layout are SOLVED (`windows_world_to_mapspace_projection`); the only gap = where the ctor
+  (`FUN_1408855b0`) / builder (`FUN_140876100`) SOURCE the per-converter `origin/bias/scale` — exe-baked
+  (mod-invariant) vs a resident param (like `WorldMapLegacyConvParam`, already read by `legacy_fold`). Either
+  answer drops the map-open dependency + the boot-time "silent prime" hack (prime proven to work live
+  2026-07-06, but it flashes the native map). Replaces the dead M5 Scaleform-draw-cut levers.
 
 ---
 

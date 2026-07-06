@@ -191,6 +191,19 @@ Original spec (a grace LIST menu, not just clicking dots on the canvas), so the 
   Grace warp from the vmap now lands exactly on the grace. **Implication for C1:** disabling the native
   map is NO LONGER coupled to "fix the freeze" (already fixed) — it's purely the UI-simplification /
   single-surface goal, so pick its mechanism on merits, not on the (defunct) menu-context hypothesis.
+- **★ 2026-07-06 ARCHITECTURE PIVOT — "close the menu + project off-VM + own input" replaces the M5
+  draw-cut.** Insight (user): the real problem with cover-opaque isn't the double DRAW (an opaque
+  full-screen vmap hides the native map) — it's that the native map MENU stays OPEN (that's our gate), so it
+  still eats gamepad/mouse input → ER's own map buttons trigger under our cover. Better than fighting the
+  dead M5 Scaleform-draw-cut levers: **CLOSE the native menu** (stops draw AND input at once) and keep
+  projecting. Requires (1) projection without the map open, (2) decouple the vmap's `s_open` from
+  `world_map_open()`, (3) own the input (`windows_keybinding_config_re_prompt.md` + XInput→ImGui). Converter
+  RESIDENCY past a full close is already proven (`test_converter_residency` 5/5). **Silent prime proven live
+  2026-07-06:** injecting `key M` resolves the VM (`proj` err→valid u=3712,v=7296) and it persists — but the
+  native map flashes. To drop the prime entirely, find the RESIDENT source of the converter affine →
+  **`windows_worldmap_affine_resident_source_re_prompt.md`** (the affine math + layout are already solved;
+  only the origin/bias/scale SOURCE — exe-baked vs param — is open). That makes projection fully map-closed +
+  mod-agnostic, no prime, no flash. This supersedes M5 as the path to true single-surface.
 - **C1 (= M3 interim → M5 cull):** take over the native map. **M3 interim = cover opaque** (vmap over the
   native map on `world_map_open()` — usable, but the native still draws → two maps). **M5 = actually CULL the
   native DRAW** (cover ≠ cull). **⚠ 2026-07-05: both CHEAP levers are DEAD (live-disproven on Linux) — M5
