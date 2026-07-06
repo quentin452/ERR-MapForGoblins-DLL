@@ -73,12 +73,12 @@ IS a real find-what-writes. Two real gaps blocked us:
    (armed 01:20 on `CSWorldGeomIns.alive = 0x27a2d74a1e3`, logged 3 hits then stuck below the threshold)
    held the slot, and `mem_fwa` refused every new arm (`[FWA] already armed … — ignoring arm request`).
    There is `field_probe::disarm()` (clears DR0 on all recorded threads) but **no RPC reaches it**.
-   → **ADD** a `mem_fwa off` (or `disarm`) verb that calls `disarm()` and resets `g_armed`/`g_disarmed`/
-   `g_seen`, and/or let an arm request FORCE-replace the current watch. Pure host-only change (no host↔render
-   boundary) — `goblin_debug_rpc.cpp` + a small reset helper in `goblin_field_probe.cpp`.
-2. **Log mislabels writes as "READ".** The hit handler hardcodes `"eldenring.exe READ of …"`
-   (`goblin_field_probe.cpp:138`) even for a write watch → confusing (looked like write wasn't implemented).
-   → thread `write_only` through to the log string ("WRITE"/"READ").
+   → **✅ LANDED 2026-07-06:** `mem_fwa off` (alias `disarm`) verb → `goblin::field_probe::disarm_reset()`
+   clears DR0 on all threads, removes the VEH, deletes the critical section, and resets
+   `g_armed`/`g_disarmed`/`g_seen`/`g_watch_addr` so a fresh arm proceeds. `arm()` is now re-armable
+   (CS init-once guard). Host-only (`goblin_field_probe.{hpp,cpp}` + `goblin_debug_rpc.cpp`).
+2. **Log mislabeled writes as "READ".** → **✅ FIXED 2026-07-06:** the hit line now prints WRITE/READ from
+   the watch's `write_only` (`g_write_only` recorded at arm time).
 
 (Neither is the plan's blocker — they're just what stopped the live capture on Windows today.)
 

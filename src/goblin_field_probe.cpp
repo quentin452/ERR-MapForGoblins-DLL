@@ -36,6 +36,8 @@ bool g_geom_wo = false;
 constexpr int FWA_MAX_HITS = 16;
 std::vector<uintptr_t> g_seen;     // distinct game RIPs logged
 CRITICAL_SECTION g_cs;
+bool g_cs_init = false;             // g_cs InitializeCriticalSection'd (so disarm_reset can Delete it)
+bool g_write_only = false;         // current watch is write-only (for the [FWA] log label)
 std::atomic<bool> g_disarmed{false};
 
 void compute_exe_bounds()
@@ -135,8 +137,8 @@ LONG CALLBACK veh(EXCEPTION_POINTERS *ep)
         char hex[40 * 3 + 1];
         int n = 0;
         for (int i = 0; i < (int)sizeof(buf); ++i) n += std::snprintf(hex + n, sizeof(hex) - n, "%02X ", buf[i]);
-        spdlog::warn("[FWA] hit #{}: eldenring.exe READ of {:#x} by rip=er+0x{:x} (access ENDS at this rip)",
-                     idx, g_watch_addr, rip - g_exe_base);
+        spdlog::warn("[FWA] hit #{}: eldenring.exe {} of {:#x} by rip=er+0x{:x} (access ENDS at this rip)",
+                     idx, g_write_only ? "WRITE" : "READ", g_watch_addr, rip - g_exe_base);
         spdlog::warn("[FWA]   bytes[rip-24 .. rip+16) = {}", hex);
         // The read site is often a shared memcpy/rep-movsb — the CALLER is the real function (e.g.
         // the save serialize). Scan the stack for eldenring.exe return addresses (the caller chain).
@@ -191,8 +193,9 @@ bool arm(uintptr_t addr, int len, bool write_only, const char *label)
     }
     g_await_geom.store(false);
     g_watch_addr = addr;
+    g_write_only = write_only;
     g_dr7 = make_dr7(len, write_only);
-    InitializeCriticalSection(&g_cs);
+    if (!g_cs_init) { InitializeCriticalSection(&g_cs); g_cs_init = true; }  // re-armable: init once
     g_veh = AddVectoredExceptionHandler(1, veh);
     for_each_thread(addr, g_dr7, /*record=*/true);
     spdlog::warn("[FWA] ARMED hw-bp on {} = {:#x} (len={} {}) — {} threads. Trigger the game's read "
@@ -302,6 +305,26 @@ void goblin::field_probe::initialize(const std::string &spec)
 bool goblin::field_probe::arm_raw(std::uintptr_t addr, int len, bool write_only, const char *label)
 {
     return arm(addr, len, write_only, label ? label : "raw");
+}
+
+bool goblin::field_probe::disarm_reset()
+{
+    const bool was_armed = g_armed.load();
+    // 1. Clear DR0 on every thread we set it on (no-op if the watch never armed).
+    disarm();
+    // 2. Remove the VEH FIRST so no more veh() fires, THEN it's safe to drop the critical section.
+    if (g_veh) { RemoveVectoredExceptionHandler(g_veh); g_veh = nullptr; }
+    if (g_cs_init) { DeleteCriticalSection(&g_cs); g_cs_init = false; }
+    // 3. Reset all one-shot state so a fresh arm can proceed.
+    g_seen.clear();
+    g_disarmed.store(false);
+    g_await_geom.store(false);
+    g_watch_addr = 0;
+    g_dr7 = 0;
+    g_write_only = false;
+    g_armed.store(false);
+    spdlog::warn("[FWA] disarm+reset ({}) — slot free for a new arm.", was_armed ? "was armed" : "was idle");
+    return was_armed;
 }
 
 bool goblin::field_probe::geom_arm_pending(std::ptrdiff_t &off, int &len, bool &write_only)

@@ -35,6 +35,11 @@ namespace goblin::field_probe
     // `label` names the target in the [FWA] log.
     bool arm_raw(std::uintptr_t addr, int len, bool write_only, const char *label);
 
+    // Disarm the current find-what-accesses watch (clear DR0 on all threads, remove the VEH) and reset
+    // all one-shot state so the single FWA slot is free for a new arm(). Safe when nothing is armed.
+    // Returns true if a watch was actually torn down. RPC: `mem_fwa off`.
+    bool disarm_reset();
+
     // True while initialize() parsed an "@geom" spec but no live address has been fed yet. Out-params
     // carry the requested offset/len/rw to add to a resolved CSWorldGeomIns*. The caller resolves a
     // live instance and calls arm_raw(instance + off, len, write_only, ...). One-shot (arm clears it).

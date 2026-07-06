@@ -1414,6 +1414,11 @@ namespace goblin::debug_rpc
             if (cmd == "mem_fwa")
             {
                 std::string a_s = next_token(rest), len_s = next_token(rest), rw = next_token(rest);
+                // `mem_fwa off` (or `disarm`) — tear down the current watch + free the single FWA slot so a
+                // new arm can proceed (the slot otherwise wedges on a stale probe; no other way to release it).
+                if (a_s == "off" || a_s == "disarm")
+                    return goblin::field_probe::disarm_reset() ? "ok FWA disarmed (was armed)"
+                                                               : "ok FWA already idle";
                 uint64_t addr = 0; uint32_t len = 2;
                 try { addr = std::stoull(a_s, nullptr, 0);
                       if (!len_s.empty()) len = (uint32_t)std::stoul(len_s, nullptr, 0); }
