@@ -2439,18 +2439,26 @@ void build_buckets_impl()
             // quest feature. It used to live ONLY inside the lootEmevdDrops loot block, so quest
             // pins silently vanished whenever that unrelated toggle was off (the "zero pins" bug).
             // Loot never reads g_entity_pos, so this is its sole builder.
+            // conv_underground=true: base-underground (area 12) entities must be unified into overworld
+            // map-space here, exactly like every other world-pos consumer (grace_layer / custom_markers /
+            // map_renderer region pass all pass true). QuestNpcLayer draws these pins by WORLD coords
+            // (m.worldX/Z via the overworld affine), NOT project(), so leaving area-12 rows native (the
+            // default false) placed underground pins OFF-MAP — the "6 underground merchants mispositioned"
+            // bug. Group still uses the ORIGINAL area (marker_group_from), so they stay on the UG layer.
             for (const auto &en : disk_enemies)
             {
                 if (!en.entityId) continue;
                 int ga = 0; float wx = 0.0f, wz = 0.0f;
-                if (goblin::overlay_api::marker_world_pos(en.area, en.gx, en.gz, en.posX, en.posZ, ga, wx, wz))
+                if (goblin::overlay_api::marker_world_pos(en.area, en.gx, en.gz, en.posX, en.posZ, ga, wx, wz,
+                                                          /*conv_underground=*/true))
                     g_entity_pos[en.entityId] = {wx, wz, en.posY, goblin::marker_group_from(en.area, ga)};
             }
             for (const auto &as : disk_collectibles)
             {
                 if (!as.entityId || g_entity_pos.count(as.entityId)) continue;
                 int ga = 0; float wx = 0.0f, wz = 0.0f;
-                if (goblin::overlay_api::marker_world_pos(as.area, as.gx, as.gz, as.posX, as.posZ, ga, wx, wz))
+                if (goblin::overlay_api::marker_world_pos(as.area, as.gx, as.gz, as.posX, as.posZ, ga, wx, wz,
+                                                          /*conv_underground=*/true))
                     g_entity_pos[as.entityId] = {wx, wz, as.posY, goblin::marker_group_from(as.area, ga)};
             }
             std::vector<QuestNpcRuntime> qnpcs = load_quest_npcs();
