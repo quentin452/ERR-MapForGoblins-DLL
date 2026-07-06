@@ -49,6 +49,15 @@ Implements + validates the "Remaining" step of the resident-converter-affine RE 
   validated `project()` path). Verified live: `vmap dump_markers` → 349 area-40–43 markers, all group 2 (DLC),
   world coords `X[11201..13312] Z[10170..12217]` INSIDE the DLC-OW (area 61) cluster (was native ~0–1000, off
   page); none in the 19 `vmap offmap` margins. Group stays plain DLC (marker_group_from keys off original area).
+- **✅ PLAYER-DIMENSION AUTO-FOLLOW VERIFIED LIVE (2026-07-06f2).** The vmap auto-switches PAGE to the
+  player's dimension on a crossing (`s_follow_player_dim`, edge-detect on `get_player_map_pos` group). Drove
+  it live via grace warps with the vmap open: OW(0) → Nokstella base-UG → page auto-followed to group 1
+  (`[VMAP] follow: crossed to group 1`), → Belurat DLC → group 2, → back to Nokstella → group 1. Player dot
+  lands on the unified coords each time (Nokstella (9450,12052)==grace, Belurat (11266,11107)==grace) —
+  confirms today's DLC-UG fix for the player dot too. Group derivation reuses the validated
+  `project_dungeon_row_to_overworld`+`marker_group_from`. Added `vmap graces [group]` (warp-target dump) +
+  `vmap group` NO-ARG read (report current page) for the test. Open-edge focus-on-open is robust
+  (`s_was_open` tracked before the early return). No bug found — feature is correct + verified.
 - **★ NEXT (follow-up, not blocking):** the vmap now has full map-closed projection — could drop any
   remaining "open the native map once" UX for projection (tile RESIDENCY still needs it; projection doesn't).
 

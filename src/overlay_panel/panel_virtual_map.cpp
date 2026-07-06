@@ -239,6 +239,45 @@ int virtual_map_locate(int32_t name_id, int group)
 // to the [OFFMAP] log, so a bad source/projection can be tracked to its dimension. Reads the marker layers'
 // STORED worldX/worldZ (marker_world_pos, the build projection) — so overworld is exact; UG/DLC are the fold
 // (the vmap re-projects those via the live converter at draw, so a few UG/DLC edge cases can differ). RPC.
+// Dump every grace marker (name / dimension group / discovered / warp rowId) to the log — a warp-target
+// list for driving the game (the rowId is what `warp <id>` + the vmap double-click both take). `groupf`
+// -1 = all, else only that dimension group (0 OW / 1 base-UG / 2 DLC). Discovered graces are warpable;
+// undiscovered warp hangs on an infinite load. RPC `vmap graces [group]`.
+std::string virtual_map_graces_dump(int groupf)
+{
+    const int kGraceCat = static_cast<int>(goblin::generated::Category::WorldGraces);
+    int total = 0, disc = 0, shown = 0;
+    int byGroupDisc[4] = {0, 0, 0, 0};
+    for (auto *L : overlay_layers())
+    {
+        if (!L) continue;
+        for (const goblin::worldmap::Marker &m : L->markers())
+        {
+            if (m.category != kGraceCat || m.row_id == 0) continue;
+            ++total;
+            const bool d = m.discover_flag != 0;
+            if (d) ++disc;
+            const int g = (m.group >= 0 && m.group < 4) ? m.group : 0;
+            if (d) byGroupDisc[g]++;
+            if (groupf >= 0 && g != groupf) continue;
+            if (!d) continue;                         // list only DISCOVERED (warpable) graces
+            if (shown < 60)
+            {
+                std::string nm = m.name_id > 0 ? goblin::overlay_api::lookup_text_utf8(m.name_id) : std::string();
+                spdlog::info("[VMGRACES]   g{} rowId={} '{}' w({:.0f},{:.0f})", g, m.row_id,
+                             nm.empty() ? "(unnamed)" : nm.c_str(), m.worldX, m.worldZ);
+            }
+            ++shown;
+        }
+    }
+    spdlog::info("[VMGRACES] {} graces ({} discovered) | discovered by group: OW={} UG={} DLC={} — listed {} (filter group={})",
+                 total, disc, byGroupDisc[0], byGroupDisc[1], byGroupDisc[2], shown, groupf);
+    char out[176];
+    std::snprintf(out, sizeof(out), "ok vmap graces: %d total, %d discovered (OW=%d UG=%d DLC=%d), listed %d — see [VMGRACES] log",
+                  total, disc, byGroupDisc[0], byGroupDisc[1], byGroupDisc[2], shown);
+    return out;
+}
+
 std::string virtual_map_offmap_probe()
 {
     // Gross test: origin-zero or way past any map extent.
@@ -2270,8 +2309,11 @@ std::string vmap_rpc_command(std::string rest)
     if (arg == "fit") { virtual_map_open() = true; virtual_map_request_fit(); return "ok vmap fit"; }
     if (arg == "group")
     {
+        std::string gs = vmap_next_token(rest);
+        if (gs.empty())                                   // no arg → REPORT the current page (for tests/RPC)
+            return "ok vmap group=" + std::to_string(virtual_map_group());
         int g = 0;
-        try { g = std::stoi(vmap_next_token(rest)); } catch (...) { return "err usage: vmap group <0-3>"; }
+        try { g = std::stoi(gs); } catch (...) { return "err usage: vmap group [0-3]"; }
         virtual_map_set_group(g);
         return "ok vmap group=" + std::to_string(virtual_map_group());
     }
@@ -2306,6 +2348,13 @@ std::string vmap_rpc_command(std::string rest)
         return std::string("ok vmap spiderfy ") + (on ? "1" : "0");
     }
     if (arg == "offmap") return virtual_map_offmap_probe();
+    if (arg == "graces")
+    {
+        std::string gs = vmap_next_token(rest);
+        int gf = -1;
+        if (!gs.empty()) { try { gf = std::stoi(gs); } catch (...) { return "err usage: vmap graces [group 0-2]"; } }
+        return virtual_map_graces_dump(gf);
+    }
     if (arg == "find")
     {
         std::string q = rest;
@@ -2368,7 +2417,7 @@ std::string vmap_rpc_command(std::string rest)
     if (arg == "0") virtual_map_open() = false;
     else if (arg == "1") virtual_map_open() = true;
     else if (arg == "toggle" || arg.empty()) virtual_map_open() = !virtual_map_open();
-    else return "err vmap takes 0|1|toggle | fit | group <0-3> | tile <needle> [rect] | tiles_lod <dim> <lod> [cap] | tiles_clear";
+    else return "err vmap takes 0|1|toggle | fit | group <0-3> | graces [group] | offmap | tile <needle> [rect] | tiles_lod <dim> <lod> [cap] | tiles_clear";
     return "ok vmap=" + std::to_string(virtual_map_open() ? 1 : 0);
 }
 } // namespace goblin::overlay::panel
