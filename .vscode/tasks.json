@@ -97,6 +97,15 @@
       "problemMatcher": []
     },
     {
+      "label": "MFG: Boot ER + HOLD (leave running for rpc one-shots)",
+      "detail": "Cold-boot ER (loads a save) + HOLD it alive, releasing the RPC socket so 'RPC one-shot' works. Start it once, leave it running for the whole session, drive with rpc one-shots; stopping the task kills the game. Needs Steam up; profile err_offline.me3 (do NOT set MFG_PROFILE=err).",
+      "type": "shell",
+      "command": "python tools/boot_hold.py",
+      "isBackground": true,
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
       "label": "MFG: RPC one-shot (type command)",
       "detail": "Send ONE RPC verb to an ALREADY-RUNNING game (needs ER up — launch it or use 'Boot ER + RPC repl' first). E.g. hf_probe, warp 1042362951, ping.",
       "type": "shell",
