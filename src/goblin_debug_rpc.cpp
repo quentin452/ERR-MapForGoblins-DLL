@@ -283,31 +283,16 @@ namespace goblin::debug_rpc
                 // The game's wndproc DOES see every delivered injected key (WM_KEYDOWN,
                 // validated live via the kbseen counter), so poll it: no arrival within ~240ms
                 // → re-assert foreground and resend once.
-                // RETRY-UNTIL-SEEN: right after a refocus the game's raw-input path can eat the FIRST
-                // few injected keys even though we're foreground + g_has_focus (validated live 2026-07-06:
-                // one 150ms retry still didn't land the map key). Resend the DOWN until the game's wndproc
-                // actually counts a keyboard packet (wm_keydown_total ticks), up to ~5 attempts with a
-                // growing settle + a re-assert of foreground each round; an UP between attempts avoids a
-                // stuck-down. Then the real DOWN(hold)/UP.
-                const unsigned kb_before = goblin::input::wm_keydown_total();
-                bool retried = false, seen = false;
-                for (int attempt = 0; attempt < 5 && !seen; ++attempt)
-                {
-                    if (attempt > 0)
-                    {
-                        retried = true;
-                        send_vk(static_cast<uint16_t>(vk), true);  // clear any half-registered down
-                        ensure_game_foreground();  // FULL force-focus re-assert (not a weak SetForegroundWindow)
-                        Sleep(80 + attempt * 60);  // growing settle for the raw-input path to come back
-                    }
-                    send_vk(static_cast<uint16_t>(vk), false);
-                    for (int i = 0; i < 12 && !(seen = goblin::input::wm_keydown_total() != kb_before); ++i)
-                        Sleep(20);
-                }
+                // SINGLE send after the force-focus (ensure_game_foreground above raised + settled the
+                // game). We do NOT verify/retry on wm_keydown_total: that counter is a FALSE NEGATIVE for
+                // injected keys under the force-focus path (user 2026-07-06: the key DOES land — the map
+                // toggles in-game — but the counter never ticks, so the old retry loop resent up to 5x and
+                // multi-toggled). The game's own input logic does not drop the refocus input; only the RPC
+                // log was wrong. One clean DOWN(hold)/UP.
+                send_vk(static_cast<uint16_t>(vk), false);
                 Sleep(static_cast<DWORD>(hold_ms));
                 send_vk(static_cast<uint16_t>(vk), true);
-                return retried ? "ok key " + name + " (retried after lost first send)"
-                               : "ok key " + name;
+                return "ok key " + name;
             }
             if (cmd == "mouse_move")
             {
