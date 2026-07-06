@@ -143,7 +143,10 @@ namespace goblin::debug_rpc
         {
             HWND hwnd = static_cast<HWND>(goblin::overlay::game_hwnd());
             if (!hwnd) return false;
-            if (GetForegroundWindow() == hwnd && goblin::input::has_focus()) return true;
+            // NOTE: no entry short-circuit on GetForegroundWindow()==hwnd — that read is UNRELIABLE under
+            // Wine (it false-reports the game as foreground when the caller's window is actually active, so
+            // the force-focus is skipped and the key is lost). Always re-assert the focus; it's a cheap
+            // no-op when we genuinely are foreground.
             // FORCE the focus back. A plain SetForegroundWindow is refused by Wine/X11 when another
             // window is active (the "can't steal X focus back" case) — the game never refocuses, so the
             // injected input goes to the caller's window and is lost. Do the classic force-focus: attach
@@ -171,7 +174,9 @@ namespace goblin::debug_rpc
             // condition is what actually opens the input paths — then a short settle frame.
             for (int i = 0; i < 60; ++i) // <= ~1.2s
             {
-                if (GetForegroundWindow() == hwnd && goblin::input::has_focus())
+                // Gate on our WM_SETFOCUS-driven has_focus() only (the force-focus above triggers it) —
+                // GetForegroundWindow() is unreliable under Wine, so don't AND it in here.
+                if (goblin::input::has_focus())
                 {
                     // Focus is confirmed, but the GAME's own input path opens one frame LATER — the
                     // FIRST injected command right after a refocus is still dropped even though we
@@ -292,8 +297,7 @@ namespace goblin::debug_rpc
                     {
                         retried = true;
                         send_vk(static_cast<uint16_t>(vk), true);  // clear any half-registered down
-                        if (HWND hw = static_cast<HWND>(goblin::overlay::game_hwnd()))
-                            SetForegroundWindow(hw);
+                        ensure_game_foreground();  // FULL force-focus re-assert (not a weak SetForegroundWindow)
                         Sleep(80 + attempt * 60);  // growing settle for the raw-input path to come back
                     }
                     send_vk(static_cast<uint16_t>(vk), false);
