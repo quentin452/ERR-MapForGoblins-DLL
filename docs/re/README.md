@@ -206,11 +206,12 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
   gate** on the mapped `CSScaleformSwfPlayer` (0xe8 struct, `WorldMapDialog+0x140→+0x58`); pin via Linux-live
   RPM A/B of that struct (`movieclip` scaffolding) or a Ghidra render-thread trace. Gated on vmap Track A/B in
   production.
-- **ER in-combat state (gate the vmap like the native map) — OPEN, Linux-first.** The native-map redirect
-  (`native_map_redirect_linux_re_plan.md`) means the vmap can be stuck OPEN in combat (ER blocks the map-open
-  upstream, so our create-callback hook can't toggle it). Find ER's combat/danger flag → `combat_active()` →
-  force-close the vmap in combat (+ the same flag gates fast-travel-in-combat). Prompt (mem_fwa diff-scan on
-  WorldChrMan/PlayerIns aggro, or the map-open combat gate): `combat_state_gate_re_prompt.md`.
+- **ER in-combat state (gate the vmap like the native map) — STATIC PIN DONE, live-verify pending.** The
+  native-map redirect (`native_map_redirect_linux_re_plan.md`) means the vmap can be stuck OPEN in combat.
+  Ghidra pinned the flag: per-entity **`IsBattleState = *(int*)(*(ChrIns+0xC950)+0x30C)==6`** (AI FSM state 6);
+  the player has no AI module so "in combat" is the **enemy aggregate** (any nearby enemy in state 6) — MFG
+  reuses its CSFeman enemy-bar iteration (`goblin_enemy_names.cpp`) for `combat_active()`. Findings +
+  live-checklist: `combat_state_gate_re_findings.md`; brief: `combat_state_gate_re_prompt.md`.
 - **In-game pause** (`windows_ingame_pause_re_prompt.md`), **gamepad input device**
   (`windows_gamepad_input_device_re_prompt.md`), **silent deadlock freeze** (unsolved; watchdog shipped).
 - **Keybinding config (read the user's LIVE kb+pad binds) — OPEN, `windows_keybinding_config_re_prompt.md`.**
