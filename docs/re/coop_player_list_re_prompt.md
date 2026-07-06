@@ -73,8 +73,26 @@ A**, **`+0x40/+0x48` container B** (std containers of ChrIns — begin/end walk 
 Related: `PlayerNetworkSession` (vtable er+0x2b9eb30, per-player net obj, not the list), `NetChrSetSync`
 (er+0x2a46bd0 — networked chr-set sync, the co-op path).
 
-**Codable blind now (approach B, mod-agnostic):** walk a WCM ChrSet container, RTTI-filter ChrIns whose vtable
-== `er+0x2a7cb40` → `others_present()` = count>1 (minus LocalPlayer); positions via the player-pos chain →
-MFG's own overlay marker projection. **Still BLOCKED on a live 2-player session** to (a) confirm buddies land
-in a WCM ChrSet as PlayerIns, (b) ID which of the 4 sets is players (or just RTTI-filter the OpenFieldChrSet),
-(c) resolve the container begin/end + validate positions.
+### ★ SOLVED (2026-07-06, Windows live RPM, solo-validated) — the player/session array
+Used the LocalPlayer as a probe: scanned each ChrSet's pointers for `[WCM+0x1e508]` → it lives in **ChrSet#0
+(`WCM+0x10EE0`), array field `+0x18`**. So:
+```
+player array   = *(WCM + 0x10EF8)          (WCM+0x10EE0 = ChrSet#0 struct, +0x18 = ChrIns* array)
+capacity       =  *(int*)(WCM + 0x10EF0)   (= 6  →  local + up to 5 others = ER co-op session cap)
+slot[i]        =  ((ChrIns**)array)[i], i in 0..5
+```
+Live solo read: **slot[0] = LocalPlayer**, its vtable **== `er+0x2a7cb40` (PlayerIns) ✓**, position via the
+existing chain = `(-1.4, 3.7, -4.4)` ✓; slot[1] = `0x404` junk, slot[2..5] = null. (Note `WCM+0x10EF8` is the
+old "LocalPlayerOffset 0x10EF8" long noted DEAD — it was never the local player, it's the **player array**.)
+
+**Implementation (mod-agnostic, no ersc, positions REUSE the existing player-pos chain — zero new pos RE):**
+- `others_present()` = over slots 0..5, count entries whose `*(entry) == er+0x2a7cb40` (PlayerIns vtable),
+  **minus 1** (the local). The RTTI check rejects junk (`0x404`) cleanly — don't just null-check.
+- `players()` positions = each valid entry → `[[[[*(entry+0x58)]+0x10]+0x190]+0x68]+0x70/74/78` (the
+  yellow-dot chain, `windows_yellowdot_player_pos_re_findings.md`) → feed MFG's overlay marker projection.
+- Resolve WCM live every call (`*(er+0x3d65f88)`, ASLR + reallocs on transitions).
+
+**Only remaining co-op-dependent unknown:** that buddies actually populate slots 1-5 in a live seamless
+session (very likely — it's the session player array, cap 6). Validate on a 2-player session: `others_present()`
+flips true, each buddy slot's pos tracks their movement, markers draw. Scripts: `scratchpad/find_player_set.py`
+(the probe) + `validate_player_set.py` (the array read/RTTI/pos).
