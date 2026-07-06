@@ -107,9 +107,29 @@ FUN_140507ca0 + counts battle-state), or RE the WorldChrMan enemy-ChrIns array o
 checking `[[chr+0xC950]+0x30C]==6`. That chr HAS the AI module (unlike the HP-bar chr). Live-doable on this box
 (WCM resolves via WCM_FINDER / er+0x3D65F88).
 
-## SOLVED — WorldChrMan enemy-array pinned + validated live (2026-07-06, Linux/Proton, ER 2.6.2.0)
-Live RE session (RPC `mem_dump` walk of the running game; `docs/re/` = the record). **The precise path is now
-implemented** (`goblin_enemy_names.cpp` `combat_active()` → `enemies_in_battle_body`).
+## PARTIAL — WorldChrMan block list pinned, but the enemy-instance/AI-module is WRONG (2026-07-06, Linux/Proton, ER 2.6.2.0)
+Live RE session (RPC `mem_dump` walk of the running game). **⚠ The first "implemented" walk was WRONG and
+reverted** — it read garbage and `battle` was always 0. The AI-FSM SEMANTIC is confirmed, but the CONTAINER +
+the AI-carrying instance are not. Handed to Windows Ghidra: **`combat_enemy_list_structure_re_prompt.md`**.
+`combat_active()` is back on the HP-bar stopgap until that resolves.
+
+### What IS confirmed (keep)
+- **`IsBattleState` (er+0x2c31d0) disassembled end-to-end live** — `mov rcx,[rcx+0xC950]; … jne er+0x33B120`,
+  and `er+0x33B120: cmp dword [rcx+0x30C], 6; sete al` (sibling `==5` = alert). So `[[chr+0xC950]+0x30C]==6`
+  (offset **0x30C**, value **6**) is 100% correct FOR WHATEVER ChrIns TYPE ER PASSES.
+- **`FUN_140507ca0` (er+0x507ca0)** walks `WCM+0x1CC60` (block array, count `WCM+0x1CC58`, stride 0x18), per
+  block calling `FUN_140494B30(entry0,list,param_1)` which does a **keyed `std::_Tree` lookup on `block+0x48`**
+  (NOT a flat walk).
+
+### What is WRONG / open (see the prompt)
+- The impl walked `block+0x18` (flat `CS::EnemyIns*` array, cap `block+0x10`, stride 0x10). **`[EnemyIns+0xC950]`
+  on those reads floats / a `GXFlverTexture` ptr, not an AI module**, and the array is volatile (33 → 0 enemies
+  minutes apart). The HP-bar-resolved `CS::EnemyIns` also has garbage at +0xC950. So neither the block+0x18 pool
+  nor the HP-bar handles give the AI-carrying ChrIns that `IsBattleState` expects.
+- OPEN: which container + which ChrIns subclass carries the live battle state; is +0xC950 the AI module for
+  `CS::EnemyIns` or only for a different subclass; and is there a simpler global combat flag. → the prompt.
+
+### (superseded) the first walk — kept for the offsets it did pin
 
 **First: the 0xC950 offset was NEVER wrong.** A live enemy with a valid ChrIns-family vtable read GARBAGE at
 `+0xC950`, which looked like an offset mismatch — but the disassembly at `IsBattleState` (er+0x2c31d0) matches

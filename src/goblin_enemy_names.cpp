@@ -250,12 +250,6 @@ __declspec(noinline) bool enemies_in_battle_body(void **wcm_slot, char *diag, in
     return found;
 }
 
-bool enemies_in_battle_seh(void **wcm_slot)
-{
-    __try { return enemies_in_battle_body(wcm_slot, nullptr, 0, nullptr); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
-
 // DIAG: WCM-block EnemyIns summary + a sample of live enemies' FSM states (why the vmap does/doesn't close).
 int combat_diag_seh(void **wcm_slot, char *buf, int cap)
 {
@@ -433,12 +427,17 @@ bool category_enabled(NameCat cat)
 bool goblin::combat_active()
 {
     resolve_once();
-    // Precise ER-mirror: ANY loaded enemy in AI battle state (6). Walks the WorldChrMan per-block
-    // CS::EnemyIns arrays (NOT the lock-on-only CSFeMan HP bars, which also hand back AI-less proxy
-    // EnemyIns → the old bar path never saw combat). See the IN-COMBAT helper block above for the chain.
-    // Only called per-frame while the vmap redirect is open, so the bounded slot scan is cheap.
-    if (!g_wcm_slot) return false;
-    return enemies_in_battle_seh(g_wcm_slot);
+    // STOPGAP: any enemy HP bar present = engaged/in combat. The "precise" WCM-block AI-state walk was WRONG —
+    // the `block+0x18` CS::EnemyIns pool reads GARBAGE at +0xC950 (floats / a GXFlverTexture ptr, NOT the AI
+    // module) and is volatile (a block goes from ~33 enemies to 0), so `[+0xC950]+0x30C` never equalled 6 and
+    // combat always read false. The ChrIns ER actually battle-tests lives in a different container/subclass —
+    // pending the Ghidra trace in docs/re/combat_enemy_list_structure_re_prompt.md. Until then keep the HP-bar
+    // signal (works for LOCKED combat; misses unlocked attackers). combat_diag() still runs the WCM walk so the
+    // `combat` RPC verb can report the block/enemy layout for that RE. See the IN-COMBAT helper block above.
+    if (!g_feman_slot || !g_wcm_slot || !g_get_chrins) return false;
+    BarProbe pr;
+    probe_bars_seh(g_feman_slot, g_wcm_slot, g_get_chrins, &pr);
+    return pr.count > 0;
 }
 
 int goblin::combat_diag(char *buf, int cap)

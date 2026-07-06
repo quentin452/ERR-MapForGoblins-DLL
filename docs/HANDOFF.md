@@ -9,29 +9,24 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
-## ⇒ 2026-07-06h — COMBAT gate rewired to the WorldChrMan enemy list (precise, DONE + live-validated)
+## ⇒ 2026-07-06h — COMBAT gate: WCM block list pinned, but the AI-carrying instance is WRONG → Windows Ghidra needed
 
-The vmap-in-combat auto-close (`combat_active()`, redirect #3) no longer reads the CSFeMan HP-bar list — that
-was lock-on-only AND handed back AI-less proxy `CS::EnemyIns`, so combat was never detected. It now walks the
-**WorldChrMan per-block `CS::EnemyIns` arrays** and OR's `[[EnemyIns+0xC950]+0x30C]==6` (AI FSM battle state).
-Chain pinned by disassembling `FUN_140507ca0` live + validated on the running game
-(`docs/re/combat_state_gate_re_findings.md` → "SOLVED"):
-```
-WCM+0x1CC58 = block count ; WCM+0x1CC60 = block array (stride 0x18, [entry+0]=WorldBlockChr*)
-block+0x10  = EnemyIns slot capacity (fixed pool, mostly-null) ; block+0x18 = CS::EnemyIns* array (stride 0x10)
-EnemyIns+0xC950 = AI module (null → skip) ; +0x30C = FSM state (6=battle) — 0xC950 AOB-confirmed live @ er+0x2c31d0
-```
-- **★ Two gotchas that bit + are handled:** (1) WorldChrMan singleton pointer AND the LocalPlayer object
-  reallocate on world transitions → re-deref `*(er+0x3D65F88)` every call, never cache. (2) The char list is
-  mutated by the game thread as enemies stream → present-thread block/slot reads RACE and faulted the whole
-  walk; fixed with a **per-block SEH** (`block_battle_scan`) + per-enemy SEH (`enemy_fsm_state`) so a racing
-  block/garbage-subtype enemy is skipped, not fatal. `combat` RPC verb now reports `blocks= enemies= withAI= battle=`.
-- **✅ LIVE-VALIDATED (2026-07-06h):** clean walk, `blocks=6 enemies=18 withAI=7 battle=0`; 5–7 loaded enemies
-  read valid AI modules with FSM ∈ {0,1,3} (ER's neutral/search enum). `battle=6` not caught live (headless input
-  can't reliably aggro), but the `==6` path is code-identical to the working `withAI` reads and 6=battle is the
-  AOB-proven `IsBattleState` semantic. Both builds green, deployed, restart-verified.
-- **NEXT (optional):** confirm `battle=1`/vmap auto-close with a human aggroing an enemy while the vmap is open.
-  The old HP-bar path stays for the enemy-NAME feature (only needs npcParam/model, populated on the proxy).
+Tried to rewire `combat_active()` (redirect #3) off the WorldChrMan enemy list. **Reverted to the HP-bar
+stopgap — the walk read garbage, `battle` was always 0.** What's confirmed vs open (`docs/re/
+combat_state_gate_re_findings.md` "PARTIAL" + new prompt `combat_enemy_list_structure_re_prompt.md`):
+- **✅ CONFIRMED live:** `IsBattleState` (er+0x2c31d0) → jne er+0x33B120 = `cmp [rcx+0x30C],6; sete` — so the
+  semantic `[[chr+0xC950]+0x30C]==6` (offset 0x30C, value 6, sibling `==5`=alert) is correct for whatever ChrIns
+  ER passes. `FUN_140507ca0` (er+0x507ca0) walks `WCM+0x1CC60` (block array, count `WCM+0x1CC58`, stride 0x18);
+  per block `FUN_140494B30` does a keyed `std::_Tree` lookup on **`block+0x48`** (NOT a flat walk).
+- **✗ WRONG:** the impl walked `block+0x18` (flat `CS::EnemyIns*` array). `[EnemyIns+0xC950]` there reads
+  floats / a `GXFlverTexture` ptr (NOT an AI module) and the array is volatile (33→0 enemies). The HP-bar
+  `CS::EnemyIns` also has garbage at +0xC950. So neither gives the AI-carrying ChrIns `IsBattleState` wants.
+- **★ NEXT = Windows Ghidra** (`combat_enemy_list_structure_re_prompt.md`): (1) which class does IsBattleState
+  run on + is +0xC950 its AI-module (or a different subclass); (2) trace `FUN_1405d8790` — the real roster +
+  `param_1` key source (NearEnemyFinder?); (3) `block+0x18` vs `block+0x48` (WorldBlockChr) — which holds live
+  AI ChrIns + the tree node→ChrIns layout; (4) is there a simpler GLOBAL combat flag (battle BGM / CSFeMan
+  bool) the map-disable really reads. The `combat` RPC verb runs the WCM walk (reports `blocks/enemies/withAI/
+  battle`) as a live probe for that RE. HP-bar stopgap stays meanwhile (locked-combat only).
 
 ## ⇒ 2026-07-06g — vmap-on-map-key F1 option SHIPPED + verified working (input authority = follow-up)
 
