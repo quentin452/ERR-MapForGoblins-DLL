@@ -64,6 +64,17 @@ The trap does not come from the engine — it comes from **us re-baking constant
   tiles. **That re-bakes the Convergence trap into MFG's own map** — tiles would be wrong the moment a mod
   moves the converter or redivides the grid.
 
+> **Update 2026-07-06 (fd0ad45):** static Ghidra + a live 10/10 validation
+> (`docs/re/windows_worldmap_affine_resident_source_re_findings.md`, `test_converter_offvm.py`) PROVED the
+> base converter fields — `origin / bias / scale / gridbase / area keys` — are **exe-invariant**, NOT a
+> mod-changeable param (only the legacy-dungeon fold is param-driven). So the "a mod moves the converter /
+> redivides the grid" worry below does **not** apply to the base affine. `project()` /
+> `get_converter_affine()` now carry an exe-invariant off-VM FALLBACK for base areas (60/61/12; `origin 0 /
+> gridbase 28,64 / bias 128 / scale 1` — identical to the live slot) so base projection works map-closed.
+> This does NOT recreate the trap: the LIVE converter is still preferred whenever the map is open, and the
+> hardcoded values are only a fallback for the *proven-invariant* base affine. The rule below still holds
+> for anything mod-variable (the legacy fold, and any future grid the tile layer must NOT re-bake blindly).
+
 **Decision / constraint for slice 3:** derive each tile's world quad from the **LIVE converter** — the same
 `worldmap_probe` / `WorldMapViewModel` converter already used for markers — never from hardcoded constants.
 The converter carries `gridXbase / gridZbase / originX / originZ / scale / biasX / biasZ` per dimension

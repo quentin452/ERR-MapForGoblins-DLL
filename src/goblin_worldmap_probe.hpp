@@ -140,10 +140,14 @@ namespace goblin::worldmap_probe
     // gridZ, posX, posZ) to map-space UV — folds WorldMapLegacyConvParam + applies the
     // per-page affine exactly like the native map (RE: windows_world_to_mapspace_
     // projection_re_findings.md). Replaces the baked LEGACY_CONV + -7040/+16512 affine
-    // + DLC eyeball. Returns false if the map is closed (no live VM) or the area isn't
-    // placed by the game (e.g. m19 Chapel has no converter) → caller falls back / gates.
+    // + DLC eyeball. Returns false only if the area isn't placed by the game (e.g. m19
+    // Chapel has no converter) → caller falls back / gates.
     // Self-resolves the VM from the active cursor (cached); direct in-process call (fast,
-    // safe to batch at marker-build time). Map must be OPEN for the VM to exist.
+    // safe to batch at marker-build time). MAP-CLOSED OK for the base areas (60 overworld / 61 DLC-OW /
+    // 12 base-UG): when no live VM is resolved, falls back to an exe-invariant off-VM base-affine build
+    // (fd0ad45, validated du/dv==0 — see project_offvm) so projection works with the native map NEVER
+    // opened, no "silent prime". Legacy-dungeon fold areas still need the live VM's per-slot node ptr, so
+    // those return false map-closed and the caller keeps its legacy_fold/baked path (no regression).
     // page out: the live map PAGE the point lands on — 0 overworld, 1 base underground,
     // 10 DLC (the engine's page-table + area-12 override). Lets the overlay derive the
     // marker group without the baked LegacyConv fold: group = (page==10?2:0) |
@@ -161,12 +165,14 @@ namespace goblin::worldmap_probe
                        float biasX, float biasZ, float scale, int gridX, int gridZ, float posX,
                        float posZ, float &mapU, float &mapV);
 
-    // The live per-area converter affine (VM+0xF8 slot, findings §1) — the map-space transform the map ART
+    // The per-area converter affine (VM+0xF8 slot, findings §1) — the map-space transform the map ART
     // tiles must share so they align with markers (endgame phase-1a slice 3). Read LIVE from the active VM
-    // (never hardcoded — see docs/plans/procedural_map_derivation_design.md), cached per area once the map
-    // has been open. mapX = (worldX-originX)*scale + biasX ; mapZ = -(worldZ-originZ)*scale + biasZ.
-    // Inverse (map→world, for tile placement): worldX = (mapX-biasX)/scale + originX ;
-    //   worldZ = originZ - (mapZ-biasZ)/scale. area 60 = overworld. false if the map never opened.
+    // when the map is open, cached per area. mapX = (worldX-originX)*scale + biasX ;
+    // mapZ = -(worldZ-originZ)*scale + biasZ. Inverse (map→world, for tile placement):
+    // worldX = (mapX-biasX)/scale + originX ; worldZ = originZ - (mapZ-biasZ)/scale. area 60 = overworld.
+    // MAP-CLOSED OK for base areas (60/61/12): with no live VM, returns the exe-invariant fields
+    // (origin 0, gridbase 28/64, bias 128, scale 1 — identical to what the live slot reports, fd0ad45).
+    // Non-base (legacy-fold) areas still need the live VM → false when the map never opened.
     struct ConvAffine
     {
         int area = 0, gridXbase = 0, gridZbase = 0;

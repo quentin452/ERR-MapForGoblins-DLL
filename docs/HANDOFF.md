@@ -26,10 +26,16 @@ Implements + validates the "Remaining" step of the resident-converter-affine RE 
 - **Primitives:** `project_offvm()` (build 0x30 slot in our memory, run resolved `FUN_140876140`), RPC
   verbs `proj_conv` + `conv_affine`, `test_converter_offvm.py` (registered in tasks.json). No engine
   builder needed → `WORLDMAP_VM_CTOR`/`CONV_BUILDER` AOBs skipped. Both builds green + deployed.
-- **★ NEXT (follow-ups, not blocking):** (1) extend off-VM coverage to DLC-UG (40–43) + legacy folds if a
-  map-closed node source is found (today they need the VM); (2) the vmap can now assume map-closed base
-  projection — audit the `world_map_open()`-gated paths in the vmap/probe that were only there to force the
-  prime and simplify them.
+- **✅ (2) DONE — audited the map-open gates.** No committed "silent prime" existed to remove. The
+  remaining `world_map_open()`/`map_open` gates are all LEGIT (heightfield probe, D3D12 scissor/viewport
+  tagging, mouse cursor, native-map search-locate) — none forced a prime. The vmap tile-fit paths
+  (`panel_virtual_map.cpp` 456–605) still need the map open, but for **tile RESIDENCY** (`harvest_resident_tiles`),
+  not projection — so not simplifiable by this change. Fixed the genuinely-stale bits: the `project()` /
+  `get_converter_affine()` hpp doc comments (were "Map must be OPEN"; now document the map-closed base
+  fallback), and reconciled `docs/plans/procedural_map_derivation_design.md`'s "never hardcode" rule with
+  the now-proven exe-invariant fallback (live still preferred; hardcoded only for the proven-invariant base).
+- **★ NEXT (follow-up, not blocking):** extend off-VM coverage to DLC-UG (40–43) + legacy folds if a
+  map-closed node source is found (today they need the live VM node ptr).
 
 ## ⇒ SESSION WRAP 2026-07-06f-pre (Linux/Opus) — off-VM converter affine: validation HARNESS built (fd0ad45), empirical run env-blocked
 
