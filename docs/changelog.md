@@ -25,6 +25,10 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **Open the Virtual World Map on the game map key.** New setting **Virtual map on map key** (F1 ▸ Settings;
+  ini `vmap_on_map_key`, off by default): when enabled, pressing the game's map button opens the fullscreen
+  MapForGoblins Virtual World Map instead of the native map (it draws opaque over the native map). Off = the
+  native map is untouched; the vmap still opens for custom virtual worlds and via the Dev toggle.
 - **All field-boss INSTANCES now show, not just the map-marked ones.** The native ER map is selective — it
   marks only some instances of a repeated boss (e.g. 4 of the 7 Erdtree Avatars, and none underground) and
   groups some (one "Demi-Human Chiefs" icon). Boss markers are now completed from the LIVE MSB enemy scan:
