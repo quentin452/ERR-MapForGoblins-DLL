@@ -52,6 +52,13 @@ than suppressing it (native render flag "does not hide the map" — proven). Bot
     map pixels while the vmap + logic (fast-travel/page/fog) stay alive → `restore`. Then wire a per-present
     maintain (clear the gate while `vmap_covers_map()`, restore on close), mod-agnostic (resolve by RTTI +
     movie name `02_120_worldmap.gfx`). ⚠ poking unknown fields can crash — each `poke` snapshots+restores.
+  - **✅ A/B RAN 2026-07-06 (findings §7): NEGATIVE — the render gate is NOT a safe field on the 0xe8 player.**
+    Dumped the live struct, poked candidates with the native map visible (vmap closed): `+0x20/+0x24/+0x40/`
+    `+0x68/+0x78` = NO effect (map still renders; the two clean bools +0x68/+0x78 aren't it); `+0x08`(ptr) +
+    `+0x48` = CRASH (render-critical). Safe player fields exhausted. **★ NEXT: (1) extend the probe to A/B the
+    MovieImpl (`handle+0x00`) / GFx movie root, OR (2) RECOMMENDED = Route 2 Windows-Ghidra render-thread
+    DISPLAY-submit trace (names the gate, no blind crashes).** Boot infra now works (`hold_er.py` + socket
+    release; the earlier flakiness was my `MFG_PROFILE=err` override — the real me3 profile is `err_offline.me3`).
 - **★ NEXT (remaining input authority):** (1) **gamepad/right-stick pan still drives the native map** — the
   game reads XInput directly (not via wndproc), so the stick isn't gated; the vmap already has its own pad
   reticle, but the hidden native map still pans on the stick. Gate the game's XInput read (or the pad poll)

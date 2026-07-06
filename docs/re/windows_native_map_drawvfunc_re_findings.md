@@ -170,3 +170,42 @@ Cross-ref: `windows_native_map_render_toggle_re_findings.md` (§4/§4c/§4d — 
   8-byte absolute `COLbase` pointer = `vtable[-1]`, so `vtable = hit+8`. The TD **name** field starts at the
   `.?AV` prefix (4 bytes before the class-name substring).
 ```
+
+## 7. Route 1 (Linux-live RPM A/B) — RAN 2026-07-06: the render gate is NOT a safe field on the 0xe8 player
+Booted ER (Linux/Proton, `err_offline.me3`), opened the native map with the **vmap CLOSED** (so the native
+`WorldMapDialog` pixels are visible to judge), resolved the player via the new `sfplayer` RPC (RTTI-validated
+@ live addr), dumped the full 0xe8 struct, and A/B-poked candidate fields to 0 one at a time (snapshot+restore),
+screenshotting each + RMSE vs a native-map-open baseline.
+
+**Live 0xe8 `CSScaleformSwfPlayer` dump (map open):**
+```
++0x00 vtable(base+0x2bbb360)  +0x08 ptr  +0x10 ptr  +0x18 ptr   +0x20 0x0000000200000008
++0x28 ptr  +0x30 ptr  +0x38 ptr  +0x40 0xffffffffffffffff  +0x48 0x00000000ffffffff
++0x50 0    +0x58 0    +0x60 0    +0x68 0x1   +0x70 0   +0x78 0x1   +0x80 0
++0x88 ptr  +0x90 0    +0x98 0    +0xa0 ptr   +0xa8..0xd0 0   +0xd8 -1   +0xe0 0
+```
+**A/B results (poke → 0, native map open, screenshot):**
+- **NO effect (map renders unchanged, RMSE ~2-3% = animation/tooltip only):** `+0x20` byte (0x08), `+0x24`
+  byte (0x02), `+0x40` qword (-1,-1), `+0x68` byte (was 1), `+0x78` byte (was 1). The two clean bools
+  (`+0x68`/`+0x78`) are NOT the render/visible gate — zeroing them leaves the map fully drawn.
+- **CRASH ("no frames presenting" — froze the render):** `+0x08` (a pointer, 0x71c2080) and `+0x48`
+  (0x00000000ffffffff int32). Both are render-critical (nulling breaks the whole present, not a clean map
+  cull) → dead ends.
+- Zero-valued fields are no-ops by definition.
+
+**⇒ Verdict: the native-map render gate is NOT a whole-field-zero on the 0xe8 player.** The safe, non-pointer
+fields are exhausted (none hide the map); the two fields that DO change rendering (`+0x08`, `+0x48`) crash the
+present entirely. So Route 1 as "flip a visible byte on the player" is a NEGATIVE result — the movie is
+submitted regardless of the player's own fields.
+
+**What's actually left (both narrower now):**
+1. **The MovieImpl (`handle+0x00`) or the GFx movie root inside it** — the visible/enable gate may live on the
+   MOVIE object, not the player. Extend the probe (an `sfmovie dump` like `sfplayer`) to A/B MovieImpl fields
+   (skip the dead `+0xB0` clip). Same crash risk on pointers; Linux-doable.
+2. **Route 2 (Windows Ghidra render-thread DISPLAY-submit trace)** — now the highest-value path: find the
+   non-virtual player DISPLAY method (`er+0xd7xxxx`) or the render-thread pass over `System+0x9b0`, and read
+   which byte/bit it consults per movie. That names the gate precisely (no blind crashes). **RECOMMENDED next.**
+
+Infra built this run + reusable: `sfplayer dump|read|poke|restore` RPC (`worldmap_probe::sfplayer_*`), the
+`hold_er.py` boot-holder pattern (GameSession + release the RPC socket so `mfg.py rpc` one-shots work),
+screenshot+RMSE A/B loop. Two live crashes cost a reboot each (poking `+0x08`/`+0x48`).
