@@ -190,6 +190,44 @@ bool any_enemy_in_battle_seh(void **feman_slot, void **wcm_slot, GetChrInsFn get
     __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
+// DIAG: per-enemy-bar dump of the AI-module ptr + FSM-state candidates, so the combat offsets can be
+// confirmed/corrected live (the map isn't closing in combat → combat_active() reads false). Writes into buf.
+int combat_diag_body(void **feman_slot, void **wcm_slot, GetChrInsFn getChr, char *buf, int cap)
+{
+    int w = 0;
+    auto app = [&](const char *fmt, auto... a) {
+        if (w < cap - 1) w += std::snprintf(buf + w, cap - w, fmt, a...);
+    };
+    if (!feman_slot || !wcm_slot || !getChr) { app("unresolved slots"); return w; }
+    auto *feMan = *reinterpret_cast<uint8_t **>(feman_slot);
+    void *wcm = feMan ? *reinterpret_cast<void **>(wcm_slot) : nullptr;
+    if (!feMan || !wcm) { app("feMan/wcm null"); return w; }
+    uint8_t *arr = feMan + kEntityArrOff;
+    int n = 0;
+    for (int i = 0; i < kEntityBars; ++i)
+    {
+        uint8_t *ent = arr + static_cast<size_t>(i) * kEntityStride;
+        uint64_t handle = *reinterpret_cast<uint64_t *>(ent + kOffHandle);
+        if (handle == kEmptyHandle) continue;
+        uint64_t h = handle;
+        void *chr = getChr(wcm, &h);
+        if (!chr) continue;
+        auto *cb = reinterpret_cast<uint8_t *>(chr);
+        int npc = *reinterpret_cast<int *>(cb + kChrOffNpc);
+        void *ai = *reinterpret_cast<void **>(cb + kChrAiModule);
+        int st = ai ? *reinterpret_cast<int *>(reinterpret_cast<uint8_t *>(ai) + kAiFsmState) : -999;
+        app("[%d] npc=%d chr=%p ai(+0xC950)=%p fsm(+0x30C)=%d | ", n++, npc, chr, ai, st);
+    }
+    if (n == 0) app("no enemy bars");
+    return w;
+}
+
+int combat_diag_seh(void **feman_slot, void **wcm_slot, GetChrInsFn getChr, char *buf, int cap)
+{
+    __try { return combat_diag_body(feman_slot, wcm_slot, getChr, buf, cap); }
+    __except (EXCEPTION_EXECUTE_HANDLER) { int n = std::snprintf(buf, cap, "SEH fault"); return n; }
+}
+
 // Strip the codex-entry prefix from a TutorialTitle bestiary name: "116. Tree Sentinel" ->
 // "Tree Sentinel", "172a. Troll" -> "Troll". Pattern: ^\d+[a-z]?\.\s*
 std::string strip_codex_prefix(const std::string &s)
@@ -359,6 +397,12 @@ bool goblin::combat_active()
 {
     resolve_once();
     return any_enemy_in_battle_seh(g_feman_slot, g_wcm_slot, g_get_chrins);
+}
+
+int goblin::combat_diag(char *buf, int cap)
+{
+    resolve_once();
+    return combat_diag_seh(g_feman_slot, g_wcm_slot, g_get_chrins, buf, cap);
 }
 
 void goblin::update_native_enemy_names()

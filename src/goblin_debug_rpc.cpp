@@ -579,6 +579,15 @@ namespace goblin::debug_rpc
                               overall, nloose, npacked, nmiss);
                 return std::string(head) + per;
             }
+            // combat — report combat_active() + a per-enemy AI-module/FSM-state dump (why the vmap doesn't
+            // close in combat: confirm the ChrIns+0xC950 / +0x30C offsets + the battle-state value live).
+            if (cmd == "combat")
+            {
+                static char db[1024];
+                int n = goblin::combat_diag(db, (int)sizeof(db));
+                std::string d(db, n > 0 ? (size_t)n : 0);
+                return "ok combat_active=" + std::to_string(goblin::combat_active() ? 1 : 0) + " | " + d;
+            }
             // dcx_file <in.dcx> <out> — decompress a raw DCX blob on disk with the game's in-process
             // Oodle (KRAK support) and write the plain bytes to <out>. Bridges the offline C# collision
             // reader (tools/collision_offline) past the Oodle wall: native-Linux dotnet can't load

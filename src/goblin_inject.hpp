@@ -140,6 +140,7 @@ namespace goblin
     // True if any nearby enemy is in ER's AI battle state (state 6) — the game's own "in combat" (the map is
     // disabled in combat). Used to force-close the fullscreen vmap in combat. See goblin_enemy_names.cpp.
     bool combat_active();
+    int combat_diag(char *buf, int cap);  // per-enemy AI-module/FSM-state dump (offset confirm)
 
     // Unified overworld marker-space coord for an arbitrary baked marker (projects
     // legacy dungeons to area-60 via LEGACY_CONV, then world = grid*256 + local).
