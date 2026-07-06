@@ -168,6 +168,11 @@ namespace
 
 bool &virtual_map_open() { return s_open; }
 
+// True when the vmap is open AND standing in FULLSCREEN for the native map (opened by the game map
+// key with vmap_on_map_key). In that state it draws opaque over the native-map marker pass, so that
+// pass is skipped (map_renderer::render_markers early-returns) to avoid computing hidden markers.
+bool virtual_map_fullscreen() { return s_open && s_from_map; }
+
 // True when the vmap is showing the ported "Sections & categories" sidebar → the F1 window should NOT
 // also draw its copy (avoids the two-overlapping-panels + toggle confusion; single source of truth).
 bool markers_panel_open() { return s_open && s_show_markers_panel; }

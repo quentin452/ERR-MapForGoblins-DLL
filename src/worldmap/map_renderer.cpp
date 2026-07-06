@@ -36,6 +36,7 @@
 #include <vector>
 
 namespace goblin::overlay::panel { bool &virtual_map_open(); }  // panel_virtual_map.cpp — minimap hide gate
+namespace goblin::overlay::panel { bool virtual_map_fullscreen(); }  // vmap covers native map → skip marker pass
 namespace goblin::overlay::panel { bool minimap_settings_focused(); }  // panel_settings.cpp — force-draw override
 
 namespace goblin::worldmap
@@ -1801,6 +1802,14 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
         g_view_delay.reset(); // map closed → re-seed the delay fresh on reopen
         return;
     }
+
+    // vmap-on-map-key: when the fullscreen Virtual World Map stands in for the native map, it draws
+    // opaque OVER this pass, so the native-map markers here would be projected + submitted only to be
+    // hidden behind it (double marker work — the vmap draws its own). Skip the whole native pass; don't
+    // reset the view delay (native map is still open underneath, resumes on close). Fires only when the
+    // native map AND the fullscreen vmap are both open = exactly the vmap_on_map_key case.
+    if (goblin::overlay::panel::virtual_map_fullscreen())
+        return;
 
     // Overlay z-order (HANDOFF Task A): we render post-present, so when a submenu is stacked OVER
     // the open map (fast-travel confirm, marker-placement dialog, region list, ...) our markers
