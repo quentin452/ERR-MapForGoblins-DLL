@@ -9,6 +9,30 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
+## ⇒ 2026-07-06h — COMBAT gate rewired to the WorldChrMan enemy list (precise, DONE + live-validated)
+
+The vmap-in-combat auto-close (`combat_active()`, redirect #3) no longer reads the CSFeMan HP-bar list — that
+was lock-on-only AND handed back AI-less proxy `CS::EnemyIns`, so combat was never detected. It now walks the
+**WorldChrMan per-block `CS::EnemyIns` arrays** and OR's `[[EnemyIns+0xC950]+0x30C]==6` (AI FSM battle state).
+Chain pinned by disassembling `FUN_140507ca0` live + validated on the running game
+(`docs/re/combat_state_gate_re_findings.md` → "SOLVED"):
+```
+WCM+0x1CC58 = block count ; WCM+0x1CC60 = block array (stride 0x18, [entry+0]=WorldBlockChr*)
+block+0x10  = EnemyIns slot capacity (fixed pool, mostly-null) ; block+0x18 = CS::EnemyIns* array (stride 0x10)
+EnemyIns+0xC950 = AI module (null → skip) ; +0x30C = FSM state (6=battle) — 0xC950 AOB-confirmed live @ er+0x2c31d0
+```
+- **★ Two gotchas that bit + are handled:** (1) WorldChrMan singleton pointer AND the LocalPlayer object
+  reallocate on world transitions → re-deref `*(er+0x3D65F88)` every call, never cache. (2) The char list is
+  mutated by the game thread as enemies stream → present-thread block/slot reads RACE and faulted the whole
+  walk; fixed with a **per-block SEH** (`block_battle_scan`) + per-enemy SEH (`enemy_fsm_state`) so a racing
+  block/garbage-subtype enemy is skipped, not fatal. `combat` RPC verb now reports `blocks= enemies= withAI= battle=`.
+- **✅ LIVE-VALIDATED (2026-07-06h):** clean walk, `blocks=6 enemies=18 withAI=7 battle=0`; 5–7 loaded enemies
+  read valid AI modules with FSM ∈ {0,1,3} (ER's neutral/search enum). `battle=6` not caught live (headless input
+  can't reliably aggro), but the `==6` path is code-identical to the working `withAI` reads and 6=battle is the
+  AOB-proven `IsBattleState` semantic. Both builds green, deployed, restart-verified.
+- **NEXT (optional):** confirm `battle=1`/vmap auto-close with a human aggroing an enemy while the vmap is open.
+  The old HP-bar path stays for the enemy-NAME feature (only needs npcParam/model, populated on the proxy).
+
 ## ⇒ 2026-07-06g — vmap-on-map-key F1 option SHIPPED + verified working (input authority = follow-up)
 
 New setting **Virtual map on map key** (`vmap_on_map_key`, F1 ▸ Settings, off by default; commits `3cc19e9`

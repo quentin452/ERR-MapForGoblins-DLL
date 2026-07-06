@@ -153,79 +153,116 @@ void probe_bars_seh(void **feman_slot, void **wcm_slot, GetChrInsFn getChr, BarP
     __except (EXCEPTION_EXECUTE_HANDLER) { pr->count = 0; }
 }
 
-// ── IN-COMBAT state (docs/re/combat_state_gate_re_findings.md) ────────────────────────────────
-// ER's per-entity battle state is the AI-FSM enum at [[ChrIns+0xC950]+0x30C] (state 6 = BATTLE; the
-// player has no AI module so +0xC950 is null → skipped). "in combat" = ANY nearby enemy in state 6.
-// Reuse the same CSFeMan entityHpBars[8] list the name feature walks (that IS ER's near-enemy set).
-constexpr size_t kChrAiModule = 0xC950;  // ChrIns → AI think module (null for the player)
-constexpr size_t kAiFsmState  = 0x30C;   // AI think module → FSM state int (6 = battle)
-constexpr int    kFsmBattle   = 6;
+// ── IN-COMBAT state (docs/re/combat_state_gate_re_findings.md — SOLVED + validated live 2026-07-06, ER 2.6.2.0) ──
+// ER's per-entity battle state is the AI-FSM enum at [[EnemyIns+0xC950]+0x30C] (6 = BATTLE; 5 alert;
+// 1/3/4 search; 0 neutral). "in combat" = ANY loaded enemy in state 6. The enemy set is the WorldChrMan
+// per-block CS::EnemyIns array — NOT the CSFeMan HP-bar list (those are lock-on-only AND commonly resolve
+// to EnemyIns whose +0xC950 AI module is unpopulated → the old HP-bar path read null and never saw combat).
+// Chain pinned + validated live (walked 6 blocks / 235 EnemyIns, FSM states {0,1,3} matched ER's enum):
+//   WCM+0x1CC58 = loaded block count ; WCM+0x1CC60 = block array, stride 0x18, [entry+0] = WorldBlockChr*
+//   block+0x10  = EnemyIns slot capacity (a fixed pool, mostly-null) ; block+0x18 = CS::EnemyIns* array, stride 0x10
+//   EnemyIns+0xC950 = AI-think module (null for the player / dormant enemies → skip) ; +0x30C = FSM state int
+// The 0xC950 AI-module offset is instruction-confirmed on THIS live build (IsBattleState @ er+0x2c31d0 —
+// `mov rcx,[rcx+0xC950]` AOB matches byte-for-byte). WorldChrMan is re-derefed from its slot every call
+// (the singleton pointer moves on world transitions). See FUN_140507ca0 (the block-list walker).
+constexpr size_t kChrAiModule    = 0xC950;   // ChrIns/EnemyIns → AI think module (null: player / dormant)
+constexpr size_t kAiFsmState     = 0x30C;    // AI think module → FSM state int (6 = battle)
+constexpr int    kFsmBattle      = 6;
+constexpr size_t kWcmBlockCount  = 0x1CC58;  // int: loaded world-block count
+constexpr size_t kWcmBlockArray  = 0x1CC60;  // WorldBlockChr entries, stride kWcmBlockStride
+constexpr size_t kWcmBlockStride = 0x18;     // [entry+0] = WorldBlockChr*, [entry+8] = block id
+constexpr size_t kBlkEnemyCap    = 0x10;     // int: EnemyIns slot capacity (pool size)
+constexpr size_t kBlkEnemyArray  = 0x18;     // CS::EnemyIns* array ptr
+constexpr size_t kEnemyStride    = 0x10;     // per-slot stride in the EnemyIns array
+constexpr int    kMaxBlocks      = 64;       // sanity clamps (guard a corrupt count from over-reading)
+constexpr int    kMaxEnemyCap    = 4096;
 
-bool any_enemy_in_battle_body(void **feman_slot, void **wcm_slot, GetChrInsFn getChr)
+// One enemy's AI FSM state, isolated in its OWN SEH frame. Some loaded CS::EnemyIns hold non-pointer data
+// at +0xC950 (a different subtype / a stale slot), so `[[e+0xC950]+0x30C]` can fault; without a per-enemy
+// guard that single fault would abort the whole block walk (and combat would never be seen). Returns the
+// FSM state, or -1 on no-AI-module / any read fault. No C++ objects here (required to host __try).
+__declspec(noinline) int enemy_fsm_state(uint8_t *e)
 {
-    if (!feman_slot || !wcm_slot || !getChr) return false;
-    auto *feMan = *reinterpret_cast<uint8_t **>(feman_slot);
-    if (!feMan) return false;
-    void *wcm = *reinterpret_cast<void **>(wcm_slot);
-    if (!wcm) return false;
-    uint8_t *arr = feMan + kEntityArrOff;
-    for (int i = 0; i < kEntityBars; ++i)
+    __try
     {
-        uint8_t *ent = arr + static_cast<size_t>(i) * kEntityStride;
-        uint64_t handle = *reinterpret_cast<uint64_t *>(ent + kOffHandle);
-        if (handle == kEmptyHandle) continue;
-        uint64_t h = handle;
-        void *chr = getChr(wcm, &h);
-        if (!chr) continue;
-        auto *ai = *reinterpret_cast<uint8_t **>(reinterpret_cast<uint8_t *>(chr) + kChrAiModule);
-        if (!ai) continue;  // player / no AI module
-        if (*reinterpret_cast<int *>(ai + kAiFsmState) == kFsmBattle) return true;
+        auto *ai = *reinterpret_cast<uint8_t **>(e + kChrAiModule);
+        if (!ai) return -1;                          // player / dormant / no AI module
+        return *reinterpret_cast<int *>(ai + kAiFsmState);
     }
-    return false;
+    __except (EXCEPTION_EXECUTE_HANDLER) { return -1; }
 }
 
-bool any_enemy_in_battle_seh(void **feman_slot, void **wcm_slot, GetChrInsFn getChr)
+// Scan one block's EnemyIns pool in its OWN SEH frame. The WorldChrMan char list (block descriptors + each
+// block's slot array) is mutated by the game thread as enemies stream in/out, so cap/array/slot reads RACE
+// with our present-thread read and can fault — a per-block guard keeps one racing block from aborting the
+// whole walk. `entry` = &block-array[b] (the block ptr is read INSIDE the guard). Accumulates via out-params;
+// returns 1 if any enemy in this block is in battle state. No C++ objects (required to host __try).
+__declspec(noinline) int block_battle_scan(uint8_t *entry, int *total, int *withAi, int *battle)
 {
-    __try { return any_enemy_in_battle_body(feman_slot, wcm_slot, getChr); }
+    __try
+    {
+        auto *blk = *reinterpret_cast<uint8_t **>(entry);
+        if (!blk) return 0;
+        int ecap = *reinterpret_cast<int *>(blk + kBlkEnemyCap);
+        if (ecap <= 0) return 0;
+        if (ecap > kMaxEnemyCap) ecap = kMaxEnemyCap;
+        auto *earr = *reinterpret_cast<uint8_t **>(blk + kBlkEnemyArray);
+        if (!earr) return 0;
+        int foundBattle = 0;
+        for (int i = 0; i < ecap; ++i)
+        {
+            auto *e = *reinterpret_cast<uint8_t **>(earr + static_cast<size_t>(i) * kEnemyStride);
+            if (!e) continue;                                     // mostly-null pool slots
+            ++*total;
+            int st = enemy_fsm_state(e);                          // per-enemy SEH: -1 = no AI / fault
+            if (st < 0) continue;
+            ++*withAi;
+            if (st == kFsmBattle) { ++*battle; foundBattle = 1; }
+        }
+        return foundBattle;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+
+// Walk the WorldChrMan per-block CS::EnemyIns arrays. hot path (diag==null): early-returns true on the first
+// block containing a battle-state enemy. diag!=null: scans all blocks + writes a count summary.
+__declspec(noinline) bool enemies_in_battle_body(void **wcm_slot, char *diag, int dcap, int *dw)
+{
+    auto app = [&](const char *fmt, auto... a) {
+        if (diag && dw && *dw < dcap - 1) *dw += std::snprintf(diag + *dw, dcap - *dw, fmt, a...);
+    };
+    if (!wcm_slot) { app("%s", "wcm slot unresolved"); return false; }
+    auto *wcm = *reinterpret_cast<uint8_t **>(wcm_slot);
+    if (!wcm) { app("%s", "wcm null (not in-world?)"); return false; }
+
+    int bcount = *reinterpret_cast<int *>(wcm + kWcmBlockCount);   // in stable WCM (same region as the player field)
+    if (bcount < 0) bcount = 0;
+    if (bcount > kMaxBlocks) bcount = kMaxBlocks;
+    uint8_t *barr = wcm + kWcmBlockArray;
+    int total = 0, withAi = 0, battle = 0;
+    bool found = false;
+    for (int b = 0; b < bcount; ++b)
+    {
+        int fb = block_battle_scan(barr + static_cast<size_t>(b) * kWcmBlockStride, &total, &withAi, &battle);
+        if (fb) { found = true; if (!diag) return true; }
+    }
+    app("| blocks=%d enemies=%d withAI=%d battle=%d", bcount, total, withAi, battle);
+    return found;
+}
+
+bool enemies_in_battle_seh(void **wcm_slot)
+{
+    __try { return enemies_in_battle_body(wcm_slot, nullptr, 0, nullptr); }
     __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
-// DIAG: per-enemy-bar dump of the AI-module ptr + FSM-state candidates, so the combat offsets can be
-// confirmed/corrected live (the map isn't closing in combat → combat_active() reads false). Writes into buf.
-int combat_diag_body(void **feman_slot, void **wcm_slot, GetChrInsFn getChr, char *buf, int cap)
+// DIAG: WCM-block EnemyIns summary + a sample of live enemies' FSM states (why the vmap does/doesn't close).
+int combat_diag_seh(void **wcm_slot, char *buf, int cap)
 {
     int w = 0;
-    auto app = [&](const char *fmt, auto... a) {
-        if (w < cap - 1) w += std::snprintf(buf + w, cap - w, fmt, a...);
-    };
-    if (!feman_slot || !wcm_slot || !getChr) { app("unresolved slots"); return w; }
-    auto *feMan = *reinterpret_cast<uint8_t **>(feman_slot);
-    void *wcm = feMan ? *reinterpret_cast<void **>(wcm_slot) : nullptr;
-    if (!feMan || !wcm) { app("feMan/wcm null"); return w; }
-    uint8_t *arr = feMan + kEntityArrOff;
-    int n = 0;
-    for (int i = 0; i < kEntityBars; ++i)
-    {
-        uint8_t *ent = arr + static_cast<size_t>(i) * kEntityStride;
-        uint64_t handle = *reinterpret_cast<uint64_t *>(ent + kOffHandle);
-        if (handle == kEmptyHandle) continue;
-        uint64_t h = handle;
-        void *chr = getChr(wcm, &h);
-        if (!chr) continue;
-        auto *cb = reinterpret_cast<uint8_t *>(chr);
-        int npc = *reinterpret_cast<int *>(cb + kChrOffNpc);
-        void *ai = *reinterpret_cast<void **>(cb + kChrAiModule);
-        int st = ai ? *reinterpret_cast<int *>(reinterpret_cast<uint8_t *>(ai) + kAiFsmState) : -999;
-        app("[%d] npc=%d chr=%p ai(+0xC950)=%p fsm(+0x30C)=%d | ", n++, npc, chr, ai, st);
-    }
-    if (n == 0) app("no enemy bars");
+    __try { enemies_in_battle_body(wcm_slot, buf, cap, &w); }
+    __except (EXCEPTION_EXECUTE_HANDLER) { w = std::snprintf(buf, cap, "SEH fault"); }
     return w;
-}
-
-int combat_diag_seh(void **feman_slot, void **wcm_slot, GetChrInsFn getChr, char *buf, int cap)
-{
-    __try { return combat_diag_body(feman_slot, wcm_slot, getChr, buf, cap); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { int n = std::snprintf(buf, cap, "SEH fault"); return n; }
 }
 
 // Strip the codex-entry prefix from a TutorialTitle bestiary name: "116. Tree Sentinel" ->
@@ -396,21 +433,18 @@ bool category_enabled(NameCat cat)
 bool goblin::combat_active()
 {
     resolve_once();
-    // The precise AI-FSM state ([[ChrIns+0xC950]+0x30C]==6, combat_state_gate_re_findings.md) reads NULL on
-    // the HP-bar ChrIns even for a normal enemy (live 2026-07-06) — the entityHpBars give a different ChrIns
-    // than ER's WorldChrMan enemy list that the getter expects (precise path = a follow-up). Practical signal
-    // that WORKS: any enemy HP bar present = engaged/in combat (bars appear when you fight; gone otherwise).
-    // This must auto-close the vmap because the map key can't close it in combat (ER blocks the create-cb).
-    if (!g_feman_slot || !g_wcm_slot || !g_get_chrins) return false;
-    BarProbe pr;
-    probe_bars_seh(g_feman_slot, g_wcm_slot, g_get_chrins, &pr);
-    return pr.count > 0;
+    // Precise ER-mirror: ANY loaded enemy in AI battle state (6). Walks the WorldChrMan per-block
+    // CS::EnemyIns arrays (NOT the lock-on-only CSFeMan HP bars, which also hand back AI-less proxy
+    // EnemyIns → the old bar path never saw combat). See the IN-COMBAT helper block above for the chain.
+    // Only called per-frame while the vmap redirect is open, so the bounded slot scan is cheap.
+    if (!g_wcm_slot) return false;
+    return enemies_in_battle_seh(g_wcm_slot);
 }
 
 int goblin::combat_diag(char *buf, int cap)
 {
     resolve_once();
-    return combat_diag_seh(g_feman_slot, g_wcm_slot, g_get_chrins, buf, cap);
+    return combat_diag_seh(g_wcm_slot, buf, cap);
 }
 
 void goblin::update_native_enemy_names()

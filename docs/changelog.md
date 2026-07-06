@@ -174,6 +174,12 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   each marker's vertices. Only the ERR dial fades; user-drawn exclusion rectangles stay hard.
 
 ### Fixed
+- **The Virtual World Map now closes the instant combat starts (any enemy, not just locked ones).** When the
+  vmap stands in for the native map, it force-closes on combat like the native map does. The previous check only
+  saw enemies you had *locked onto* (and often misread their state), so an unlocked attacker left the map open.
+  It now reads every loaded enemy's AI battle-state directly from the game's character list — so any nearby foe
+  entering combat closes the map. (`docs/re/combat_state_gate_re_findings.md` — WorldChrMan enemy-array pinned +
+  validated live.)
 - **Leyndell Ashen Capital / Elden Throne markers no longer land bottom-left off-map.** The final boss
   (Elden Beast), the Fractured Marika grace, Stakes of Marika, Summoning Pools and every other marker in a
   Leyndell sub-area (Ashen Capital / Elden Throne, map areas 19/34/35) used to collapse to the map origin

@@ -106,3 +106,45 @@ only way). **★ PRECISE follow-up = iterate the WorldChrMan enemy list** (NOT t
 FUN_140507ca0 + counts battle-state), or RE the WorldChrMan enemy-ChrIns array offset and iterate it directly
 checking `[[chr+0xC950]+0x30C]==6`. That chr HAS the AI module (unlike the HP-bar chr). Live-doable on this box
 (WCM resolves via WCM_FINDER / er+0x3D65F88).
+
+## SOLVED — WorldChrMan enemy-array pinned + validated live (2026-07-06, Linux/Proton, ER 2.6.2.0)
+Live RE session (RPC `mem_dump` walk of the running game; `docs/re/` = the record). **The precise path is now
+implemented** (`goblin_enemy_names.cpp` `combat_active()` → `enemies_in_battle_body`).
+
+**First: the 0xC950 offset was NEVER wrong.** A live enemy with a valid ChrIns-family vtable read GARBAGE at
+`+0xC950`, which looked like an offset mismatch — but the disassembly at `IsBattleState` (er+0x2c31d0) matches
+the findings AOB **byte-for-byte** live (`48 8b 89 50 c9 00 00 …` = `mov rcx,[rcx+0xC950]`). So the live exe IS
+the Ghidra build; `0xC950`/`0x30C` are correct. The garbage came from **proxy objects**: `GetChrInsFromHandle`
+on an HP-bar handle hands back a `CS::EnemyIns` whose AI-think module (`+0xC950`) is unpopulated (RTTI-confirmed:
+the HP-bar object AND the block-array objects are both `.?AVEnemyIns@CS@@`; the player is `.?AVPlayerIns@CS@@`).
+Some loaded `EnemyIns` legitimately have a null AI module (dormant / no-AI) — those are correctly skipped.
+
+**The enemy list = WorldChrMan per-block CS::EnemyIns arrays**, read straight from `FUN_140507ca0`'s own code
+(the block-list walker; disassembled live):
+```
+cmp [rcx+0x1CC58], ebx      ; WCM+0x1CC58 = loaded world-block COUNT
+lea rdi, [rcx+0x1CC60]      ; WCM+0x1CC60 = block array, stride 0x18, [entry+0]=WorldBlockChr*, [entry+8]=block id
+loop: mov rcx,[rdi]; call FUN_140494B30; lea rdi,[rdi+0x18]
+```
+Per block (`FUN_140494B30` reads a name-keyed tree at block+0x48 for targeted lookups, but the flat array is
+simpler and holds the same enemies):
+```
+block+0x10 = EnemyIns slot CAPACITY (a fixed pool: seen 33/6/15/1000/76/1500 — MOSTLY-NULL slots)
+block+0x18 = CS::EnemyIns* array, stride 0x10  ([slot+0]=EnemyIns*, [slot+8]=0)
+EnemyIns+0xC950 = AI-think module (null → skip) ;  [+0xC950]+0x30C = FSM state int (6=battle,5 alert,1/3/4 search,0 neutral)
+```
+**Validated:** walked all 6 live blocks → 235 non-null `EnemyIns`; 11 had AI modules reading FSM ∈ **{0,1,3}**
+— exactly ER's enum (no 6 because nothing was aggroed at the time; `combat_active`=0, consistent). `combat_active()`
+= any `EnemyIns` with `[[+0xC950]+0x30C]==6`, OR'd over every block's pool (skip null slots + null AI).
+
+**Gotchas for the impl (all handled in `enemies_in_battle_body`):**
+- **WorldChrMan re-derefs every call** — the WCM singleton pointer AND the LocalPlayer object are reallocated on
+  world transitions (observed WCM 0x3F89→0x3A7D mid-session). Read `*(er+0x3D65F88)` fresh; never cache.
+- `block+0x10` is a POOL CAPACITY, not a live count (round numbers 1000/1500) → iterate slots, skip null ptrs
+  (clamp to 4096 as a corrupt-count guard; blocks clamp to 64).
+- SEH-guard the whole walk (streaming can free a slot mid-read).
+- The HP-bar path (`entityHpBars`) is abandoned for combat: lock-on-only **and** proxy-prone. It still drives
+  the enemy-NAME feature (that only needs npcParam/model off the proxy, which are populated).
+
+Cross-ref for the raw walk: `tools/` ad-hoc `mem_dump` probing this session (not committed); RTTI read via
+vtable[-1]→COL+0xC (RVA)→TypeDescriptor+0x10 name.
