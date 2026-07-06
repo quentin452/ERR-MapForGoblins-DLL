@@ -25,6 +25,11 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **The Virtual World Map fully REPLACES the native map (redirect).** With **Virtual map on map key** on, pressing
+  the game's map button (keyboard OR gamepad) opens the fullscreen MapForGoblins map and the native ER world map
+  **never opens at all** — the create-callback is intercepted, so there's no native map flash, no wasted render,
+  and pressing the map button again closes the vmap back to gameplay. (Supersedes the earlier "draws over the
+  native map" behaviour.)
 - **Open the Virtual World Map on the game map key.** New setting **Virtual map on map key** (F1 ▸ Settings;
   ini `vmap_on_map_key`, off by default): when enabled, pressing the game's map button opens the fullscreen
   MapForGoblins Virtual World Map instead of the native map (it draws opaque over the native map). Off = the

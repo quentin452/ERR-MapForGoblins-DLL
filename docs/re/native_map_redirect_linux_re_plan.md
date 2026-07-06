@@ -235,3 +235,17 @@ live process):
   table-dispatched through `0x7fd4b0`, not `0x7ef…`. And `er+0x9cfb6e` ("ctor+0x27e") is really inside
   `FUN_1409cfb60` = WorldMapDialog vtable slot [2] (per-frame step, calls `FUN_1409c32f0`), unrelated to
   construction — both were just co-resident stack frames during a map-open.
+
+## ✅ DONE + LIVE-VERIFIED 2026-07-06 (`732fba1a`)
+Implemented the TRUE never-open redirect via the Ghidra-pinned create-callback and verified it live on
+Linux/Proton. `goblin_native_map_redirect.cpp` MinHooks `FUN_1407fd4b0` (er+0x7fd4b0, AOB `WORLDMAP_CREATE_CB`);
+when `vmap_on_map_key`, the detour returns null without calling the original → the native WorldMapDialog is
+never allocated/pushed, and it toggles `overlay_api::vmap_redirect`; `panel_virtual_map` Slice D mirrors
+`s_open` to that flag. **Live test:** map key → `[VMAP-REDIRECT] suppressed`, `status map_open=0` (native never
+opens), the vmap draws fullscreen (Limgrave/Liurnia/Caelid + markers + relief); map key again → vmap closes →
+gameplay; `frame` keeps advancing = NO freeze. Both keybind systems covered (factory-table convergence).
+- **AOB gotcha:** the bare prologue `40 53 48 81 EC 90 …` matched a sibling at er+0x779750 first; extended it
+  with the `b2 08` + double-call body → unique to er+0x7fd4b0.
+- **Follow-ups (not blocking):** verify vmap fast-travel/warp still works with the native suppressed (the map's
+  #1 job; the vmap has its own grace-warp — confirm live), and the in-combat warp gate. The safe (open+close)
+  method + its `inject_native_map_close` are removed.
