@@ -81,6 +81,33 @@ and read by all 7 dispatch groups. There is no `dt * scale` global to poke.
    pop at dt=0. Then wire `set_timescale <f>` RPC + rework `goblin::pause::set_paused` off the branch flip;
    AOB into `src/re_signatures.hpp`; update `windows_ingame_pause_re_prompt.md` + `dx_bugs_backlog_plan.md` PR D.
 
+## CORRECTION (2026-07-06, Windows Ghidra) — `timeObj+0x08` is NOT the master; it's a per-group FD4Time arg
+A live poke of the frametimer did nothing (user set it to -1). Ghidra-tracing the callers up explains why and
+**revises path B**:
+- The 6 callers of `FUN_140623410` are **all sub-steps of ONE step machine, `CS::MoveMapStep`** — the step
+  table is built by `FUN_1400a40c0` (`_DAT_143d70860…`, labels `MoveMapStep::STEP_HitStabilizeWait` =
+  `FUN_140af62c0`, `STEP_MoveMap` = `FUN_140af7cf0`, …). So `FUN_140623410` is the world/streaming update for
+  the **MoveMap group only — NOT "all 7 dispatch groups" of the whole game.** Hooking it scales that group,
+  not render/physics/anim/other CSTaskGroups.
+- `dt` reaches every step as **`param_2` = an `FD4Time*` passed BY POINTER**, and each step reads `[FD4Time+8]`.
+  The engine is the **FD4 task/step framework** (`CS::CSTaskGroup`, `FD4::FD4Time`): the frame root computes the
+  real delta ONCE (OS timer, ×game-speed if any), wraps it in an `FD4Time`, and hands that pointer DOWN through
+  every task group each frame. **There is no single pokeable "master DT float".**
+- ⇒ Why `timeObj+0x08 = -1` did nothing: (1) it's a **transient rebuilt every frame at the root** → an external
+  RPM write loses the same-frame race (overwritten before the step reads it); (2) it's **group-local** (only
+  whatever reads that one FD4Time); (3) the engine treats `dt <= 0` as *expired/idle* everywhere
+  (`if (t <= 0.0)` guards litter these steps) — **negative dt is clamped-to-frozen, it does NOT rewind time.**
+
+**Where the TRUE master is + how to pin it:** the root FD4 frame-delta producer (the QPC/OS-timer read that
+builds the frame's root `FD4Time`, upstream of all `CSTaskGroup`s). **Surgical find = FWA-WRITE on a live
+`FD4Time+0x08`** (any group's) → the writer → walk up to the root producer; that producer (or a game-speed
+scale it applies, if one exists) is the real lever. Needs the `mem_fwa off` disarm verb first. Static climb is
+long (StepTemplate.Update → CSTaskGroup tick → frame root), so FWA-live is faster.
+
+**The only lever that beats the per-frame race is a HOOK, not an RPM poke:** hook the root delta producer and
+scale the computed delta (whole-game timescale/freeze), OR hook `FUN_140623410` for a MoveMap-group-scoped
+freeze (partial — the original path B). External RPM writes to any `FD4Time+0x08` are always overwritten.
+
 ## Method note (reusable)
 
 Live disasm beat static here: RPM-read the function bytes at `er_base+RVA`, `capstone` (CS_MODE_64) with
