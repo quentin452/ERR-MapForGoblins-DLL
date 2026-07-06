@@ -75,6 +75,32 @@ gate on `vmap_on_map_key`, open the vmap + skip. **Live-test the freeze** (suppr
 freeze caveat — but resident projection removed the VM coupling; if it desyncs, fall back to the SAFE
 force-close: let it open then inject the game's own `Escape` close, which unwinds cleanly).
 
+## PIN (2026-07-06, build 2.6.2.0) — WorldMapDialog ctor entry verified + the open call
+- **`er_base` RPC gives the live base** (ASLR moves it per boot — DON'T derive base from a vtable read of a
+  stale log; this boot `0x6ffff4c00000`). All `er+offset` from the fwa are base-relative and stable.
+- **WorldMapDialog ctor = `er+0x9cf8f0`, VERIFIED entry** — prologue `48 89 4C 24 08 57 48 83 EC 30`
+  (`mov [rsp+8],rcx ; push rdi ; sub rsp,0x30`), rcx = the dialog `this`. World-map-specific, known entry.
+- The opener (function containing the fwa ret-addr `er+0x7efb89`) has, just before it, `call rel32` at
+  `er+0x7efb84` → **`er+0x792550`** (the open-path helper that leads to the ctor), preceded by
+  `mov r8,rbp ; mov rdx,r12 ; mov rcx,rbx` (a 4-arg call). So the opener is a menu-dispatch that sets up args
+  then calls the world-map construction.
+
+### Hook-behaviour decision (for the user — safe vs the "never open")
+- **NEVER-OPEN (true redirect, what the user wants) = RISKY.** No-op'ing the ctor/opener leaves the menu
+  system with no constructed dialog / an unbalanced push → crash/freeze unless we also intercept the menu
+  push/pop + the caller's use of the returned object. Deep, needs crash-prone live iteration (4 crashes this
+  session already; each = a flaky reboot).
+- **SAFE render-cull (A, triggered precisely at the ctor) = PROVEN.** Hook `er+0x9cf8f0`; when
+  `vmap_on_map_key`: let the ctor run (menu stays consistent), open the vmap, and force-close the native via
+  the game's own close (proven: `key Escape` closes it, `map_open→0`, byte→0, clean unwind). Native opens for
+  ~1 frame, INVISIBLE under the opaque vmap, then gone → no sustained Scaleform render, no freeze. Functionally
+  the redirect, safely. Implementation = author an AOB for `er+0x9cf8f0` (base moves per boot), MinHook it,
+  gate on `vmap_on_map_key`, decouple the vmap auto-close (`panel_virtual_map` Slice D `s_from_map` →
+  `s_redirected`), + force-close.
+- **RECOMMENDATION:** ship SAFE (A-at-ctor) first — it achieves "native never visibly renders" with zero freeze
+  risk; then attempt true never-open as a gated experiment if the flash is ever perceptible (it isn't, under
+  the opaque vmap).
+
 ## Follow-up — ER cursor render self-disables (needs a left-click to re-arm)
 User-reported (2026-07-06): the ER mouse cursor's RENDER turns off after a while idle; a **left-click**
 re-enables it. This matters for the vmap redirect (the vmap needs a live cursor). Same method as above —
