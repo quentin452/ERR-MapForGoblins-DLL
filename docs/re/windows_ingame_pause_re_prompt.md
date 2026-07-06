@@ -118,3 +118,8 @@ Deliver the confirmed address/flag + house-style AOB into `src/re_signatures.hpp
 `goblin::pause::set_paused` to toggle it (keep the branch flip only if it proves to be the clock gate
 after all). Interim for users until fixed: prefer SHORT pauses / turn off "Pause automatically while
 panel open" (the auto-pause-on-F1 makes every long panel session incur the resume hitch).
+
+**⇒ The mechanism RE is now planned in `game_timestep_freeze_re_prompt.md`** — anchored on the already-RE'd
+per-frame time driver `FUN_140623410` (er+0x623410, takes `float dt` → wraps in `FD4Time` → drives every
+subsystem). Zeroing that `dt`/`FD4Time.deltaTime` (Fallback #2 above) freezes the clock cleanly. Execute that
+plan; it supersedes the raw-branch approach for the pause primitive.

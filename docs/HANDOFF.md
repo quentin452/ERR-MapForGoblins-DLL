@@ -66,10 +66,19 @@ Long debug of the "enemy name drawn twice" report. Landed fixes + a scoped plan;
 - **★ PAUSE resume-latency BUG (live-confirmed 2026-07-06) — RE-gated.** The branch-flip pause
   (`goblin_pause.cpp`) hitches on RESUME proportionally to how long it was paused → the flipped branch gates
   the world STEP but not the CLOCK, so wall-time accrues while paused and the game drains the backlog on
-  resume (confirms it's a partial/per-subsystem gate, not a central world-tick). Fix = use ER's OWN freeze
-  (native map-open pauses with zero resume lag: stop the engine's clock) or zero the timestep while paused.
-  Sharpened in `docs/re/windows_ingame_pause_re_prompt.md` (new "LIVE-CONFIRMED BUG" section, Option 2). For
-  the Windows RE agent. Interim: short pauses / keep "pause on open" off (already the default).
+  resume (confirms it's a partial/per-subsystem gate, not a central world-tick). Fix = zero the timestep.
+  **★ RE PLAN WRITTEN: `docs/re/game_timestep_freeze_re_prompt.md`** — anchored on the ALREADY-RE'd per-frame
+  driver `FUN_140623410` (er+0x623410: takes `float dt` → wraps in FD4Time → drives every subsystem). RE ~70%
+  done; remaining = find the dt source (arg vs a global time-scale), zero it while paused → clean freeze +
+  instant resume + a free `set_timescale` dev lever. Reworks `goblin::pause` off the raw branch flip. Interim:
+  short pauses / keep "pause on open" off (already default).
+- **★ ENEMY-NAME native-Scaleform RE — Windows agent live recon DONE** (`windows_enemy_name_hud_feed_re_findings.md`):
+  `01_000_fe.gfx` + `EnemyTag_ColorText_12/Text_0` confirmed loaded live from the active install; name fed as
+  **Scaleform HTML via SetTextHTML** (`<FONT LETTERSPACING='0'>name</FONT>`). GATE Q1 STILL OPEN. Linux handoff:
+  capture the name-feed WRITE site (`mem_fwa <html_buf> w`, UNPAUSED). **★ SMALL UNBLOCK NEEDED (host-only): add a
+  `mem_fwa off` disarm verb** — the single FWA slot wedges on a stale probe; `field_probe::disarm()` exists but no
+  RPC reaches it. Also fix the hit-log WRITE/READ label (`goblin_field_probe.cpp:138` hardcodes "READ").
+  `goblin_debug_rpc.cpp` + `goblin_field_probe.cpp`, no host↔render boundary.
 - **★ Track A M1 + gamepad landed this session (see `imgui_only_map_plan.md`):** heightfield cast-window
   widen + sea-tag plumbing (`52c9fa4`); vmap gamepad canvas control — stick pan/zoom + virtual-cursor reticle
   (`4933ea2`, render-side/hot-reloadable). Font accent fix (`d23b779`). Gamepad OPEN findings queued in M4:
