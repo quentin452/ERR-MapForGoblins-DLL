@@ -1,5 +1,12 @@
 # RE brief — RESIDENT source of the world→map-space converter affine (project with the native map NEVER opened)
 
+**✅ ANSWERED (static, 2026-07-06) → `windows_worldmap_affine_resident_source_re_findings.md`.** Hypothesis
+**A**: the base affine source is **exe-invariant, no mod-changeable param** — bias `{128,128}` + scale `1.0`
+are `.rdata` constants, origin is a `.data` global that a single init fn just **zeroes** (no param writer),
+area/grid keys are ctor immediates; only the legacy fold is a param (already `legacy_fold`). Remaining =
+the empirical map-closed validation (Linux: build the converter off-VM, call `FUN_140876140`, `du/dv==0` ⇒
+drop the prime). Brief kept below for the task detail.
+
 **Goal.** Let MapForGoblins project ANY `(area, gridX, gridZ, posX, posZ) → map-space (u,v) + page`
 **with the native ER world map never opened this session** — no `WorldMapViewModel`, no prime, mod-agnostic.
 

@@ -183,7 +183,7 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
   the gap = DECODE its command→binding table + the command ids, so mod hotkeys respect remapping and work on a
   pad (today = hardcoded `GetAsyncKeyState` VK, kb-only). Cheap intermediate needing NO decode: feed the
   engine's polled `XINPUT_STATE` (`DAT_1430b92e0`) into ImGui gamepad nav.
-- **★ World→map-space affine RESIDENT source — OPEN, `windows_worldmap_affine_resident_source_re_prompt.md`.**
+- **★ World→map-space affine RESIDENT source — ANSWERED (static), `windows_worldmap_affine_resident_source_re_findings.md`** (verdict: exe-invariant, no mod param — bias/scale `.rdata`, origin a zeroed `.data` global, keys immediates; only the legacy fold is a param. Remaining = empirical map-closed `du/dv==0` validation on Linux). Prompt: `windows_worldmap_affine_resident_source_re_prompt.md`.
   The vmap-only migration's real unblocker: project `(area,grid,pos)→map (u,v)` with the native map NEVER
   opened, so we can close the menu (stop its double draw AND input) and still place markers. The affine math +
   converter layout are SOLVED (`windows_world_to_mapspace_projection`); the only gap = where the ctor
