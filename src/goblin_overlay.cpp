@@ -1933,12 +1933,12 @@ namespace
             if (proto)
                 goblin::overlay_render_loader::call_draw_worldmap_markers(g_show, frame_ctx);
             // Enemy names: NOT an ImGui overlay anymore. We feed the engine's OWN native red EnemyTag
-            // via NpcParam.nameId -> NpcName (host-side data path: FMG inject + live param write, at most
-            // once per enemy type) so the game renders the name itself — frame-synced, correct font/
-            // accents, no jitter. Host-only, so it runs here (not in the render DLL). Self-gates on
-            // CSFeMan/WCM resolve + in-world; cheap when idle. See goblin_enemy_names.cpp.
-            if (goblin::config::enemyNames)
-                goblin::update_native_enemy_names();
+            // via NpcParam.nameId -> NpcName (host-side data path: FMG inject + live param write) so the
+            // game renders the name itself — frame-synced, correct font/accents, no jitter. It is a
+            // RECONCILER (applies/reverts/recolors per the F1 toggles), so it must run EVERY frame even
+            // when the master toggle is OFF — otherwise it could never revert a name after you disable
+            // it. Self-gates internally on CSFeMan/WCM resolve + settings; cheap when idle. Host-only.
+            goblin::update_native_enemy_names();
             if (minimap)
                 goblin::overlay_render_loader::call_draw_minimap_hud(frame_ctx);   // minimap HUD (self-gates overworld-only)
 

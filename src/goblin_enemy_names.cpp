@@ -284,14 +284,57 @@ std::string goblin::enemy_display_name(int npcParam, int model)
     return resolve_enemy_name(npcParam, model).name;
 }
 
+// Per-type record for the reconciler. Kept in a session-static map keyed by npcParamId.
+namespace
+{
+struct TypeState
+{
+    int  kind = 0;          // 0 = nameable (we own it), 1 = engine already names it, 2 = truly nameless
+    int32_t id = 0;         // reserved MFG NpcName id (stable across enable/disable); 0 until reserved
+    bool applied = false;   // is NpcParam.nameId currently == id (i.e. WE wrote it)?
+    std::string injected;   // last FMG string we injected for `id` ("" = never / needs (re)inject)
+    NameCat cat = NameCat::Mob;
+};
+
+// The string the engine will render for a name, with optional per-category HTML color (SPECULATIVE —
+// only renders colored if the enemy tag's TextField parses inline HTML; malformed hex -> plain name).
+std::string build_display(const std::string &name, NameCat cat)
+{
+    if (!goblin::config::enemyNameColorize) return name;
+    const std::string &raw = cat == NameCat::Hostile   ? goblin::config::enemyNameColorHostile
+                           : cat == NameCat::FieldBoss ? goblin::config::enemyNameColorBoss
+                                                       : goblin::config::enemyNameColorMob;
+    std::string hex = sanitize_hex(raw);
+    if (hex.empty()) return name;
+    return "<font color='" + hex + "'>" + name + "</font>";
+}
+
+bool category_enabled(NameCat cat)
+{
+    if (!goblin::config::enemyNames) return false;  // master off -> nothing named
+    switch (cat)
+    {
+        case NameCat::Hostile:   return goblin::config::nameEnemyHostiles;
+        case NameCat::FieldBoss: return goblin::config::nameEnemyBosses;
+        default:                 return goblin::config::nameEnemyMobs;
+    }
+}
+} // namespace
+
 // Native enemy names via the engine's OWN data path (docs/plans/native_enemy_names_scaleform_plan.md,
 // docs/re/windows_enemy_name_hud_feed_re_findings.md). The engine renders the red EnemyTag name from
 // NpcParam.nameId -> NpcName FMG and RE-READS nameId live, but only feeds the tag when the resolved
-// name != "" -> nameId==0 generics stay blank. For each visible bar whose TYPE is nameId==0 yet OUR
-// resolver can name (tiers 2/3), we inject a NpcName string + set that type's NpcParam.nameId, so the
-// engine renders our name in its own frame-synced, correctly-fonted tag (no ImGui overlay -> no
-// jitter/edge-clamp, accents free). Runs on the present thread, host-side. At most ONCE per npcParamId
-// (s_assigned) and BATCHED per frame (one FMG rebuild), so the cost is a rare first-sighting hitch.
+// name != "" -> nameId==0 generics stay blank. We drive that path for nameId==0 types OUR resolver can
+// name: inject a NpcName string + set the type's NpcParam.nameId, so the engine renders our name in its
+// own frame-synced, correctly-fonted tag (no ImGui overlay).
+//
+// RECONCILER (not fire-once): each frame, for every visible type, it compares the CURRENT settings
+// (master + per-category filter + colorize/colors) against what we last applied and converges —
+// applying (write id), REVERTING (write nameId=0), or RE-INJECTING (color changed) as needed. This is
+// what makes the F1 toggles actually live: turning a category off un-names its enemies, turning it back
+// on re-names them, flipping colorize recolors them — all without a reload. Must therefore run EVERY
+// frame regardless of the master toggle (so it can revert when master is turned off). Present thread,
+// host-side; per-type NpcName injects are batched into one FMG rebuild per frame.
 void goblin::update_native_enemy_names()
 {
     resolve_once();
@@ -301,80 +344,81 @@ void goblin::update_native_enemy_names()
     probe_bars_seh(g_feman_slot, g_wcm_slot, g_get_chrins, &pr);
     if (pr.count <= 0) return;
 
-    // npcParamId -> injected NpcName id. 0 = handled but NOT named (engine already names it, or truly
-    // nameless) — never retried. A non-zero value = the id we injected for this type.
-    static std::unordered_map<int, int32_t> s_assigned;
+    static std::unordered_map<int, TypeState> s_state;
     static int32_t s_next_id = kMfgNameIdBase;
 
-    std::vector<goblin::FmgEntry> pending;             // this frame's new NpcName strings (one rebuild)
-    std::vector<std::pair<int, int32_t>> pending_param; // (npcParamId, id) written AFTER the inject lands
+    std::vector<goblin::FmgEntry> pending;                 // (re)injects this frame -> one FMG rebuild
+    std::vector<std::pair<int, int32_t>> set_name;         // (npcParam, id)  write nameId = id
+    std::vector<int> clear_name;                           // npcParam        write nameId = 0
 
     for (int i = 0; i < pr.count; ++i)
     {
         const int npcParam = pr.e[i].npcParam;
         if (npcParam <= 0) continue;
-        if (s_assigned.count(npcParam)) continue;      // already handled this TYPE
 
-        // Engine already names it (nameId != 0 -> native tag shows)? Nothing to do; mark handled.
-        uint8_t team = 0; int32_t nameId = 0;
-        if (goblin::npc_team_and_name((uint32_t)npcParam, &team, &nameId) && nameId != 0)
+        TypeState &st = s_state[npcParam];
+
+        // First sighting: classify the type (before we ever touch its nameId, so a live read is the
+        // ORIGINAL value). nameId != 0 -> engine owns the tag; empty resolve -> nameless; else ours.
+        if (st.kind == 0 && st.id == 0 && st.injected.empty() && !st.applied)
         {
-            s_assigned[npcParam] = 0;
-            continue;
+            uint8_t team = 0; int32_t nameId = 0;
+            bool ok = goblin::npc_team_and_name((uint32_t)npcParam, &team, &nameId);
+            if (ok && nameId != 0) { st.kind = 1; continue; }          // engine-named — leave alone
+            const ResolvedName &rn = resolve_enemy_name(npcParam, pr.e[i].model);
+            if (rn.name.empty()) { st.kind = 2; continue; }            // nameless — leave blank
+            st.kind = 0;
+            st.cat  = name_category(team, rn.tier);
+            if (s_next_id >= kMfgNameIdMax)
+            {
+                spdlog::warn("[ENEMYBAR] MFG NpcName id band exhausted at {} — type {} stays unnamed",
+                             s_next_id, npcParam);
+                st.kind = 2;                                            // give up on this type
+                continue;
+            }
+            st.id = s_next_id++;
         }
+        if (st.kind != 0) continue;                                    // engine-owned / nameless
 
-        // nameId == 0: can WE name it (tiers 2/3)? Empty -> truly nameless, leave vanilla-blank.
-        const ResolvedName &rn = resolve_enemy_name(npcParam, pr.e[i].model);
-        if (rn.name.empty()) { s_assigned[npcParam] = 0; continue; }  // permanent skip (nothing to name)
-
-        // Per-category name filter. Do NOT cache a filtered-out type: toggling its category back ON
-        // should name it live next frame (resolve is cached, so the re-check is ~free).
-        const NameCat cat = name_category(team, rn.tier);
-        const bool want = (cat == NameCat::Hostile   && goblin::config::nameEnemyHostiles) ||
-                          (cat == NameCat::FieldBoss && goblin::config::nameEnemyBosses)   ||
-                          (cat == NameCat::Mob       && goblin::config::nameEnemyMobs);
-        if (!want) continue;
-
-        if (s_next_id >= kMfgNameIdMax)                // band exhausted (would take ~89M distinct types)
+        // Reconcile against current settings.
+        const bool want = category_enabled(st.cat);
+        if (want)
         {
-            spdlog::warn("[ENEMYBAR] MFG NpcName id band exhausted at {} — remaining generics stay unnamed",
-                         s_next_id);
-            break;
+            const ResolvedName &rn = resolve_enemy_name(npcParam, pr.e[i].model);  // cached
+            std::string display = build_display(rn.name, st.cat);
+            if (st.injected != display)                                // first time OR color changed
+            {
+                pending.push_back({st.id, utf8_to_wide(display)});
+                st.injected = display;
+            }
+            if (!st.applied) { set_name.emplace_back(npcParam, st.id); st.applied = true; }
         }
-        int32_t id = s_next_id++;
-        s_assigned[npcParam] = id;                     // marked now so a later frame won't re-queue it
-
-        // The string the engine renders. Optional per-category HTML color (SPECULATIVE — only if the
-        // tag's TextField parses inline HTML; off by default, malformed hex -> plain name).
-        std::string display = rn.name;
-        if (goblin::config::enemyNameColorize)
+        else if (st.applied)                                           // disabled -> revert to vanilla
         {
-            const std::string &raw = cat == NameCat::Hostile   ? goblin::config::enemyNameColorHostile
-                                   : cat == NameCat::FieldBoss ? goblin::config::enemyNameColorBoss
-                                                               : goblin::config::enemyNameColorMob;
-            std::string hex = sanitize_hex(raw);
-            if (!hex.empty())
-                display = "<font color='" + hex + "'>" + rn.name + "</font>";
+            clear_name.push_back(npcParam);
+            st.applied = false;
         }
-        pending.push_back({id, utf8_to_wide(display)});
-        pending_param.emplace_back(npcParam, id);
-
-        if (goblin::config::debugLogging)
-            spdlog::info("[ENEMYBAR] name '{}' -> NpcName[{}] npcParam={} model={} tier={} cat={} colored={}",
-                         rn.name, id, npcParam, pr.e[i].model, rn.tier, (int)cat,
-                         goblin::config::enemyNameColorize);
     }
 
-    if (pending.empty()) return;
-
-    // Inject all new NpcName strings in ONE FMG rebuild, THEN point each type's NpcParam.nameId (s32
-    // @ +0x0c) at its id. The engine picks it up on the next tag-refresh (it re-reads nameId live).
-    if (!goblin::inject_fmg_entries(kNpcNameInjectSlot, pending))
+    // Inject all (re)injected NpcName strings in ONE FMG rebuild, THEN apply the param writes. The
+    // engine re-reads nameId per tag-refresh, so the new value/string shows on the next refresh.
+    if (!pending.empty() && !goblin::inject_fmg_entries(kNpcNameInjectSlot, pending))
     {
         spdlog::warn("[ENEMYBAR] NpcName inject failed for {} entries", pending.size());
-        return;  // types stay in s_assigned so we don't spam a failing inject every frame
+        // Force a retry next frame for the affected types (their string didn't land).
+        for (auto &e : pending)
+            for (auto &kv : s_state)
+                if (kv.second.id == e.id) kv.second.injected.clear();
+        return;
     }
-    for (auto &pp : pending_param)
+    for (auto &pp : set_name)
         goblin::paramedit::param_set_field(L"NpcParam", (uint64_t)pp.first, 0x0c,
                                            goblin::paramedit::FieldType::S32, (double)pp.second);
+    for (int npcParam : clear_name)
+        goblin::paramedit::param_set_field(L"NpcParam", (uint64_t)npcParam, 0x0c,
+                                           goblin::paramedit::FieldType::S32, 0.0);
+
+    if (goblin::config::debugLogging && (!set_name.empty() || !clear_name.empty()))
+        spdlog::info("[ENEMYBAR] reconcile: +{} named, -{} reverted, {} (re)injected",
+                     set_name.size(), clear_name.size(), pending.size());
 }
