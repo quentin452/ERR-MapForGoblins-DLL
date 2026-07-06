@@ -122,3 +122,25 @@ vmap auto-close  panel_virtual_map.cpp Slice D (s_from_map) — must decouple fo
 Cross-ref: `windows_native_map_render_toggle_re_findings.md`, `windows_native_map_drawvfunc_re_findings.md` (§7
 the A/B negative), `windows_worldmap_affine_resident_source_re_findings.md` (resident projection = why redirect
 is now safe).
+
+## IMPLEMENTED 2026-07-06 (`c7ac663a`) — built green, NOT yet live-verified
+Safe redirect coded: on the map-key edge with `vmap_on_map_key`, the vmap TOGGLES + force-closes the native
+via `inject_native_map_close()` (SendInput **KEYEVENTF_SCANCODE** Escape — ER reads raw NOLEGACY, a wVk-only
+send is dropped; this was the first live bug). Host flag `overlay_api::{set_,}vmap_redirect` keeps the vmap the
+active fullscreen map after the native closes (`world_map_open()` false): `vmap_covers_map()` ORs it (input
+stays locked+fed), `panel_virtual_map` Slice D gates the auto-close on `!s_redirected`. State machine:
+map-key rising + redirect_mode → `!s_redirected` OPEN (open vmap, set redirect, inject close) / else CLOSE
+(close vmap, clear redirect, inject close).
+
+**★ LIVE-VERIFY PENDING — blocked by env, not code.** The verification pass was defeated by: input-injection
+flakiness (`key m`/`key Escape` 'lost first send', so the map didn't reliably open/close), a messy multi-
+instance game env (2+ eldenring.exe, stale RPC listener on 38700 held by wineserver, games not dying on
+`pkill -9` — wine-resilient), and the 11h D-state husk. **Cleanest path: reboot the machine, single clean
+boot (`hold_er.py`, profile `err_offline.me3`), then:** `set vmap_on_map_key 1` → `key m` (verify
+`status map_open=0` = native force-closed) → screenshot (vmap fullscreen, native gone) → `key m` again (vmap
+closes). If the native still shows, check the mod log for the inject + that Slice D's edge fired. Fallback if
+the inject is still dropped: reuse the debug-RPC `key` verb's exact INPUT construction (it's proven to close
+the map) instead of the hand-rolled SendInput.
+- Env gotcha learned: `mfg.py rpc` one-shots need the holder to RELEASE its RPC socket (single-client); a
+  stale listener makes a new boot connect to the dead socket (`RPC up ~0s` then ConnectionError). Kill ALL
+  eldenring/me3/wineserver + confirm `ss -tlnp | grep 38700` is FREE before booting.
