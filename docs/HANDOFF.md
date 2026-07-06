@@ -9,7 +9,29 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
-## ⇒ SESSION WRAP 2026-07-06f (Linux/Opus) — off-VM converter affine: validation HARNESS built (fd0ad45), empirical run env-blocked
+## ⇒ SESSION WRAP 2026-07-06f (Linux/Opus) — ★ off-VM converter affine VALIDATED + SHIPPED (fd0ad45 done): projection works map-closed, prime dropped
+
+Implements + validates the "Remaining" step of the resident-converter-affine RE (`fd0ad45` /
+`docs/re/windows_worldmap_affine_resident_source_re_findings.md`). `test_converter_offvm.py` **10/10** live.
+
+- **✅ VALIDATED:** off-VM `proj_conv 60 42 36` reproduces `u=3712 v=7296` map-closed; capture-replay
+  du/dv==0 vs the live VM. The origin caveat is settled the STATIC way — live `conv_affine 60` =
+  `gxbase=28 gzbase=64 origin=0` (the 7168/16384 offset is in the grid decode, not the origin).
+- **✅ SHIPPED:** `worldmap_probe::project()` + `get_converter_affine()` now fall back to an off-VM
+  base-affine build (areas 60/61/12; `origin 0 / gridbase 28,64 / bias 128 / scale 1`, `legacyNode 0`)
+  when no live VM → `proj 60 42 36 → u=3712 v=7296 page=0` **with the native map NEVER opened**. Confirmed
+  live. Legacy-dungeon folds still need the VM node ptr → those return false off-VM and the caller keeps
+  `legacy_fold`/baked (no regression). The "silent prime"/`world_map_open()` coupling is gone for the base
+  overworld/DLC/UG projection.
+- **Primitives:** `project_offvm()` (build 0x30 slot in our memory, run resolved `FUN_140876140`), RPC
+  verbs `proj_conv` + `conv_affine`, `test_converter_offvm.py` (registered in tasks.json). No engine
+  builder needed → `WORLDMAP_VM_CTOR`/`CONV_BUILDER` AOBs skipped. Both builds green + deployed.
+- **★ NEXT (follow-ups, not blocking):** (1) extend off-VM coverage to DLC-UG (40–43) + legacy folds if a
+  map-closed node source is found (today they need the VM); (2) the vmap can now assume map-closed base
+  projection — audit the `world_map_open()`-gated paths in the vmap/probe that were only there to force the
+  prime and simplify them.
+
+## ⇒ SESSION WRAP 2026-07-06f-pre (Linux/Opus) — off-VM converter affine: validation HARNESS built (fd0ad45), empirical run env-blocked
 
 Implements the "Remaining" step of the resident-converter-affine RE (`fd0ad45` /
 `docs/re/windows_worldmap_affine_resident_source_re_findings.md`): prove the world→map-space affine is

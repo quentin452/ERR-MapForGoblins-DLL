@@ -75,6 +75,12 @@ def _test(g):
     print(f"[OFFVM] map-closed construction that reproduces the affine: {which} "
           f"(unified={uni} static={sta})", flush=True)
 
+    # The SHIPPED path: project() itself must now succeed with the map NEVER opened (off-VM fallback for
+    # the base areas). This is what drops the "silent prime" — the vmap can project before any map-open.
+    nvm_uv, nvm_r = _proj(g, REF_AREA, REF_GX, REF_GZ)
+    g.check("project() works map-NEVER-opened via off-VM fallback (prime dropped)",
+            nvm_uv is not None and abs(nvm_uv[0] - 3712.0) < 0.5 and abs(nvm_uv[1] - 7296.0) < 0.5, nvm_r)
+
     # ── (2) CAPTURE-REPLAY: open once, capture live fields + live proj, close, replay off-VM. ──
     open_uv = None
     for _ in range(4):
@@ -89,14 +95,16 @@ def _test(g):
     aff, aff_r = _conv_affine(g, REF_AREA)
     g.check("captured live converter fields", aff is not None, aff_r)
 
+    # Close the map. Press Escape only while it is STILL open — pressing again after it closes pops the
+    # system menu (menucover=1) and the loop never settles. map_open==0 is the residency-relevant state.
     closed = False
-    for _ in range(6):
-        g.rpc("key Escape"); time.sleep(1.5)
+    for _ in range(8):
         st = g.status()
-        if st.get("map_open") == 0 and st.get("menucover") == 0:
+        if st.get("map_open") == 0:
             closed = True
             break
-    g.check("native map fully closed", closed, str(g.status()))
+        g.rpc("key Escape"); time.sleep(1.5)
+    g.check("native map closed (map_open==0)", closed, str(g.status()))
 
     if aff and open_uv:
         rep, rep_r = _proj_conv(g, REF_AREA, aff["gxb"], aff["gzb"], aff["ox"], aff["oz"],

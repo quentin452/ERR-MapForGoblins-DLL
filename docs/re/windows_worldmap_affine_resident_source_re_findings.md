@@ -60,7 +60,22 @@ is exactly what the empirical test must confirm:
   to the static 0 — that isolates whether map-open repopulates origin from map data (would be the only
   remaining map-open dependency) or whether the offset is purely in the grid decode (fully static).
 
-## Validation HARNESS — IMPLEMENTED 2026-07-06 (Linux); empirical RUN still pending
+## ✅ VALIDATED + SHIPPED 2026-07-06 (Linux) — off-VM projection works map-closed, prime dropped
+
+`test_converter_offvm.py` **10/10** on the live daily box:
+- Never-opened `proj_conv 60 42 36` reproduces the reference `u=3712 v=7296` under BOTH constructions.
+- **The origin caveat is settled the STATIC way:** live `conv_affine 60` = `gxbase=28 gzbase=64 origin=0`
+  (bias 128, scale 1). So the findings' static origin=0 is exactly what the real VM holds; the 7168/16384
+  offset lives in the grid decode (`gridbase 28/64 → 28*256=7168, 64*256=16384`), NOT the converter origin.
+- Capture-replay (open → capture live fields → close → off-VM) → **du/dv==0** vs the live VM.
+- **Shipped:** `project()` and `get_converter_affine()` now fall back to an off-VM base-affine build
+  (areas 60/61/12; `origin 0 / gridbase 28,64 / bias 128 / scale 1`, `legacyNode 0`) when no live VM →
+  `proj 60 42 36 → u=3712 v=7296 page=0` **with the native map NEVER opened**. Legacy-dungeon fold areas
+  still need the VM node ptr, so they return false off-VM and the caller keeps its `legacy_fold`/baked
+  path (no regression). The "silent prime" / `world_map_open()` coupling is no longer required for the
+  base overworld/DLC/UG projection.
+
+## Validation HARNESS — IMPLEMENTED 2026-07-06 (Linux)
 
 The off-VM validation path is now wired end-to-end (no engine-builder needed — we populate a 0x30 converter
 slot directly and run the resolved `FUN_140876140`, so the `WORLDMAP_VM_CTOR`/`WORLDMAP_CONV_BUILDER` AOBs
@@ -76,11 +91,8 @@ were NOT required):
   **capture-replay** — open once, capture the live fields + a live `proj`, close, replay off-VM, assert
   `du/dv==0`. Registered in `.vscode/tasks.json`.
 
-**RUN STILL PENDING (env-blocked 2026-07-06):** the daily box had a pre-existing **D-state `eldenring.exe`
-husk** (RSS 0, unreapable — the documented GPU/IO wedge) so a fresh cold-boot was unsafe. Run
-`python tools/rpc_tests/test_converter_offvm.py` on a clean box → the `[OFFVM]` line names the winning
-construction and the `du/dv==0` check confirms droppability. Only AFTER a green run wire `project()` /
-`get_converter_affine()` to the off-VM fallback + drop the prime.
+**RUN DONE (2026-07-06):** `test_converter_offvm.py` 10/10 (see the VALIDATED banner above). The fallback
+is wired into `project()` / `get_converter_affine()` and confirmed live (`proj` works map-never-opened).
 
 ## Deliverable / next
 

@@ -1064,7 +1064,30 @@ bool project(int area, int gridX, int gridZ, float posX, float posZ, float &mapU
     page = -1;
     uintptr_t vm = find_view_model();
     if (!vm)
+    {
+        // OFF-VM base-affine fallback — the native map was NEVER opened this session, so no live VM.
+        // fd0ad45 proved (and test_converter_offvm.py confirmed du/dv==0, live conv_affine==this) the base
+        // converters are exe-invariant: origin 0, gridbase 28/64, bias 128, scale 1 — shared by overworld
+        // (60), DLC overworld (61) and base underground (12). Rebuild the matching slot in our own memory
+        // and run FUN_140876140 map-closed → projection works with the map closed, no "silent prime".
+        // Legacy-dungeon folds need the VM's per-slot node ptr, so those areas return false here and the
+        // caller falls back to goblin::legacy_fold / the baked affine exactly as before (no regression).
+        struct BaseSlot { int area, page; } bases[] = {{60, 0}, {61, 10}, {12, 1}};
+        for (const BaseSlot &b : bases)
+        {
+            if (area != b.area)
+                continue;
+            float u = 0.f, v = 0.f;
+            if (project_offvm(b.area, 28, 64, 0.f, 0.f, 128.f, 128.f, 1.f, gridX, gridZ, posX, posZ, u, v))
+            {
+                mapU = u;
+                mapV = v;
+                page = b.page;
+                return true;
+            }
+        }
         return false;
+    }
     ProjPointFn fn = resolve_proj_point();
     if (!fn)
         return false;
@@ -1280,7 +1303,25 @@ bool get_converter_affine(int area, ConvAffine &out)
 
     ConvAffine a{};
     if (!read_converter_affine(find_view_model(), area, a))
-        return false;  // map not open yet / area not in the table
+    {
+        // OFF-VM fallback (fd0ad45): the base converters are exe-invariant (origin 0, gridbase 28/64,
+        // bias 128, scale 1) — identical to the live slot conv_affine reports. Return them for the base
+        // areas so the tile layer + inverse map→world work with the native map NEVER opened. Non-base
+        // (legacy-fold) areas still need the live VM → false (caller keeps its baked path).
+        if (area == 60 || area == 61 || area == 12)
+        {
+            a.area = area;
+            a.gridXbase = 28;
+            a.gridZbase = 64;
+            a.originX = 0.f;
+            a.originZ = 0.f;
+            a.biasX = 128.f;
+            a.biasZ = 128.f;
+            a.scale = 1.f;
+        }
+        else
+            return false;  // map not open yet / area not in the table
+    }
     for (int i = 0; i < 8; ++i)
         if (!s_have[i]) { s_cache[i] = a; s_areas[i] = area; s_have[i] = true; break; }
     out = a;
