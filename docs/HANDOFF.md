@@ -9,6 +9,37 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
+## ⇒ SESSION WRAP 2026-07-06g (Linux/Opus) — water Probe 2: offline dvdbnd→collision chain BUILT + VALIDATED, Oodle is the one wall
+
+Water sea-tag RE, disk source. Converged prior sessions to **Source A = hkxpwv collision `Water`/`Swamp`
+MATERIAL** riding the far-terrain bake. This session executed Probe 2's offline half on the **packed Linux
+box** and built `tools/collision_offline/` (C# net10, `dotnet run`, refs `tools/lib/Andre.SoulsFormats.dll`
++ our own RSA). 2 commits (`7364773` findings, `5d32f0c` tool+§8). Full detail:
+`docs/re/far_water_surface_disk_re_findings.md` §7–§8.
+
+- **VALIDATED end-to-end on Linux (no Windows, no pythonnet):** RSA-decrypt `Data*.bhd` (BigInteger modexp,
+  drop-leading-byte) → `SoulsFormats.BHD5.Read` → prime-0x85 hash → `.bdt` slice → `BXF4.Read` the
+  `hkxbhd/hkxbdt` → inner `hkx.dcx`. Ground-truth matches (`[[dvdbnd-packed-reader]]`): Data0=5824/Data2=39684
+  entries, known file 21056B/DCX exact. **Collision vpath convention confirmed:**
+  `map/mMM/mMM_XX_YY_ZZ/hMM_XX_YY_ZZ.hkx{bhd,bdt}` (h=hi, l=lo), m10/m14/m60 all resolve.
+- **SoulsFormats decodes ER collision GEOMETRY** (`HKNPCompressedMeshShapeData`: primitives+vertices) →
+  whole-map seabed Y / **far-relief is a green light offline on Linux** (shared with far-terrain).
+- **THE WALL = Oodle.** Inner `hkx.dcx` are DCX-**KRAK**; `DCX.Decompress` KRAK P/Invokes `oo2core_6_win64.dll`
+  (Win PE) → native Linux dotnet can't load it. So HKX geometry + the `FSNPCustomParamCompressedMeshShape`
+  per-triangle MATERIAL (the water mask) are blocked until an Oodle route is wired.
+- **★ NEXT — pick an Oodle route (all stay on this Linux box), findings §8:** (1) **ooz `.so`** (build powzix
+  Kraken decompressor, P/Invoke + hand-unwrap DCX-KRAK — fully offline, new native dep); (2) **RPC hybrid**
+  (game under Proton decompresses via proven in-process `dcx_decompress`, a new debug-RPC verb writes the
+  decompressed hkx to disk, C# decodes offline — least code, needs game booted); (3) **Wine C++ extractor**
+  (standalone clang-cl+xwin console linking `dvdbnd_reader`+`dcx_decompress`, loads oo2core under Wine —
+  offline, no game, no new dep). **Recommended for the material SPIKE: route 2** (cheapest to prove
+  per-triangle material is recoverable) — then reverse `Unk68/Unk80/UnkA8`+`primitives` to map material→tri,
+  and decide the whole-map BAKE's route (1 vs 3) once material decode is proven.
+- **Also still open:** which overworld tile covers the Liurnia lake/ocean (need a KNOWN-water tile for the
+  histogram; legacy `m14_00_00_00` sits in the lake = safe first target, Siofra `m12_01_00_00` = river);
+  **DLC RSA key** missing → DLC maps (m40-43) not readable offline yet (base-game water is enough to start).
+- User chose the **all-Linux** route for the material decode (extractor + runtime ids + hand-decode Unk).
+
 ## ⇒ SESSION WRAP 2026-07-06f (Linux/Opus) — off-VM projection SHIPPED + underground/DLC fixes + gamepad M4 + sea-tag RE routed
 
 Long session, 12 commits (`c03b90e`..`37c5ac5`), local master 1 ahead of origin (user pushed through
