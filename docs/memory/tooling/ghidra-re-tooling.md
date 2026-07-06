@@ -47,6 +47,10 @@ load). See [[ghidra-worldmap-re]] for the headless setup. Committed in repo `too
   9760 classes / 10202 vtables. Grep instead of re-deriving RTTI by hand: `grep 'MapIns@CS@@$'`,
   `grep -i worldgeom`, `grep $'\t0x6c5900'` (which class owns ctor @ that RVA). RVAs are er_base-relative
   for one build → regenerate after a patch (`rtti_index.java`; header records imagebase).
+- **Capturing headless output on Windows:** run the `.bat` via the **PowerShell tool** (Bash `cmd.exe`
+  only prints the banner). PowerShell `*> out.txt` writes **UTF-16LE** — decode with
+  `iconv -f UTF-16LE -t UTF-8` before grepping (raw greps see it as a binary file). `println` from a script
+  is prefixed `INFO  <script>.java> …  (GhidraScript)`; strip that to recover clean lines.
 - **⚠ The whole `-scriptPath` dir compiles as ONE OSGi bundle.** A compile error in ANY `.java` in
   `D:\ghidra_scripts` makes EVERY script fail to load with a misleading `"class could not be found / Failed
   to get OSGi bundle"` — and the real javac diagnostic reaches NEITHER stdout NOR `application.log`. So a
