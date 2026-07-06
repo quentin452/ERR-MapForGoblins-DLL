@@ -127,19 +127,15 @@ namespace goblin
     // heading arrow. false during a load / before the WCM static resolves.
     bool get_player_facing_yaw(float &yaw_radians);
 
-    // One on-screen enemy HP-bar the engine is currently drawing (the game's OWN bar; we only add
-    // the NAME to it). Read from CSFeMan's per-frame HP-bar array — the engine already projected the
-    // bar to screen. sx/sy are in the game's virtual 1920x1080 coord space (scale to backbuffer at
-    // draw). See docs/re/linux_enemy_healthbar_name_re_findings.md.
-    struct EnemyBarLabel
-    {
-        float sx = 0.0f, sy = 0.0f; // game 1920x1080 screen coords of the HP bar (its left/top)
-        char  name[64] = {};        // UTF-8, null-terminated; empty if the name didn't resolve
-    };
-    // Fill up to `max` visible NON-BOSS enemy HP-bar labels (bosses already named by the game).
-    // Returns the count written (0 if CSFeMan/WorldChrMan/GetChrInsFromHandle not yet resolved or a
-    // read faulted). POD-only across the DLL boundary (no heap/string crossing). Call per frame.
-    int get_enemy_bar_labels(EnemyBarLabel *buf, int max);
+    // Name the game's OWN non-boss enemy HP bars through the ENGINE's native data path — no ImGui
+    // overlay. The engine draws the red EnemyTag name from NpcParam.nameId -> NpcName FMG and re-reads
+    // nameId LIVE, but leaves nameId==0 generics blank. Per frame we walk CSFeMan's visible-bar array,
+    // and for each type OUR resolver can name (enemy_display_name, tiers 2/3) but the engine leaves
+    // blank, inject a NpcName string + set that type's NpcParam.nameId -> the engine renders our name
+    // in its own frame-synced, correctly-fonted tag. Host-only (FMG inject + live param write); at most
+    // once per enemy TYPE (idempotent). No-op until CSFeMan/WorldChrMan/GetChrInsFromHandle resolve or
+    // if in-menu/reading faults. See docs/plans/native_enemy_names_scaleform_plan.md.
+    void update_native_enemy_names();
 
     // Unified overworld marker-space coord for an arbitrary baked marker (projects
     // legacy dungeons to area-60 via LEGACY_CONV, then world = grid*256 + local).

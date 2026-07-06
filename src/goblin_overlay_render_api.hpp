@@ -47,7 +47,6 @@ namespace goblin::overlay_api
     X(iconMinHalfPx) \
     X(minimapOffsetX) X(minimapOffsetY) X(minimapOpacity) X(minimapSize) \
     X(minimapZoom) X(overlayIconScale) X(overlayMasterScale) X(viewDelayFrames) \
-    X(enemyNameOffsetY) X(enemyNameScale) \
     X(dialDiscX) X(dialDiscY) X(dialDiscR) X(dialPillX0) X(dialPillY0) X(dialPillX1) X(dialPillY1) \
     X(dialFadeMargin)
 #define GOBLIN_CFG_U8_LIST(X) X(clusterFarRadius) X(clusterNearRadius) X(clusterNearThreshold) X(virtualKeyboardLayout)
@@ -194,9 +193,6 @@ namespace goblin::overlay_api
     GOBLIN_RENDER_API bool get_player_map_pos(int &out_area, float &world_x, float &world_z,
                             int *out_gx = nullptr, int *out_gz = nullptr, int *out_group = nullptr);
     GOBLIN_RENDER_API bool get_player_facing_yaw(float &yaw_radians);
-    // Mob names on the game's enemy HP bar: fills up to `max` visible non-boss labels, returns count.
-    // goblin::EnemyBarLabel is declared in goblin_inject.hpp (included above). POD across the boundary.
-    GOBLIN_RENDER_API int get_enemy_bar_labels(goblin::EnemyBarLabel *buf, int max);
     GOBLIN_RENDER_API std::string lookup_text_utf8(int32_t id);
 
     // Set a param field by name (regulation-free live edit), for the in-game World Editor. `param` is

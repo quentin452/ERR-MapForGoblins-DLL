@@ -1,11 +1,14 @@
-// Mob NAMES on ELDEN RING's existing enemy health bar.
+// Mob NAMES on ELDEN RING's existing enemy health bar — via the engine's OWN native tag.
 //
-// The game draws the enemy HP bar for every locked/aggroed enemy but names only BOSSES; this adds
-// the name to non-boss bars. We do NOT draw a bar and do NOT project world->screen: the engine
-// already computed each on-screen HP bar and stored it in the CSFeMan HUD manager's per-frame
-// `entityHpBars[8]` array. We read that array, turn each entry's entity handle into its live ChrIns,
-// resolve the display name from the ACTIVE install's own regulation/msg files (no bake), and hand
-// (screenPos, name) POD entries to the render side to draw over the bar.
+// The game draws the red enemy-name tag from NpcParam.nameId -> NpcName and re-reads nameId LIVE, but
+// names only entities whose nameId != 0 (bosses / named NPCs) and leaves generics blank. Instead of
+// drawing our OWN text (the old ImGui overlay — jittered on camera swings, edge-clamped, needed our
+// font), we FEED the engine's path: walk the CSFeMan HUD manager's per-frame `entityHpBars[8]` array,
+// turn each entry's entity handle into its live ChrIns, resolve the display name from the ACTIVE
+// install (no bake), and for a type the engine leaves blank (nameId==0) inject a NpcName string + set
+// its NpcParam.nameId -> the game renders the name in its own tag. RE: the writer is the vanilla
+// engine, mechanism/offsets proven live 2026-07-06 (docs/re/windows_enemy_name_hud_feed_re_findings.md,
+// docs/plans/native_enemy_names_scaleform_plan.md). Mod-agnostic — it IS the engine's own data path.
 //
 // Struct offsets + signatures are derived from the bundled, WORKING PostureBarMod.dll (Mordrog) so
 // they are live-valid on this ERR/ER build. The layered NAME resolution is the Windows-RE result in
@@ -17,14 +20,17 @@
 //                                               Sentinel 903251600 — EMEVD HandleBossHealthBar ids)
 //   else    nameless (vanilla-correct for a true generic) — draw nothing.
 //
-// THREADING/SAFETY: get_enemy_bar_labels() runs on the render/present path (like get_player_world_pos)
-// — single-threaded, no locks. The raw game-memory reads + the GetChrInsFromHandle game-function call
-// run inside a __try with a noinline body (clang-cl elides __try around raw loads otherwise — see
+// THREADING/SAFETY: update_native_enemy_names() runs on the present thread (host side), single-
+// threaded, no locks. The raw game-memory reads + the GetChrInsFromHandle game-function call run
+// inside a __try with a noinline body (clang-cl elides __try around raw loads otherwise — see
 // docs/memory/tooling/clang-cl-seh-noinline.md); a fault mid-teardown yields count=0. Name resolution
-// (param table + FMG) runs OUTSIDE the SEH frame and is cached per npcParamId.
+// (param table + FMG), the FMG inject, and the param write run OUTSIDE the SEH frame; the inject +
+// param write happen at most once per npcParamId (cached), so the steady-state per-frame cost is the
+// bar probe alone.
 
-#include "goblin_inject.hpp"    // EnemyBarLabel, npc_team_and_name
-#include "goblin_messages.hpp"  // lookup_text_utf8, raw_message_utf8
+#include "goblin_inject.hpp"    // npc_team_and_name, update_native_enemy_names
+#include "goblin_messages.hpp"  // lookup_text_utf8, raw_message_utf8, inject_fmg_entries, FmgEntry
+#include "goblin_param_edit.hpp"// paramedit::param_set_field — write NpcParam.nameId live
 #include "goblin_config.hpp"    // config::debugLogging
 #include "re_signatures.hpp"
 #include "modutils.hpp"
@@ -36,6 +42,8 @@
 #include <cstring>
 #include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 namespace
 {
@@ -223,6 +231,25 @@ const ResolvedName &resolve_enemy_name(int npcParam, int model)
     auto [ins, _] = cache.emplace(npcParam, ResolvedName{std::move(name), tier});
     return ins->second;
 }
+
+// UTF-8 (our resolver's output) -> UTF-16 for the FMG injector (inject_fmg_entries wants wstring).
+std::wstring utf8_to_wide(const std::string &s)
+{
+    if (s.empty()) return {};
+    int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), nullptr, 0);
+    if (n <= 0) return {};
+    std::wstring w(static_cast<size_t>(n), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), w.data(), n);
+    return w;
+}
+
+// Reserved NpcName id band for MFG-injected generic names. Sits BELOW the tier-3 vanilla boss band
+// (kBossBandBase 9e8 + model*1000) and ABOVE typical real NpcName ids, so an injected id collides with
+// neither the active install's NpcName nor our own tier-3 boss lookups. One id per npcParamId, handed
+// out sequentially, capped short of 9e8.
+constexpr int32_t  kMfgNameIdBase     = 810000000;
+constexpr int32_t  kMfgNameIdMax      = 899000000;  // stay under the 9e8 boss band
+constexpr uint32_t kNpcNameInjectSlot = 18;         // base NpcName FMG slot the engine reads (RE-proven)
 } // namespace
 
 // Public: the enemy's display name (tiers 1-3, cached; "" = nameless). For the boss-marker
@@ -233,40 +260,75 @@ std::string goblin::enemy_display_name(int npcParam, int model)
     return resolve_enemy_name(npcParam, model).name;
 }
 
-// On-screen thresholds (1920x1080 space, PostureBarMod values): keep the label inside a sane band so
-// it doesn't ride the extreme screen edge or fall off the bottom (raw screenPos clamps to 1080 there).
-constexpr float kClampL = 130.0f, kClampR = 1790.0f, kClampT = 175.0f, kClampB = 990.0f;
-static inline float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
-
-int goblin::get_enemy_bar_labels(EnemyBarLabel *buf, int max)
+// Native enemy names via the engine's OWN data path (docs/plans/native_enemy_names_scaleform_plan.md,
+// docs/re/windows_enemy_name_hud_feed_re_findings.md). The engine renders the red EnemyTag name from
+// NpcParam.nameId -> NpcName FMG and RE-READS nameId live, but only feeds the tag when the resolved
+// name != "" -> nameId==0 generics stay blank. For each visible bar whose TYPE is nameId==0 yet OUR
+// resolver can name (tiers 2/3), we inject a NpcName string + set that type's NpcParam.nameId, so the
+// engine renders our name in its own frame-synced, correctly-fonted tag (no ImGui overlay -> no
+// jitter/edge-clamp, accents free). Runs on the present thread, host-side. At most ONCE per npcParamId
+// (s_assigned) and BATCHED per frame (one FMG rebuild), so the cost is a rare first-sighting hitch.
+void goblin::update_native_enemy_names()
 {
-    if (!buf || max <= 0) return 0;
     resolve_once();
-    if (!g_feman_slot || !g_wcm_slot || !g_get_chrins) return 0;
+    if (!g_feman_slot || !g_wcm_slot || !g_get_chrins) return;
 
     BarProbe pr;
     probe_bars_seh(g_feman_slot, g_wcm_slot, g_get_chrins, &pr);
+    if (pr.count <= 0) return;
 
-    int out = 0;
-    for (int i = 0; i < pr.count && out < max; ++i)
+    // npcParamId -> injected NpcName id. 0 = handled but NOT named (engine already names it, or truly
+    // nameless) — never retried. A non-zero value = the id we injected for this type.
+    static std::unordered_map<int, int32_t> s_assigned;
+    static int32_t s_next_id = kMfgNameIdBase;
+
+    std::vector<goblin::FmgEntry> pending;             // this frame's new NpcName strings (one rebuild)
+    std::vector<std::pair<int, int32_t>> pending_param; // (npcParamId, id) written AFTER the inject lands
+
+    for (int i = 0; i < pr.count; ++i)
     {
-        const ResolvedName &rn = resolve_enemy_name(pr.e[i].npcParam, pr.e[i].model);
-        if (rn.name.empty()) continue;  // true generic with no name in the active install → draw nothing
-        // Draw at the raw bar position (it's smooth frame-to-frame — no extrapolation needed), clamped
-        // to the on-screen band so the name stays put instead of riding the edge.
-        buf[out].sx = clampf(pr.e[i].sx, kClampL, kClampR);
-        buf[out].sy = clampf(pr.e[i].sy, kClampT, kClampB);
-        std::snprintf(buf[out].name, sizeof(buf[out].name), "%s", rn.name.c_str());
-        ++out;
-    }
+        const int npcParam = pr.e[i].npcParam;
+        if (npcParam <= 0) continue;
+        if (s_assigned.count(npcParam)) continue;      // already handled this TYPE
 
-    if (goblin::config::debugLogging && pr.count > 0)
-        for (int i = 0; i < pr.count; ++i)
+        // Engine already names it (nameId != 0 -> native tag shows)? Nothing to do; mark handled.
+        uint8_t team = 0; int32_t nameId = 0;
+        if (goblin::npc_team_and_name((uint32_t)npcParam, &team, &nameId) && nameId != 0)
         {
-            const ResolvedName &rn = resolve_enemy_name(pr.e[i].npcParam, pr.e[i].model);
-            spdlog::info("[ENEMYBAR] vis={} named={} | [{}] npc={} model={} tier={} name='{}'",
-                         pr.count, out, i, pr.e[i].npcParam, pr.e[i].model, rn.tier, rn.name);
+            s_assigned[npcParam] = 0;
+            continue;
         }
 
-    return out;
+        // nameId == 0: can WE name it (tiers 2/3)? Empty -> truly nameless, leave vanilla-blank.
+        const ResolvedName &rn = resolve_enemy_name(npcParam, pr.e[i].model);
+        if (rn.name.empty()) { s_assigned[npcParam] = 0; continue; }
+
+        if (s_next_id >= kMfgNameIdMax)                // band exhausted (would take ~89M distinct types)
+        {
+            spdlog::warn("[ENEMYBAR] MFG NpcName id band exhausted at {} — remaining generics stay unnamed",
+                         s_next_id);
+            break;
+        }
+        int32_t id = s_next_id++;
+        s_assigned[npcParam] = id;                     // marked now so a later frame won't re-queue it
+        pending.push_back({id, utf8_to_wide(rn.name)});
+        pending_param.emplace_back(npcParam, id);
+
+        if (goblin::config::debugLogging)
+            spdlog::info("[ENEMYBAR] name '{}' -> NpcName[{}] for npcParam={} model={} tier={}",
+                         rn.name, id, npcParam, pr.e[i].model, rn.tier);
+    }
+
+    if (pending.empty()) return;
+
+    // Inject all new NpcName strings in ONE FMG rebuild, THEN point each type's NpcParam.nameId (s32
+    // @ +0x0c) at its id. The engine picks it up on the next tag-refresh (it re-reads nameId live).
+    if (!goblin::inject_fmg_entries(kNpcNameInjectSlot, pending))
+    {
+        spdlog::warn("[ENEMYBAR] NpcName inject failed for {} entries", pending.size());
+        return;  // types stay in s_assigned so we don't spam a failing inject every frame
+    }
+    for (auto &pp : pending_param)
+        goblin::paramedit::param_set_field(L"NpcParam", (uint64_t)pp.first, 0x0c,
+                                           goblin::paramedit::FieldType::S32, (double)pp.second);
 }

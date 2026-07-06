@@ -9,6 +9,24 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
+## ⇒ SESSION WRAP 2026-07-06e (Linux/Opus) — ★ native enemy names IMPLEMENTED (data path shipped, ImGui path deleted) + all-DejaVu overlay font
+
+- **✅ NATIVE ENEMY NAMES — IMPLEMENTED (the 07-06d plan below is DONE).** `src/goblin_enemy_names.cpp`
+  `update_native_enemy_names()` (host present-thread, called from `goblin_overlay.cpp` gated on
+  `config::enemyNames`): per frame walks the visible `entityHpBars`; for each `nameId==0` TYPE our resolver
+  can name (tiers 2/3), it injects a `NpcName` string (slot 18, reserved id band `810000000..899000000`,
+  one seq id per npcParamId, batched into ONE FMG rebuild per frame) then writes `NpcParam.nameId` (+0x0c
+  s32) once per type → the engine renders our name in its own native red tag. Idempotent per npcParamId
+  (`s_assigned`). **ImGui path DELETED**: `draw_enemy_bar_names`, the `get_enemy_bar_labels`/`EnemyBarLabel`
+  render feed + its overlay-api export, the `enemyNameScale`/`enemyNameOffsetY` cfg + F1 sliders. Kept
+  `enemy_display_name` (map boss-marker supplement) + the `enemyNames` on/off toggle. Both builds (single +
+  hot-reload split) link green; deployed. **NOT yet in-world verified** — next: boot ER, confirm a generic
+  (e.g. an Aigle / sheep) shows its name in the native tag, accents correct, no dup, no gameplay side-effect
+  from setting nameId (invader/summon/aggro text). Open risk from the plan: validate the `810000000` band
+  is unused by NpcName across installs; confirm nameId is display-only.
+- **Overlay font → single embedded DejaVu Sans** (dropped the ProggyClean+TTF merge + the GlyphOffset fudge;
+  15px, live-tuning knob). Needs game restart (host-side atlas). Commit `4fc548c`.
+
 ## ⇒ SESSION WRAP 2026-07-06d (Windows/Opus) — ★ native enemy names SOLVED (engine data-path, proven live) + minimap-coupling bug fixed; LINUX takes implementation
 
 Windows box, live RE on the running game. Two landed things + a major unblock handed to Linux.

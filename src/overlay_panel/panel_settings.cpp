@@ -275,23 +275,21 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
         ImGui::TextDisabled("%s", tr("North-up. Hidden while the world map is open. Save to INI to persist."));
     }
 
-    // Enemy-name HUD (mob name on the game's own enemy HP bar). Live; persists.
-    const bool show_enemy = f.match("enemy bars mob name health bar hp label lead position sync "
-                                    "offset size scale");
+    // Enemy names via the engine's own native tag (no ImGui overlay). Live; persists.
+    const bool show_enemy = f.match("enemy bars mob name health bar hp label native tag npcname");
     if (f.filtering && show_enemy) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
     if (show_enemy && ImGui::CollapsingHeader(tr("Enemy bars (mob names)")))
     {
-        ImGui::Checkbox(tr("Show mob names on the enemy HP bar"),
+        ImGui::Checkbox(tr("Name non-boss enemies"),
                         goblin::overlay_api::cfg_enemyNames_ptr());
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("%s", tr("Label the game's own non-boss enemy health bar with the mob's\n"
-                                       "name (read live from the active install). Bosses are already\n"
-                                       "named by the game. A mob with no name in the game data stays\n"
-                                       "unlabeled."));
-        ImGui::SliderFloat(tr("Offset above bar (px)"), goblin::overlay_api::cfg_enemyNameOffsetY_ptr(),
-                           -40.0f, 40.0f, "%.0f", ImGuiSliderFlags_AlwaysClamp);
-        ImGui::SliderFloat(tr("Text size"), goblin::overlay_api::cfg_enemyNameScale_ptr(),
-                           0.5f, 3.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            ImGui::SetTooltip("%s", tr("Name the game's own non-boss enemy tags. The name is resolved\n"
+                                       "live from the active install and fed to the engine's OWN red\n"
+                                       "tag (NpcParam.nameId -> NpcName), so the game renders it itself\n"
+                                       "— correct font/accents, frame-synced. Bosses are already named.\n"
+                                       "A mob with no name in the game data stays unnamed. Takes effect\n"
+                                       "on the enemy's next name refresh; turning it OFF stops naming\n"
+                                       "NEW enemies (already-named ones clear on reload)."));
         ImGui::TextDisabled("%s", tr("Live. Save to INI to persist."));
     }
 

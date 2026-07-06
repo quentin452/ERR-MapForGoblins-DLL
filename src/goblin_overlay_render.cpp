@@ -193,44 +193,6 @@ void goblin::overlay::request_f1_tab(int idx) { g_requested_tab = idx; }
         }
     }
 
-    // Mob NAMES on the game's own non-boss enemy HP bar. The engine already draws the bar and
-    // stored each on-screen bar position; we read (screenPos, name) POD entries from the host and
-    // label them. Screen coords are the game's virtual 1920x1080 space -> scale to the backbuffer.
-    // See docs/re/linux_enemy_healthbar_name_re_findings.md.
-    static void draw_enemy_bar_names(ImGuiIO &io)
-    {
-        if (!*goblin::overlay_api::cfg_enemyNames_ptr())
-            return;
-        // Don't draw the in-world HUD over the world map / a menu (we render post-present, always on
-        // top). The game hides the enemy bars there anyway; this stops our text punching through.
-        if (goblin::overlay_api::world_map_open() || goblin::overlay_api::input_menu_open())
-            return;
-        goblin::EnemyBarLabel labels[8];
-        int n = goblin::overlay_api::get_enemy_bar_labels(labels, 8);
-        if (n <= 0)
-            return;
-        const float vscale = io.DisplaySize.x / 1920.0f; // game 1920x1080 space -> backbuffer
-        const float tscale = *goblin::overlay_api::cfg_enemyNameScale_ptr();
-        const float offY = *goblin::overlay_api::cfg_enemyNameOffsetY_ptr() * vscale;
-        ImFont *font = ImGui::GetFont();
-        const float fontSize = ImGui::GetFontSize() * (tscale > 0.f ? tscale : 1.f);
-        ImDrawList *fg = ImGui::GetForegroundDrawList();
-        for (int i = 0; i < n; ++i)
-        {
-            if (labels[i].name[0] == '\0')
-                continue;
-            const float sx = labels[i].sx * vscale;
-            const float sy = labels[i].sy * vscale;
-            const char *txt = labels[i].name;
-            ImVec2 ts = ImGui::CalcTextSize(txt);
-            ts.x *= tscale; ts.y *= tscale;
-            // Centered on the bar's x, `offY` above the bar top. Shadow first for legibility.
-            const ImVec2 p(sx - ts.x * 0.5f, sy - ts.y - offY);
-            fg->AddText(font, fontSize, ImVec2(p.x + 1.0f, p.y + 1.0f), IM_COL32(0, 0, 0, 205), txt);
-            fg->AddText(font, fontSize, p, IM_COL32(255, 255, 255, 235), txt);
-        }
-    }
-
     // In-game minimap HUD (corner, north-up, overworld). Drawn during gameplay (map
     // closed) on the foreground draw list. No-ops internally when show_minimap is off,
     // the icons master is off, or the player is underground (pos not yet reliable).
@@ -242,7 +204,6 @@ void goblin::overlay::request_f1_tab(int idx) { g_requested_tab = idx; }
         GOBLIN_BENCH("render.minimap");
         void *atlas = ctx.atlas_srv;
         ImGuiIO &io = ImGui::GetIO();
-        draw_enemy_bar_names(io); // mob names on the game's enemy HP bar (independent of the minimap)
         if (ensure_grace_srv())
         {
             void *gs_gpu; ImVec2 gs_uv0, gs_uv1; int gs_nw, gs_nh;

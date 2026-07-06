@@ -1,6 +1,14 @@
 # Native Scaleform enemy names (replace the ImGui overlay path)
 
-**Status:** ★ **MECHANISM SOLVED + native path PROVEN LIVE 2026-07-06 (Windows).** The Scaleform-RE
+**Status:** ✅ **IMPLEMENTED 2026-07-06** — the DATA path below is wired in
+`src/goblin_enemy_names.cpp` (`update_native_enemy_names()`, host present-thread): per frame it walks
+the visible `entityHpBars`, and for each `nameId==0` type our resolver can name it injects a NpcName
+string (slot 18, reserved id band `810000000+`) + writes `NpcParam.nameId` (+0x0c) once per type, so the
+engine renders our name in its own native red tag. The ImGui path is DELETED (`draw_enemy_bar_names`, the
+`get_enemy_bar_labels`/`EnemyBarLabel` render feed, `enemyNameScale`/`enemyNameOffsetY` cfg). Both builds
+link green. `enemy_display_name` kept (map boss-marker supplement). Not yet in-world verified on this box.
+
+**Status (history):** ★ **MECHANISM SOLVED + native path PROVEN LIVE 2026-07-06 (Windows).** The Scaleform-RE
 approach below is **SUPERSEDED** — no gfx RE, no `SetTextHTML` capture needed. The enemy name is drawn by
 the **VANILLA ENGINE** (writer RIP in `eldenring.exe`, not `reforged.dll`), from `NpcParam.nameId →
 NpcName` FMG, and the engine **re-reads `nameId` LIVE** (no cache-at-spawn). So the mod-agnostic native

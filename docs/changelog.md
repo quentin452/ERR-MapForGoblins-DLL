@@ -189,6 +189,13 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   the map" game-state flag (`CSMenuMan+0x104`). Gated by the `clip_game_ui` setting.
 
 ### Changed
+- **Non-boss enemy names now use the game's OWN native tag, not an ImGui overlay.** The engine draws the
+  red enemy-name tag from `NpcParam.nameId → NpcName` (and re-reads it live) but leaves generic mobs blank.
+  MapForGoblins now resolves the mob's name from the active install and feeds it into that native path
+  (inject a `NpcName` string + set the type's `nameId`), so the game renders the name itself — correct
+  font/accents, frame-synced with the bar, no jitter or edge-clamp on camera swings. Replaces the old
+  overlay-drawn label (removed, along with its offset/size sliders). Bosses already named are untouched;
+  a mob with no name in the game data stays unnamed. Mod-agnostic (it is the engine's own data path).
 - **Overlay uses one font throughout (embedded DejaVu Sans), no more bitmap+TTF mix.** ASCII was ImGui's
   ProggyClean bitmap and only accents/extended glyphs were a DejaVu TTF merged on top — two rasterizers
   with different baselines, so accented chars (é in "Varré", œ, →) read raised/blurry beside the pixel
