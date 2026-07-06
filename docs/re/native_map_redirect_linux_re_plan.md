@@ -144,3 +144,31 @@ the map) instead of the hand-rolled SendInput.
 - Env gotcha learned: `mfg.py rpc` one-shots need the holder to RELEASE its RPC socket (single-client); a
   stale listener makes a new boot connect to the dead socket (`RPC up ~0s` then ConnectionError). Kill ALL
   eldenring/me3/wineserver + confirm `ss -tlnp | grep 38700` is FREE before booting.
+
+## SAFE METHOD REJECTED (user live-test 2026-07-06) → PIVOT to true NEVER-OPEN
+User tested the safe redirect: **open → native map opens, then vmap covers it; close → vmap closes but the
+native map stays OPEN.** The close-leaves-native-open is partly the scan-code inject fix not being in the
+build under test (the running game predated `22f11d26`), BUT the user's verdict stands: **the open+close/flash
+approach is not the right one** — they want the native to NEVER open. (Consistent with their earlier "pourquoi
+ouvrir?".)
+
+**⇒ Do the TRUE redirect: hook the OPENER + suppress the native open + toggle the vmap.**
+- Hook target = the **opener function** (contains the fwa ret-addr `er+0x7efb89`; it sets up 4 args
+  `mov r8,rbp; mov rdx,r12; mov rcx,rbx` then `call er+0x792550` which constructs the WorldMapDialog). Hooking
+  the opener ENTRY and returning early when `vmap_on_map_key` = nothing is allocated/pushed → menu stack stays
+  balanced (SAFE — unlike no-oping the ctor `er+0x9cf8f0`, which leaves the caller with an unconstructed
+  object → crash). Both keybind systems (gamepad+kb) funnel through this opener → one hook covers both.
+- In the hook: `vmap_on_map_key` on → TOGGLE the vmap (`virtual_map_open()`), set the redirect flag, and
+  RETURN without calling the original (native never opens). Off → call original. The vmap is driven by the
+  hook directly (not `world_map_open()`, which never fires when the native is suppressed).
+- Reuse the already-built infra (`c7ac663a`): the host `overlay_api::vmap_redirect` flag + `vmap_covers_map()`
+  OR + the input gating all still apply; only the trigger changes from "open+close on the map-open edge" to
+  "the opener hook toggles + suppresses".
+
+**★ BLOCKED on a clean env.** Pinning the opener ENTRY (scan back from `er+0x7efb89` for the prologue / author
+an AOB) needs a LIVE game to read the module bytes (Linux `mem_dump`), and the hook needs crash-tolerant
+live-testing. This session's env is unusable: no reachable game, multiple wedged eldenring/me3/wineserver that
+survive `pkill -9`, a stale RPC port, and the 11h D-state husk. **NEXT SESSION: reboot the machine → clean boot
+→ `er_base` + `mem_dump` around `er+0x7efb89` to pin the opener entry → author an AOB → MinHook it (suppress +
+toggle) → live-test (freeze/fast-travel/page/fog).** The safe-redirect code stays committed as the reusable
+flag/gate base; only the Slice-D trigger is replaced by the opener hook.
