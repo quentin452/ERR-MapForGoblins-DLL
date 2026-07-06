@@ -696,7 +696,7 @@ static void draw_marker_impl(ImDrawList *fg, const Marker &m, ImVec2 p, const Ic
     // itself — discovered (rested) = full colour, undiscovered = grey. Source = live engine sprite:
     // the live engine sprite (s_grace_tex, time-tinted) or the mod's baked atlas icon (clean). Needs
     // native-pin suppression to avoid doubling. Graces aren't collectible → no graying path.
-    if (m.discover_flag && (*goblin::overlay_api::cfg_graceOverlay_ptr()))
+    if (m.discover_flag)  // overlay is the sole grace source now (grace_overlay baked ON)
     {
         // Discovered = a green check (same "done" language as cleared bosses / collected loot), NOT a
         // faded tint — ImGui can't desaturate a texture, and a check reads far clearer than low opacity.
@@ -1076,13 +1076,9 @@ void draw_cluster_glyph(ImDrawList *fg, ImVec2 c, int n, float r, bool depleted)
 // they can (thousands of markers per frame).
 static bool marker_passes_gates(const Marker &m)
 {
-    // Graces (discover_flag set only on grace markers). With grace_overlay the overlay
-    // draws ALL graces itself (discovered = colour, undiscovered = grey). Without it,
-    // the old hybrid: drop discovered graces (the game draws those natively), keep
-    // undiscovered. Read live so it updates the moment the player rests at a grace.
-    if (m.discover_flag && !(*goblin::overlay_api::cfg_graceOverlay_ptr()) &&
-        goblin::overlay_api::read_event_flag((uint32_t)m.discover_flag))
-        return false;
+    // Graces (discover_flag set only on grace markers): the overlay draws ALL graces itself
+    // (discovered = colour, undiscovered = grey) — grace_overlay baked ON, so the old hybrid that
+    // dropped discovered graces for the game to draw natively is gone (native map is retired).
     // Post-event story gate: a marker tagged with a secondary story flag (post-burn
     // Leyndell / Chapel, Ashen Capital, Charm-broken, Sealing-tree-burnt) is a
     // post-event variant and appears only once that flag is set.
@@ -1180,8 +1176,6 @@ static void ui_rects_store()
 // disc/pill boundary drives a ramp centred on the edge. Margin 0 = hard edge (old behaviour).
 static float game_ui_exclusion_alpha(const ImVec2 &p, float realW, float realH)
 {
-    if (!(*goblin::overlay_api::cfg_clipGameUi_ptr()))
-        return 1.f;
     const float sx = realW / 1920.f, sy = realH / 1080.f, ss = (sx + sy) * 0.5f;
     // User-drawn zones first (any install) — hard hide.
     ui_rects_sync();
@@ -1959,8 +1953,8 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // worldmap pass so markers, piles, labels, fans, region chips AND hover all go silent together
     // (same "hover dies with the pixels" invariant the canvas clip keeps). Don't reset the view
     // delay — the map is still open underneath, so it resumes smoothly when the menu closes. Gated
-    // by clip_game_ui so it can be toggled off for debugging. (Minimap pass is unaffected.)
-    if ((*goblin::overlay_api::cfg_clipGameUi_ptr()) && goblin::worldmap_probe::menu_covers_map())
+    // (Minimap pass is unaffected.)
+    if (goblin::worldmap_probe::menu_covers_map())
         return;
 
     // Per-frame worldmap render cost (aggregate-only — runs every frame the map is
@@ -2012,10 +2006,10 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
         g_view_delay.reset();
     s_prev_page = page_key;
 
-    // Motion sync: delay the projected view by the configured frame count so markers ride the
-    // native map layer instead of leading it during a pan. Live config (view_delay_frames) so the
-    // pan/zoom re-adjust can be A/B-tuned in-game; apply() clamps to the ring's [0, N-1] capacity.
-    g_view_delay.apply(view, (*goblin::overlay_api::cfg_viewDelayFrames_ptr()), (*goblin::overlay_api::cfg_viewDelayZoom_ptr()));
+    // Motion sync: delay the projected view by 1 frame so markers ride the native map layer instead
+    // of leading it during a pan (native-basemap-only; baked to the tuned default now the F1 knob is
+    // gone). apply() clamps to the ring's [0, N-1] capacity.
+    g_view_delay.apply(view, 1.0f, true);
 
     s_grace_zoom = view.zoom;   // grace GPU icon scales with zoom (draw_marker reads this)
 

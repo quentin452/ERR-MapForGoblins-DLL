@@ -35,18 +35,18 @@ namespace goblin::overlay_api
     // Scalars are exposed as pointer-getters (works uniformly for read AND for the ImGui widgets
     // that bind `&goblin::config::X` directly) via one shared macro shape.
 #define GOBLIN_CFG_BOOL_LIST(X) \
-    X(requireMapFragments) X(clipGameUi) X(bakedOnly) X(collectedGraying) X(hideCollected) X(stackIdenticalItems) \
+    X(requireMapFragments) X(bakedOnly) X(collectedGraying) X(hideCollected) X(stackIdenticalItems) \
     X(clusterDebugRadius) X(clusterDebugMarkers) X(showRegionLabels) X(nativeItemIcons) X(diagLootFlags) \
     X(diagLootPos) X(debugLogging) X(anonymousLoot) X(dropMerchantPhantoms) X(redifyBossIcons) \
-    X(graceOverlay) X(suppressNativeBosses) X(landmarkSuppressNative) X(enableMarkerDump) X(debugEventFlags) \
+    X(enableMarkerDump) X(debugEventFlags) \
     X(debugItemGrants) X(debugFlagCapture) X(debugWorldmapProbe) X(dumpIconTextures) \
-    X(iconLegibility) X(altitudeCue) X(viewDelayZoom) X(debugClusterAnchors) X(debugRegionVolumes) \
+    X(iconLegibility) X(altitudeCue) X(debugClusterAnchors) X(debugRegionVolumes) \
     X(showMinimap) X(minimapAnchorRight) X(minimapAnchorBottom) X(questAllowFlagWrite) X(questGreyOnDeath) \
     X(clusterDistanceAdaptive) X(enemyNames) X(pauseOnOpen)
 #define GOBLIN_CFG_FLOAT_LIST(X) \
     X(iconMinHalfPx) \
     X(minimapOffsetX) X(minimapOffsetY) X(minimapOpacity) X(minimapSize) \
-    X(minimapZoom) X(overlayIconScale) X(overlayMasterScale) X(viewDelayFrames) \
+    X(minimapZoom) X(overlayIconScale) X(overlayMasterScale) \
     X(dialDiscX) X(dialDiscY) X(dialDiscR) X(dialPillX0) X(dialPillY0) X(dialPillX1) X(dialPillY1) \
     X(dialFadeMargin)
 #define GOBLIN_CFG_U8_LIST(X) X(clusterFarRadius) X(clusterNearRadius) X(clusterNearThreshold) X(virtualKeyboardLayout)

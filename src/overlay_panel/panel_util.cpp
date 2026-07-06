@@ -197,14 +197,8 @@ void draw_category_icon(const OverlayFrameCtx &ctx, int c, float size)
 
 void grace_candidate_gate_warning()
 {
-    if ((*goblin::overlay_api::cfg_graceOverlay_ptr()))
-        return;
-    ImGui::TextColored(ImVec4(1.0f, 0.70f, 0.15f, 1.0f),
-        "(!) Few/no candidates listed?\n"
-        "    The forced MENU_MAP_* grace sprites are only created while\n"
-        "    'grace_overlay' is ON. Enable it via the checkbox below (Overlay\n"
-        "    graces), or set it = true in MapForGoblins.ini. Otherwise only the\n"
-        "    live SB_ERR_Grace_* frame the game happens to draw will appear.");
+    // grace_overlay is baked ON now, so the forced MENU_MAP_* grace sprites are always created —
+    // the old "enable grace_overlay" warning can no longer apply. Kept as a no-op call site.
 }
 
 bool scale_control(const char *label, float *v, float lo, float hi,

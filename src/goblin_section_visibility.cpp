@@ -460,8 +460,8 @@ void goblin::apply_native_landmark_suppression()
     int hidden = 0;
     for (auto &e : g_native_landmark_rows)
     {
-        const bool ours_drawn = goblin::config::landmarkSuppressNative && overlay_on &&
-                                g_category_visible[e.category].load();
+        // landmark_suppress_native baked ON (overlay is the sole landmark source, native map retired).
+        const bool ours_drawn = overlay_on && g_category_visible[e.category].load();
         const unsigned char want = ours_drawn ? 99 : e.orig_area;
         const unsigned char want_dv = ours_drawn ? 99 : e.orig_distview_area;
         if (e.row->areaNo != want)

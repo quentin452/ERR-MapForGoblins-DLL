@@ -136,26 +136,8 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
         ImGui::Checkbox(tr("Altitude arrows (up = above / down = below player)"),
                         goblin::overlay_api::cfg_altitudeCue_ptr());
 
-    // Grace rendering: overlay draws all graces (discovered=colour, undiscovered=grey).
-    if (f.match("overlay graces draw all gpu sprite engine cpu baked atlas"))
-        ImGui::Checkbox(tr("Overlay graces (draw all graces ourselves)"),
-                        goblin::overlay_api::cfg_graceOverlay_ptr());
-
-    // Native landmark-pin suppression (areaNo flips applied by the watcher; effect on the
-    // NEXT map open, so the nudge just re-decides — no live rebuild needed here).
-    if (f.match("hide native landmark pins duplicate suppress erdtree dungeon church"))
-    {
-        if (ImGui::Checkbox(tr("Hide native landmark pins (when our category re-draws them)"),
-                            goblin::overlay_api::cfg_landmarkSuppressNative_ptr()))
-            goblin::overlay_api::request_native_landmark_reapply();
-        ImGui::SameLine();
-        ImGui::TextDisabled("↻");
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("%s", tr("Per category: only World-landmark categories that are toggled ON get their\n"
-                                       "native pin hidden (no duplicate). Categories OFF keep the game's own pin.\n"
-                                       "Changes show the NEXT time the map is opened (the game rebuilds its pin\n"
-                                       "list then). The affected category rows carry the same \xE2\x86\xBB mark."));
-    }
+    // (grace_overlay + hide-native-landmark-pins toggles retired: baked ON — the overlay is the sole
+    // grace/landmark source now the native map is retired. See f1_settings_imgui_only_classification.md.)
 
     // Spoiler-free loot (overlay port of anonymous_loot; live, persists via
     // "Save to INI"). Lot-backed loot markers draw as a gray "?" with a generic
@@ -220,22 +202,12 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
     {
         scale_control(tr("Master"), goblin::overlay_api::cfg_overlayMasterScale_ptr(), 0.3f, 3.0f, 0.05f, 0.25f, "%.2f");
         scale_control(tr("Category icons"), goblin::overlay_api::cfg_overlayIconScale_ptr(), 0.3f, 10.0f, 0.05f, 0.25f, "%.2f");
-        scale_control(tr("Marker motion delay (frames)"), goblin::overlay_api::cfg_viewDelayFrames_ptr(), 0.0f, 7.0f, 0.1f, 0.5f, "%.1f");
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("%s", tr("Project markers this many present-frames behind the eased basemap.\n"
-                                       "Pan the map: raise if markers LEAD (snap back on stop), lower if they TRAIL.\n"
-                                       "1.0 = default. Tune to kill the pan/zoom re-adjust, then Save to INI."));
-        ImGui::Checkbox(tr("Delay zoom too"), goblin::overlay_api::cfg_viewDelayZoom_ptr());
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("%s", tr("ON (default): the motion delay applies to zoom as well as pan.\n"
-                                       "If markers TELEPORT for one frame on each mouse-wheel zoom step,\n"
-                                       "turn this OFF — markers then use the live zoom while still delaying pan."));
+        // (marker motion-delay sliders retired: native-basemap-only, baked to the tuned default now
+        // the vmap draws its own basemap — see f1_settings_imgui_only_classification.md.)
         if (ImGui::SmallButton(tr("Reset##scale")))
         {
             (*goblin::overlay_api::cfg_overlayMasterScale_ptr()) = 1.0f;
             (*goblin::overlay_api::cfg_overlayIconScale_ptr()) = 1.2f;     // match the schema defaults
-            (*goblin::overlay_api::cfg_viewDelayFrames_ptr()) = 1.0f;
-            (*goblin::overlay_api::cfg_viewDelayZoom_ptr()) = true;
         }
         ImGui::TextDisabled("%s", tr("Slider = coarse; type in the box or use its +/- arrows for an exact\n"
                                      "value (Ctrl+Click the slider also types). × a resolution-relative\n"
@@ -311,8 +283,7 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
     if (f.filtering && show_uiex) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
     if (show_uiex && ImGui::CollapsingHeader(tr("UI exclusion zones (map clipping)")))
     {
-        ImGui::Checkbox(tr("Enable clipping (hide icons under game UI)"),
-                        goblin::overlay_api::cfg_clipGameUi_ptr());
+        // (clip-game-UI toggle retired: baked ON. The user zone editor below stays.)
         bool edit = goblin::worldmap::ui_rect_edit();
         if (ImGui::Checkbox(tr("Edit zones (open the world map)"), &edit))
             goblin::worldmap::set_ui_rect_edit(edit);

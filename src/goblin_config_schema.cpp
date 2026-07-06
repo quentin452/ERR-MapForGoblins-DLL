@@ -67,16 +67,13 @@ namespace goblin::config
     bool dropMerchantPhantoms = true;   // drop baked loot markers whose item is sold infinite-stock in ShopLineupParam (merchant phantoms the bake's unmatched-ItemLotParam fallback placed at (0,0,0))
 
     bool redifyBossIcons = false;
-    bool graceOverlay = true;        // our graces are the default map source now (validated)
-    bool graceSuppressNative = true; // overlay is the sole grace source — hide native pins
-    bool landmarkSuppressNative = true; // hide native landmark pins while our category re-draws them
-    bool suppressNativeBosses = true; // hide native boss pins (clear dispMask on textId2==5100)
+    // grace_overlay / grace_suppress_native / landmark_suppress_native / suppress_native_bosses /
+    // clip_game_ui retired as toggles → baked ON in code (native map retired). view_delay_* likewise.
 
     bool enableMarkerDump = false;
     uint32_t markerDumpKey = 0x78; // VK_F9
     uint8_t freezeWatchdogSecs = 20;
     uint8_t loadWatchdogSecs = 30;
-    bool clipGameUi = true;
     std::string uiExclusionRects = "";
     // ERR day/night dial exclusion (was hardcoded); VIRTUAL-canvas 1920x1080 units.
     float dialDiscX = 1840.f, dialDiscY = 962.f, dialDiscR = 227.f;
@@ -109,8 +106,6 @@ namespace goblin::config
     float iconMinHalfPx = 8.0f;        // min icon half-extent (px) when iconLegibility is on
     bool  altitudeCue = true;          // DX item 7: ▲/▼ badge when a marker is above/below the player
     bool  pauseOnOpen = false;         // auto-pause the game while the F1 panel is open (freeze world sim)
-    float viewDelayFrames = 1.0f;      // marker motion-sync: project markers this many present-frames back to match the eased basemap
-    bool  viewDelayZoom = true;        // also delay ZOOM (not just center) in the motion-sync; off = current zoom, fixes wheel-step teleport if zoom applies instantly
 
     // In-game minimap HUD (corner, north-up, overworld-only — underground player pos
     // is not yet reliable). Foundation/opt-in; off by default.
@@ -185,8 +180,6 @@ namespace
                          "init poll cannot confirm the world-map data is loaded. Normally the mod\n"
                          "POLLS for the data and proceeds as soon as it's ready (no fixed wait),\n"
                          "so this key has no effect on a healthy boot. Leave at 5.", false, nullptr},
-                B("clip_game_ui", clipGameUi, "true",
-                  "Hide overlay markers that fall under the game's own always-on-top map UI\n(the ERR day/night dial, bottom-right). The overlay renders after the game's\nframe, so without this our icons draw OVER that UI. ERR-only region; no\neffect on other installs. Default: true."),
                 IniEntry{"ui_exclusion_rects", IniType::String, &cfg::uiExclusionRects, "",
                          "User-drawn rectangles where overlay icons are HIDDEN on the world map\n(fix any icons-over-game-UI clipping yourself: F1 > UI exclusion zones >\nEdit, then drag on the map; right-click a zone deletes it). Stored in\n1920x1080 virtual-canvas units -> works at every resolution.\nFormat: x0,y0,x1,y1;... Empty = none.", false, nullptr},
                 // NB the last two args OVERRIDE the F32 [0.1,5.0] load clamp (see IniEntry) — these
@@ -522,8 +515,6 @@ namespace
                 B("show_portals", showCategory[static_cast<int>(Cat::WorldPortal)], "false", "Sending Gate / waygate portals (AEG099_510 bound to EMEVD warp template 90005605)"),
                 B("show_elevators", showCategory[static_cast<int>(Cat::WorldElevator)], "false", "Elevator / lever-lift locations (MSB ObjAct events whose ObjActParam prompt is a lever)"),
                 B("show_smithing_tables", showCategory[static_cast<int>(Cat::WorldSmithingTable)], "false", "Smithing Table locations (AEG099_308 assets; 3 in the base game)"),
-                B("landmark_suppress_native", landmarkSuppressNative, "true",
-                  "Hide the game's own landmark pins (Minor Erdtrees, dungeons, churches, ...)\non the native world map while the matching World-landmark category above is\nenabled — the overlay draws its own icon there, so the native pin would be a\nduplicate. Pins come back when the category (or this) is turned off."),
                 B("hide_killed_bosses", hideKilledBosses, "false", "Hide boss/invader/hawk markers after defeat (false = show green checkmark instead)"),
             }},
 
@@ -532,12 +523,6 @@ namespace
              ERR, {
                 BE("redify_boss_icons", redifyBossIcons, "false",
                    "Cosmetic: draw boss markers red and auto-hide them once the boss is\ndefeated."),
-                BE("grace_overlay", graceOverlay, "true",
-                   "Draw ALL Sites of Grace in the overlay (discovered = full colour,\nundiscovered = grey) instead of letting the game draw discovered ones.\nDefault ON — the overlay is the grace source. Off-switch only."),
-                BE("grace_suppress_native", graceSuppressNative, "true",
-                   "Suppress the game's native discovered-grace map pins so the overlay is the\nsole grace source. Default ON. Keeps teleport working (draw-only hide). Set\nfalse if native grace pins/teleport ever misbehave on your setup."),
-                BE("suppress_native_bosses", suppressNativeBosses, "true",
-                   "Hide the game's native boss map icons (ERR's WorldMapPointParam textId2==5100\nrows) by clearing their dispMask, so only the overlay's boss markers show (no\ndouble icon). The overlay ignores dispMask so it keeps drawing them. Default ON;\nset false to let the game draw its own boss icons."),
             }},
 
             {"Compatibility",
@@ -572,12 +557,6 @@ namespace
                   false, nullptr},
                 IniEntry{"pause_on_open", IniType::Bool, &cfg::pauseOnOpen, "false",
                   "Auto-pause the game while the F1 panel is open (world sim freezes; the panel stays\nusable), and un-pause on close. Same freeze as the 'Pause the game' button, driven by\nopening/closing the menu (keyboard F1 or the gamepad combo). Only auto-un-pauses a pause\nit set itself. Needs the pause branch signature; ignored if unresolved. Default false.",
-                  false, nullptr},
-                IniEntry{"view_delay_frames", IniType::F32, &cfg::viewDelayFrames, "1.0",
-                  "Marker motion-sync: project overlay markers this many PRESENT-frames in the past so they\ntrack the engine's eased basemap during pan/zoom. 1.0 = default. Raise if markers LEAD the\nbasemap (snap back on stop); lower toward 0 if they TRAIL. A/B this to kill pan/zoom re-adjust.",
-                  false, nullptr, 0.0f, 10.0f},
-                IniEntry{"view_delay_zoom", IniType::Bool, &cfg::viewDelayZoom, "true",
-                  "Whether the motion-sync delay also applies to ZOOM (not just pan/center). ON = current.\nIf zoom teleports markers for one frame per wheel-step, turn this OFF: markers then use the\nLIVE zoom while still delaying pan. Off helps when the engine applies wheel-zoom instantly.",
                   false, nullptr},
             }},
 

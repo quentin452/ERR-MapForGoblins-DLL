@@ -48,7 +48,6 @@ inline bool icon_rpm_ptr(uintptr_t a, uintptr_t &out)
 void *__fastcall warp_pin_detour(void *a1, void *a2, void *warpData, void *a4)
 {
     void *ret = g_warp_pin_orig(a1, a2, warpData, a4);
-    if (!goblin::config::graceSuppressNative) return ret;
 
     // Identify the just-built grace pin's draw state (source state byte @ warpData+0x8 +0x1E;
     // state != 0 = a drawn/registered grace, as confirmed by [WARPPIN]).
@@ -100,7 +99,7 @@ void *__fastcall warp_setto_detour(void *pin, void *widgetRoot, void *a3, void *
     bool suppress = false;
     uint8_t *pVis = nullptr;
     uint8_t savedVis = 0;
-    if (goblin::config::graceSuppressNative && goblin::config::graceOverlay && pin && widgetRoot
+    if (pin && widgetRoot   // grace_overlay + grace_suppress_native baked ON (overlay is sole grace)
         && *reinterpret_cast<void **>(pin) == g_warppin_vftable)
     {
         uint32_t state = *reinterpret_cast<uint32_t *>(reinterpret_cast<uintptr_t>(pin) + 0x60);
@@ -121,7 +120,6 @@ void *__fastcall warp_setto_detour(void *pin, void *widgetRoot, void *a3, void *
 
 void goblin::install_grace_suppression_hook()
 {
-    if (!goblin::config::graceSuppressNative) return;
     uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
     if (!er) return;
     void *fn = goblin::sig::resolve_func_aob(goblin::sig::WARPPIN_BUILDER_FN, er, 0x88b7b0,

@@ -189,6 +189,12 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   the map" game-state flag (`CSMenuMan+0x104`). Gated by the `clip_game_ui` setting.
 
 ### Changed
+- **F1 settings declutter (vmap-only collapse, phase 1).** Retired seven native-map-only toggles now the
+  Virtual Map is the map surface — `grace_overlay`, `grace_suppress_native`, `landmark_suppress_native`,
+  `suppress_native_bosses`, `clip_game_ui`, and the marker motion-delay (`view_delay_frames` /
+  `view_delay_zoom`). Their behavior is baked to the shipped default (overlay is the sole grace/landmark/
+  boss source; game-UI clipping on; 1-frame motion sync), so nothing changes on screen — the F1 panel and
+  ini just lose knobs that only made sense for the old native map.
 - **Non-boss enemy names now use the game's OWN native tag, not an ImGui overlay.** The engine draws the
   red enemy-name tag from `NpcParam.nameId → NpcName` (and re-reads it live) but leaves generic mobs blank.
   MapForGoblins now resolves the mob's name from the active install and feeds it into that native path

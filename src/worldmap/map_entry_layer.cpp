@@ -16,7 +16,7 @@
 #include "goblin_kindling.hpp"  // is_row_collected (kindling graying)
 #include "goblin_markers.hpp"   // category_name (census log)
 #include "goblin_messages.hpp"  // lookup_text_utf8 ([BAKED-RESIDUAL] self-describing names)
-#include "goblin_config.hpp"    // config::suppressNativeBosses
+#include "goblin_config.hpp"    // goblin::config:: gates
 #include "goblin/goblin_map_flags.hpp" // flag::Story* (secondary story gate)
 #include "goblin_bench.hpp"            // GOBLIN_BENCH scoped timers
 #include "from/params.hpp"                            // live WorldMapPointParam (boss source)
@@ -377,12 +377,10 @@ void build_live_bosses()
             // skips drawing it, leaving the overlay as the sole boss source (no double icon). Safe
             // because push_marker already snapshotted pos/name/icon and it IGNORES dispMask, so our
             // marker is unaffected. `row` is a reference into live param memory (params.hpp).
-            if ((*goblin::overlay_api::cfg_suppressNativeBosses_ptr()))
-            {
-                row.dispMask00 = false;
-                row.dispMask01 = false;
-                row.dispMask02 = 0;
-            }
+            // (suppress_native_bosses baked ON — native map retired.)
+            row.dispMask00 = false;
+            row.dispMask01 = false;
+            row.dispMask02 = 0;
         }
     }
     catch (...)

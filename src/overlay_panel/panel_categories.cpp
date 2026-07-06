@@ -121,10 +121,9 @@ void draw_sections_categories(const OverlayFrameCtx &ctx, Filter &f, bool with_e
             if (ImGui::Checkbox(clabel, &cv))
                 goblin::overlay_api::set_category_visible(c, cv);
             // Landmark categories drive the native-pin suppression (a WMPP areaNo flip
-            // the game only re-reads when it rebuilds its pin list) → mark the rows the
-            // "Hide native landmark pins" option affects, with the map-reopen caveat.
-            if ((*goblin::overlay_api::cfg_landmarkSuppressNative_ptr()) &&
-                c >= static_cast<int>(goblin::generated::Category::WorldDivineTower) &&
+            // the game only re-reads when it rebuilds its pin list) → mark the rows it
+            // affects, with the map-reopen caveat. (Suppression is baked ON now.)
+            if (c >= static_cast<int>(goblin::generated::Category::WorldDivineTower) &&
                 c <= static_cast<int>(goblin::generated::Category::WorldUniqueSite))
             {
                 ImGui::SameLine();

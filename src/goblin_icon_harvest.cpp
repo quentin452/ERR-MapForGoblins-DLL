@@ -633,9 +633,8 @@ void harvest_repo_icons()
     // dump flag. Previously gated dump-only, which forced users onto the laggy debug flag to get
     // GPU graces. The walk below bulk-reads each node (1 RPM) + is rate-throttled so Wine's
     // per-RPM cost doesn't stall on icon churn (the old per-field reads were the Linux freeze).
-    if (!goblin::config::dumpIconTextures && !goblin::config::graceOverlay &&
-        !goblin::config::nativeItemIcons)
-        return;
+    // grace_overlay is baked ON (overlay is the sole grace source), so the harvest is always wanted —
+    // no early-out. (dump_icon_textures / native_item_icons still gate their own heavier sub-work.)
     uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
     if (!er) return;
 
@@ -1397,9 +1396,8 @@ void gpu_icon_tick(uintptr_t er)
     // probe thread) — it is pure file IO with no CreateImage/manager dependency, so it must not wait for
     // this res_tick-gated path (map-only sessions never reach here). See background_harvest_tick().
 
-    // Grace candidates (their own hardcoded set) — always, no cap.
-    if (goblin::config::graceOverlay)
-        run_force_grace(er);
+    // Grace candidates (their own hardcoded set) — always (grace_overlay baked ON), no cap.
+    run_force_grace(er);
 
     // Snapshot the wanted set (brief lock; force calls happen unlocked).
     std::vector<int> items;
@@ -2060,10 +2058,9 @@ void goblin::install_icon_texture_probe()
     // or native item icons are on — NOT only under the dev dump flag (that was the gate that left
     // GPU graces/boss icons blank without dump_icon_textures). Their heavy work is internally
     // dump-gated; the light hook path + the throttled bulk-read walk are cheap enough for runtime.
+    // native harvest is always wanted (grace_overlay baked ON) — no early-out; `dev` still gates the
+    // heavy DEV-only machinery below.
     const bool dev = goblin::config::dumpIconTextures;
-    const bool native = goblin::config::graceOverlay || goblin::config::nativeItemIcons;
-    if (!dev && !native)
-        return;
     // DEV-ONLY heavy machinery: Oodle DDS-capture hook + iconId calibration/verification.
     if (dev)
     {

@@ -217,7 +217,7 @@ void draw_dev_icon_sections(const OverlayFrameCtx &ctx, Filter &f)
                 }
             return false;
         };
-        const bool grace_gpu = native_on && (*goblin::overlay_api::cfg_graceOverlay_ptr());
+        const bool grace_gpu = native_on;  // grace_overlay baked ON
         const int total = wm::category_count();
         struct Row { int s; const char *via; bool hasRt; ImTextureID rt; ImVec2 ra, rb; };
         std::vector<Row> rows(total);

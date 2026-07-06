@@ -48,9 +48,7 @@ namespace goblin
     {
         extern GOBLIN_RENDER_API uint8_t loadDelay;
         extern GOBLIN_RENDER_API bool requireMapFragments;
-        // Hide overlay markers under the game's own always-on-top map UI (ERR day/night
-        // dial bottom-right) — we render post-present so we'd otherwise draw OVER it.
-        extern GOBLIN_RENDER_API bool clipGameUi;
+        // (clip_game_ui retired → baked ON; the game-UI exclusion ramp always applies.)
         // User-drawn "no overlay icons here" rectangles (F1 editor), VIRTUAL-canvas units
         // (1920x1080 space, resolution-independent): "x0,y0,x1,y1;x0,y0,x1,y1;..."
         extern GOBLIN_RENDER_API std::string uiExclusionRects;
@@ -172,27 +170,11 @@ namespace goblin
         // ── ERR Markers ─────────────────────────────────────────────────
         extern GOBLIN_RENDER_API bool redifyBossIcons;  // overlay: boss markers drawn red + auto-hide on kill
 
-        // Grace rendering: when graceOverlay is on, the overlay draws ALL graces itself
-        // (discovered = full colour, undiscovered = grey) instead of the hybrid (native draws
-        // discovered). Icon source = the live engine sprite (SB_ERR_Grace, time-of-day tinted),
-        // circle fallback until harvested. Needs native-pin suppression to avoid doubling.
-        extern GOBLIN_RENDER_API bool graceOverlay;
-        // graceGpuSprite retired (settings sweep): the live engine grace sprite is the only path;
-        // the baked-atlas CPU grace draw was deleted (native sprite → circle fallback).
-
-        // Suppress the game's native discovered-grace map pins (so the overlay is the sole grace
-        // source, paired with graceOverlay). Hooks the WarpPinData builder (RE e4b3f6a). PHASE A:
-        // when on, the hook installs + LOGS each grace pin build ([WARPPIN]) to confirm we can
-        // identify discovered ones — actual suppression is gated behind this once verified.
-        extern GOBLIN_RENDER_API bool graceSuppressNative;
-        // Hide the game's own landmark pins (Minor Erdtrees, dungeons, churches, …) on the
-        // native world map while the matching MapForGoblins landmark category is toggled ON —
-        // the overlay draws its own icon there, so the native pin is a visual duplicate.
-        // areaNo=99 flip on the native WorldMapPointParam rows, restored on toggle OFF
-        // (same eviction trick as section visibility; unlike graces there is no native
-        // click action to preserve — landmark pins are tooltip-only).
-        extern GOBLIN_RENDER_API bool landmarkSuppressNative;
-        extern GOBLIN_RENDER_API bool suppressNativeBosses;
+        // grace_overlay / grace_suppress_native / landmark_suppress_native / suppress_native_bosses
+        // are all RETIRED as toggles → baked ON. The overlay is the sole grace/landmark/boss source
+        // now the native map is retired; the suppression hooks (WarpPinData builder, WMPP areaNo flip,
+        // boss dispMask clear) always run so native pins never double the overlay. graceGpuSprite was
+        // retired earlier (live engine grace sprite → circle fallback).
 
         // Marker dump (hotkey → dump beacon/stamp coords to file)
         extern GOBLIN_RENDER_API bool enableMarkerDump;
@@ -311,8 +293,8 @@ namespace goblin
         extern GOBLIN_RENDER_API float iconMinHalfPx;        // min icon half-extent (px) when iconLegibility is on
         extern GOBLIN_RENDER_API bool  altitudeCue;          // DX item 7: ▲/▼ badge when a marker is above/below the player
         extern GOBLIN_RENDER_API bool  pauseOnOpen;          // auto-pause the game while the F1 panel is open
-        extern GOBLIN_RENDER_API float viewDelayFrames;      // marker motion-sync delay in present-frames (A/B the pan/zoom re-adjust)
-        extern GOBLIN_RENDER_API bool  viewDelayZoom;        // motion-sync delay also delays zoom (off = live zoom, fixes wheel-step teleport)
+        // (view_delay_frames / view_delay_zoom retired → baked to 1 frame + zoom-delay on; the marker
+        // motion-sync is native-basemap-only, meaningless on the vmap's own basemap.)
 
         // Debug viz: cluster pile anchor + member lines + name + d/thr (own toggle).
         extern GOBLIN_RENDER_API bool debugClusterAnchors;

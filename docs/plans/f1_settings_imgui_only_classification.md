@@ -9,18 +9,24 @@ switch, never before (these knobs still drive the native map until then).
 
 Sources: `goblin_config_schema.cpp`, `goblin_config.hpp`. ~150 ini keys (~90 are category `show_*`).
 
+## Phase-1a DONE (2026-07-06) — behavioral native-map knobs baked to defaults, F1/ini toggles removed
+Removed as user-facing toggles (baked ON / to default in code; suppression + clip + motion-sync logic
+kept, always-on): **`grace_overlay`, `grace_suppress_native`, `landmark_suppress_native`,
+`suppress_native_bosses`, `clip_game_ui`, `view_delay_frames`, `view_delay_zoom`.** Behavior unchanged
+(all defaulted true/1.0). Both builds green. Deferred to a later Phase: `dial_*` (9), `ui_exclusion_rects`
+(interactive editor), the dev/diag probes (kept — hidden RE tooling, not user settings).
+
 ## DROP — native-map-only / dead (retire after the switch)
-- **Native-map overlay clipping/exclusion:** `clip_game_ui`, `ui_exclusion_rects`.
-- **ERR day/night dial (9 keys):** `dial_disc_x/y/r`, `dial_pill_x0/y0/x1/y1`, `dial_fade_margin`.
-- **Native-pin suppression:** `landmark_suppress_native`, `grace_suppress_native`, `suppress_native_bosses`.
-- **Native-basemap motion-sync:** `view_delay_frames`, `view_delay_zoom` (the vmap draws its own
-  basemap with no engine easing → the frame-delay hack is meaningless).
+- **Native-map overlay clipping/exclusion:** ~~`clip_game_ui`~~ ✅DONE, `ui_exclusion_rects` (deferred: has editor).
+- **ERR day/night dial (9 keys):** `dial_disc_x/y/r`, `dial_pill_x0/y0/x1/y1`, `dial_fade_margin` (deferred).
+- **Native-pin suppression:** ~~`landmark_suppress_native`, `grace_suppress_native`, `suppress_native_bosses`~~ ✅DONE (baked ON).
+- **Native-basemap motion-sync:** ~~`view_delay_frames`, `view_delay_zoom`~~ ✅DONE (baked to default).
 - **Native-map RE/diag probes:** `debug_worldmap_probe`, `debug_page_switch`, `dump_native_pins`,
-  `debug_menu_cover_diag`, `debug_map_clip_diag`, `debug_scissor_probe`, `overlay_markers_proto`.
+  `debug_menu_cover_diag`, `debug_map_clip_diag`, `debug_scissor_probe`, `overlay_markers_proto`
+  (KEEP for now — hidden dev/RE tooling, removing loses tooling for no user benefit).
 
 ## HARDCODE-TRUE
-- `grace_overlay` — the vmap is the sole grace source once the native map is gone; the "let the game
-  draw graces" path is moot. Bake true, drop the toggle.
+- ~~`grace_overlay`~~ ✅DONE — baked true, toggle dropped (overlay is the sole grace source).
 
 ## PORT — re-point at the vmap (Track A build items)
 - `show_region_labels` + `region_toggles` + `debug_region_volumes` → **A7** (region labels on the vmap).
