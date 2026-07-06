@@ -18,6 +18,18 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM,
 
 namespace goblin::input
 {
+// External linkage (declared in input_shared.hpp) — the cursor + raw-input hooks call it too.
+bool vmap_covers_map()
+{
+    // Fullscreen vmap standing in for the native map: the game map is open, AND we open the vmap on
+    // the map key (either the vmap_on_map_key opt-in for the base world, or a custom virtual world is
+    // active — the "M, not F1" path). Both bits are host-side (config + vworld are host-exported), so
+    // this needs no render call. Approximates panel::virtual_map_fullscreen()'s s_from_map for input
+    // gating (true over the same open→close window).
+    return goblin::world_map_open() &&
+           (goblin::config::vmapOnMapKey || goblin::vworld::active() != 0);
+}
+
 namespace
 {
 WNDPROC o_orig_wndproc = nullptr;
@@ -73,17 +85,6 @@ bool note_user_input(int src)
     if (src == 1) return false;
     g_last_user_input_tick.store(now, std::memory_order_relaxed);
     return true;
-}
-
-bool vmap_covers_map()
-{
-    // Fullscreen vmap standing in for the native map: the game map is open, AND we open the vmap on
-    // the map key (either the vmap_on_map_key opt-in for the base world, or a custom virtual world is
-    // active — the "M, not F1" path). Both bits are host-side (config + vworld are host-exported), so
-    // this needs no render call. Approximates panel::virtual_map_fullscreen()'s s_from_map for input
-    // gating (true over the same open→close window).
-    return goblin::world_map_open() &&
-           (goblin::config::vmapOnMapKey || goblin::vworld::active() != 0);
 }
 
 LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)

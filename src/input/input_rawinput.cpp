@@ -117,7 +117,9 @@ UINT WINAPI hk_get_raw_input_data(HRAWINPUT h, UINT cmd, LPVOID data, PUINT size
     // While the menu is open, blank the raw event so the game sees no mouse
     // movement / clicks / key presses. (ImGui's input comes from the
     // WndProc, not from here, so the panel stays fully usable.)
-    if (menu_open() && data && cmd == RID_INPUT)
+    // Gate on menu OR the fullscreen vmap covering the native map. For the vmap we blank only the
+    // MOUSE (the keyboard branch below stays menu-only) so the map-close key still reaches the game.
+    if ((menu_open() || vmap_covers_map()) && data && cmd == RID_INPUT)
     {
         auto *ri = reinterpret_cast<RAWINPUT *>(data);
         if (ri->header.dwType == RIM_TYPEMOUSE)
@@ -148,8 +150,10 @@ UINT WINAPI hk_get_raw_input_data(HRAWINPUT h, UINT cmd, LPVOID data, PUINT size
             ri->data.mouse.usButtonFlags = 0;
             ri->data.mouse.usButtonData = 0;
         }
-        else if (ri->header.dwType == RIM_TYPEKEYBOARD)
+        else if (ri->header.dwType == RIM_TYPEKEYBOARD && menu_open())
         {
+            // Keyboard blanked ONLY for the F1 menu — NOT for the fullscreen vmap, whose map-close
+            // key must reach the game (raw NOLEGACY) so the native map (→ vmap) can close.
             ri->data.keyboard.VKey = 0xFF;          // no valid key
             ri->data.keyboard.Message = WM_NULL;
             ri->data.keyboard.MakeCode = 0;
@@ -169,7 +173,12 @@ UINT WINAPI hk_get_raw_input_buffer(PRAWINPUT data, PUINT size, UINT hdr)
     // uses this batched path, not the singular GetRawInputData, by [CURSORDIAG]'s
     // raw_input_buffer counter being the one that's consistently nonzero).
     UINT n = o_get_raw_input_buffer(data, size, hdr);
-    if (menu_open() && data != nullptr && n != static_cast<UINT>(-1) && n > 0)
+    // Gate on the F1 menu OR the fullscreen vmap covering the native map (ER's camera/map reads
+    // batched raw here — the confirmed path). menu = drop the whole buffer below; vmap = zero the
+    // MOUSE events in place but keep the buffer (keyboard survives → map-close key still works).
+    const bool ri_menu = menu_open();
+    const bool ri_gate = ri_menu || vmap_covers_map();
+    if (ri_gate && data != nullptr && n != static_cast<UINT>(-1) && n > 0)
     {
         PRAWINPUT ri = data;
         for (UINT i = 0; i < n; ++i)
@@ -178,9 +187,18 @@ UINT WINAPI hk_get_raw_input_buffer(PRAWINPUT data, PUINT size, UINT hdr)
             {
                 accumulate_virtual_cursor(ri->data.mouse.lLastX, ri->data.mouse.lLastY,
                                           ri->data.mouse.usFlags);
-                // Batched path returns 0 events to the game while open (below), so this
-                // harvest is likewise the wheel's only chance to reach the panel.
+                // Batched path returns 0 events to the game while the MENU is open (below), so this
+                // harvest is likewise the wheel's only chance to reach the panel/vmap.
                 accumulate_wheel(ri->data.mouse.usButtonFlags, ri->data.mouse.usButtonData);
+                // vmap keeps the buffer (return n) so keyboard events survive — so zero the mouse
+                // event IN PLACE here, or the game would still pan/zoom off it.
+                if (!ri_menu)
+                {
+                    ri->data.mouse.lLastX = 0;
+                    ri->data.mouse.lLastY = 0;
+                    ri->data.mouse.usButtonFlags = 0;
+                    ri->data.mouse.usButtonData = 0;
+                }
             }
             // NEXTRAWINPUTBLOCK expands to a QWORD-based alignment macro that isn't visible
             // with this project's xwin/clang-cl SDK headers — inlined equivalent (8-byte
@@ -191,10 +209,11 @@ UINT WINAPI hk_get_raw_input_buffer(PRAWINPUT data, PUINT size, UINT hdr)
             }
         }
     }
-    // Batched raw input. While the menu is open, report zero buffered events
-    // for actual reads (data != null); pass size-queries through so the
-    // game's buffer sizing stays correct.
-    if (menu_open() && data != nullptr) return 0;
+    // Batched raw input. While the MENU is open, report zero buffered events for actual reads
+    // (data != null); pass size-queries through so the game's buffer sizing stays correct. For the
+    // vmap we DON'T drop the buffer (keyboard must survive) — the mouse events were zeroed in place
+    // above, so the game sees no mouse but still gets the close key.
+    if (ri_menu && data != nullptr) return 0;
     return n;
 }
 } // namespace

@@ -15,6 +15,14 @@ namespace goblin::input
 // device.
 bool menu_open();
 
+// True while the fullscreen Virtual World Map is standing in for the native map (the game map is
+// open AND we open the vmap on the map key — vmap_on_map_key config, or a custom virtual world is
+// active). The native map is still open underneath but fully covered, so the input hooks blank the
+// game's MOUSE (cursor-pos pan + raw wheel/deltas) exactly like menu_open — but leave the KEYBOARD
+// flowing so the map-close key still closes the native map (→ the vmap auto-closes; the user is
+// never trapped). Defined in input_wndproc.cpp; used by the cursor + raw-input + wndproc hooks.
+bool vmap_covers_map();
+
 // > 0 while an item-search locate/page-switch is in flight (mirrors goblin_overlay.cpp's
 // internal g_nav_frames) — hooks that would otherwise fully blank the game's input jitter a
 // net-zero 1px instead, so the game keeps stepping its world-map camera with the panel open.
