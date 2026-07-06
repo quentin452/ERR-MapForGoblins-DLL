@@ -50,3 +50,31 @@ buddies' live positions.
 
 Cross-ref: `game_timestep_freeze_re_findings.md` (the freeze), `windows_yellowdot_player_pos_re_findings.md`
 (player-pos chain for marker positions), `entity_radar_foundation.md` (WorldChrMan enumeration foundation).
+
+## Ghidra recon (2026-07-06, Windows) — WorldChrMan ChrSet map (approach B foundation)
+Confirmed **it is Seamless drawing co-op players on the map, not vanilla ER**: no player/co-op pin class in
+RTTI (the `WorldMapPinData` family is only Warp=grace / SignPuddle / Point, all param-driven statics), and
+`ersc.dll` isn't even loaded on the Windows box (only `me3_mod_host.dll` + `er_console_mod.dll`; only
+`ersc_settings.ini` on disk). ⇒ **don't depend on ersc — read buddies as `PlayerIns` from WorldChrMan**
+(mod-agnostic per the prime directive; buddies spawn as real chrs).
+
+**WorldChrMan ChrSet layout** (`WorldChrManImp` ctor `FUN_140503e70`; offsets from WCM = `[er+0x3d65f88]`):
+```
+WCM+0x10EE0  ChrSet       (FUN_1404921b0)   ┐ 4 plain ChrSets — one is the PLAYER set
+WCM+0x10F38  ChrSet                          │ (others = enemy/ghost/debug); which one
+WCM+0x10F90  ChrSet                          │ = NOT yet IDed (needs a live dump).
+WCM+0x10FE8  ChrSet                          ┘
+WCM+0x11040  OpenFieldChrSet (FUN_1404eb5e0)   ← all open-field chrs (players+enemies); RTTI-filter this.
+WCM+0x1E508  LocalPlayer* (PlayerIns)          (known)
+```
+**ChrSet struct** (`FUN_1404921b0`): `+0x00` vtable `CS::ChrSet::vftable`, `+0x08` id, **`+0x28/+0x30` container
+A**, **`+0x40/+0x48` container B** (std containers of ChrIns — begin/end walk TBD; cleaner than the volatile
+`block+0x18` pool). **`PlayerIns` RTTI vtable = `er+0x2a7cb40`** (the filter anchor; ctors 0x6507a0/0x64fe40).
+Related: `PlayerNetworkSession` (vtable er+0x2b9eb30, per-player net obj, not the list), `NetChrSetSync`
+(er+0x2a46bd0 — networked chr-set sync, the co-op path).
+
+**Codable blind now (approach B, mod-agnostic):** walk a WCM ChrSet container, RTTI-filter ChrIns whose vtable
+== `er+0x2a7cb40` → `others_present()` = count>1 (minus LocalPlayer); positions via the player-pos chain →
+MFG's own overlay marker projection. **Still BLOCKED on a live 2-player session** to (a) confirm buddies land
+in a WCM ChrSet as PlayerIns, (b) ID which of the 4 sets is players (or just RTTI-filter the OpenFieldChrSet),
+(c) resolve the container begin/end + validate positions.
