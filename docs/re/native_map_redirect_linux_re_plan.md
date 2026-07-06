@@ -196,3 +196,42 @@ function would break other menus.
 **Infra ready this session:** `tools/boot_hold.py` + VSCode task "MFG: Boot ER + HOLD" (leave ER running,
 socket released for `mfg.py rpc` one-shots). Killing the wedged env = `pkill -9 wineserver` (frees the stale
 RPC port + all wine procs); the D-state husk is unkillable (needs a machine reboot) but is harmless.
+
+## OPENER PINNED via Windows Ghidra call-graph (2026-07-06, build 2.6.2.0) — no ctor-hook needed
+Took the "(Alternative: Windows Ghidra call-graph)" path instead of the diagnostic MinHook. Project
+`D:\ghidra_proj2\ER` (imagebase `0x140000000`), tools `query.java` + bespoke `gap.java`/`refs.java` in
+`D:\ghidra_scripts_mfg`. **Full static construction chain of `CS::WorldMapDialog`:**
+```
+menu-open (kb + gamepad both converge here)
+  → dialog-factory dispatch table  er+0x2abb910  (WorldMapDialog slot)
+    → FUN_1407fd4b0  (er+0x7fd4b0)   ★ THE REAL OPENER — world-map-only create-callback
+       → FUN_1409cf940 (er+0x9cf940)  = factory: new(0x3ed0) then CALL the ctor
+          → FUN_1409cef10 (er+0x9cef10) = THE REAL ctor (2519 bytes; calls setup FUN_1409be5e0)
+```
+- `FUN_1407fd4b0` (77 bytes): `x=FUN_140745280(arg…); x=FUN_1409cf940(x,8,*(arg+8)); FUN_140d7f850(cleanup);
+  return x;`. **World-map-EXCLUSIVE** — its only real callee `FUN_1409cf940` allocates exactly `0x3ed0`
+  (WorldMapDialog sizeof) and calls the WorldMapDialog ctor, so it can construct nothing else.
+- **No static callers** (both `FUN_1407fd4b0` and the ctors are table-dispatched, not direct-called) —
+  confirms the old "created via factory/vtable table" note. `FUN_1407fd4b0` is registered as the
+  WorldMapDialog slot in the menu-dialog factory table **`er+0x2abb910`** (8-byte fn-ptr array; siblings
+  `…7fb8d0, 7fe1b0, [7fd4b0], 7feee0, 7fc9d0…`). Both keybind systems funnel through this one table call →
+  **ONE hook on `FUN_1407fd4b0` covers kb + gamepad.**
+
+**⇒ HOOK TARGET = `FUN_1407fd4b0` (er+0x7fd4b0)** — the outermost world-map-only frame. MinHook its entry;
+when `vmap_on_map_key`: toggle the vmap + set redirect + **return early without calling original** (nothing
+allocated/pushed → menu stack stays balanced). Else call original. AOBs (resolve live, filter to the main
+`.text`; both show 6 matches in the Ghidra image = the VMProtect duplicated-section artifact, unique in the
+live process):
+- `FUN_1407fd4b0`: `40 53 48 81 EC 90 00 00 00 48 C7 44 24 20 FE FF FF FF 48 8B C2 48 8B D9`
+- `FUN_1409cf940`: `40 55 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 D9 48 81 EC E0 00 00 00` (inner factory,
+  equivalent deeper hook if the outer return-early crashes)
+
+**Two corrections to earlier notes in this doc:**
+- `er+0x9cf8f0` (prologue `48 89 4C 24 08 57 48 83 EC 30`), called "the VERIFIED ctor entry" above, is actually
+  the WorldMapDialog **vector deleting destructor** (vtable slot 0: sets vftable, calls base, `if(flags&1)
+  operator delete`) — NOT a constructor. Diagnostic-hooking IT for "the caller" would have watched teardown.
+  The real ctor is `FUN_1409cef10`.
+- The fwa byte-reading (`er+0x7efaf0`/`call er+0x792550`) fingered the WRONG function; the world-map open is
+  table-dispatched through `0x7fd4b0`, not `0x7ef…`. And `er+0x9cfb6e` ("ctor+0x27e") is really inside
+  `FUN_1409cfb60` = WorldMapDialog vtable slot [2] (per-frame step, calls `FUN_1409c32f0`), unrelated to
+  construction — both were just co-resident stack frames during a map-open.
