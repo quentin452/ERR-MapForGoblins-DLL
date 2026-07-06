@@ -68,6 +68,13 @@ Implements + validates the "Remaining" step of the resident-converter-affine RE 
   (water cell where water-cast Y > the `0x5e` terrain Y — cheapest, Linux-testable once the filter is found),
   Option 3 = sample `GXWaterHeightMap`. RE README indexed. → M1 sea-tag now blocked on this RE, not on a live
   measurement.
+  - **UPDATE 2026-07-06 (Windows/Ghidra): Option 3 INVESTIGATED → DEAD END; Option 2 is the path.**
+    `windows_water_level_source_re_findings.md`: `GXWaterHeightMap@GXSR` is a **GPU render-resource** (~7
+    ref-counted textures for the water *interaction*/wave sim), a sub-object of `GXSceneContext` @ +0xBE20 —
+    NOT a CPU per-(x,z) base-plane, and it's the ripple overlay not the surface level. `WaterDepth` = an audio
+    RTPC; no gameplay water query exists (`Underwater`/`DeepWater`/… 0 hits). ⇒ sea-tag needs **Option 2** (a
+    water-inclusive collision cast filter, `water = waterCastY > 0x5e-terrainY`) — decode the
+    `WorldCollisionFilterCommand` water filter or brute-force filter bytes live over a lake vs the ocean.
 - **vmap gamepad M4 — reticle → hover/warp/place LANDED (2026-07-06f2, needs PAD live-test).** The
   right-stick reticle (`s_pad_cursor`) is now the effective canvas pointer in pad-mode: it drives the
   single-marker/grace **hover tooltip** (accumulator uses `vptr`/`hovered_eff`), **FaceUp (Y/△)** warps a
@@ -486,8 +493,9 @@ quality win); extend `vmap offmap` to catch UG/DLC (0,0) render-side; A15 legacy
 pure-Linux parity gap); `active_world`/`s_group`/PlayerDim auto-follow. **Meanwhile the Windows/Ghidra agent
 runs** — priority `windows_world_to_screen_camera_re_prompt.md` (w2s3d = unblocker for the ImGui virtual world),
 then optional `windows_havok_vdb_standup_re_prompt.md` + `windows_debug_render_flag_re_prompt.md` (#2a) +
-**`windows_water_level_source_re_prompt.md` (2026-07-06, small — the vmap sea-tag: find the water-inclusive
-cast filter OR the `GXWaterHeightMap` sampler; Option 2's filter is Linux-testable once found).**
+**the vmap sea-tag Option 2** (`windows_water_level_source_re_findings.md`, 2026-07-06 — Option 3 ruled out as
+a GPU wave-sim resource; remaining = the water-inclusive cast filter via `WorldCollisionFilterCommand`, or
+brute-force filter bytes live over a lake vs the ocean; Linux-testable).**
 The tracks are independent.
 
 **SHIPPED this session (all committed + in-game verified where noted):**

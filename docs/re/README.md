@@ -117,12 +117,16 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
   Water = per-region `GXSR WaterInteractionManager`/`WaterHeightMap` (no global plane). Findings:
   `windows_terrain_raycast_heightfield_re_findings.md`. Runtime (Linux): must call on the game thread; confirm
   `0x5e` excludes objects.
-- **Water level / sea-tag source — OPEN (prompt `windows_water_level_source_re_prompt.md`, 2026-07-06).** The
-  global `kSeaLevelY` heuristic is WRONG — confirmed no `SeaLevel` const in the exe; water is per-region
-  `GXWaterHeightMap@GXSR` (vt `er+0x30370b0`, ctor `er+0x1b78960`) + `GXWaterInteractionManager`/`Param`.
-  NavMesh (`hkai*`) is walkability, not water. Two paths: (2) a water-INCLUSIVE cast filter (water cell where
-  water-cast Y > the `0x5e` terrain Y — cheapest), or (3) sample `GXWaterHeightMap`. Then the relief tags
-  water per-region instead of a bad single constant.
+- **Water level / sea-tag source — Option 3 RULED OUT; Option 2 is the path (findings
+  `windows_water_level_source_re_findings.md`, 2026-07-06).** The global `kSeaLevelY` heuristic is WRONG (no
+  `SeaLevel` const; water is per-region). **Option 3 (sample `GXWaterHeightMap@GXSR`) is a DEAD END:** that
+  class is a **GPU render-resource container** (~7 ref-counted textures for the water *interaction*/wave sim),
+  a sub-object of `GXSceneContext` at **+0xBE20** — not a CPU per-(x,z) base-plane and semantically the ripple
+  overlay, not the surface level. `WaterDepth` is an **audio RTPC**, not a level; and `Underwater`/`InWater`/
+  `DeepWater`/`WaterVolume`/`SwimTop` = 0 hits (no gameplay water query — ER has no swim; deep water = MSB
+  kill-volumes). **⇒ Option 2 (a water-INCLUSIVE collision cast filter: water cell where the water-cast Y >
+  the `0x5e` terrain Y) is the CPU-native, correct path** — decode the `WorldCollisionFilterCommand` water
+  filter or brute-force filter bytes live over a lake vs the ocean. Fallback: per-region MSB water-plane Y.
 - **Far-terrain elevation (the "fake 3D" distant terrain) — SCOPED (static, 2026-07-05,
   `far_terrain_heightmap_re_findings.md`).** The raycast above is loaded-region-only; the distant terrain has
   no collision. **RTTI sweep verdict: there is NO far-terrain heightmap TEXTURE** (zero non-water `*Height*`/

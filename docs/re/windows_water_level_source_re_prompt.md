@@ -1,3 +1,8 @@
+> **SUPERSEDED — see `windows_water_level_source_re_findings.md` (2026-07-06).** Option 3 was investigated and
+> **ruled out**: `GXWaterHeightMap@GXSR` is a GPU render-resource for the water *interaction*/wave sim (a
+> sub-object of `GXSceneContext` @ +0xBE20), not a CPU per-(x,z) base-plane, and there is no gameplay water
+> query. The viable path is **Option 2** (a water-inclusive collision cast filter). Prompt kept for context.
+
 # RE brief — per-region WATER LEVEL source for the vmap relief sea-tag (no global sea level)
 
 **Why.** The vmap's procedural relief (`goblin_heightfield.cpp`, down-ray terrain cast → hillshade) wants to

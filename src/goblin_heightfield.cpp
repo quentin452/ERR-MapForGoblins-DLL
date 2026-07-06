@@ -37,12 +37,15 @@ constexpr float kCastDepth = 10000.f;
 // water levels vary per region (Liurnia lake ≠ the ocean ≠ Siofra/Ainsel underground rivers). eldenring.exe
 // has NO `SeaLevel`/`WaterLevel` constant; water is a per-region height field, class `GXWaterHeightMap@GXSR`
 // (+ `GXWaterInteractionManager`/`Param`, `GXWaveTerrain`). So a single threshold over-tags low coastal land
-// and misses elevated water. The RIGHT source is per-region — see
-// `docs/re/windows_water_level_source_re_prompt.md` (Option 3: sample `GXWaterHeightMap`; Option 2: a
-// water-INCLUSIVE cast filter → water cell where the water-cast Y > the 0x5e terrain-cast Y). NavMesh
+// and misses elevated water. The RIGHT source is per-region. RE done — see
+// `docs/re/windows_water_level_source_re_findings.md`: Option 3 (sample `GXWaterHeightMap@GXSR`) is a DEAD
+// END — that class is a GPU render-resource for the water *interaction* (ripple/wave) sim (a sub-object of
+// GXSceneContext), not a CPU per-(x,z) base-plane; and no gameplay water-height query exists. The viable
+// path is Option 2: a water-INCLUSIVE cast filter → water cell where the water-cast Y > the 0x5e
+// terrain-cast Y (needs the WorldCollisionFilterCommand water filter value, still to decode). NavMesh
 // (Havok `hkai*`) is walkability, not a water surface — not the source. kSeaLevelY stays a DORMANT sentinel
-// (tags nothing) until that RE lands; do NOT "calibrate" it to a single number. Render branch is wired
-// (panel_virtual_map.cpp), so activating = swap `c.sea` to the per-region water-Y test.
+// (tags nothing) until Option 2 lands; do NOT "calibrate" it to a single number. Render branch is wired
+// (panel_virtual_map.cpp), so activating = swap `c.sea` to `waterSurfaceY > c.groundY` (a second cast).
 constexpr float kSeaLevelY = -1e30f;
 
 CastRayFn g_cast = nullptr;
