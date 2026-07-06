@@ -1,11 +1,65 @@
 # Native Scaleform enemy names (replace the ImGui overlay path)
 
-**Status:** SCOPED 2026-07-06, RE-gated. **Live recon done 2026-07-06 (Windows)** →
-`docs/re/windows_enemy_name_hud_feed_re_findings.md`: `01_000_fe.gfx` + `EnemyTag_ColorText_12`
-(TextField `/Text_0`) confirmed LOADED LIVE from the active install, and the name is fed as **Scaleform
-HTML via SetTextHTML** (`<FONT LETTERSPACING='0'>name</FONT>`). GATE Q1 still OPEN. Next = capture the
-name-feed WRITE site on Linux (needs a `mem_fwa off` disarm verb added first — the single FWA slot wedged
-on a stale probe this session; write-watch itself already works).
+**Status:** ★ **MECHANISM SOLVED + native path PROVEN LIVE 2026-07-06 (Windows).** The Scaleform-RE
+approach below is **SUPERSEDED** — no gfx RE, no `SetTextHTML` capture needed. The enemy name is drawn by
+the **VANILLA ENGINE** (writer RIP in `eldenring.exe`, not `reforged.dll`), from `NpcParam.nameId →
+NpcName` FMG, and the engine **re-reads `nameId` LIVE** (no cache-at-spawn). So the mod-agnostic native
+solution is a pure **DATA path**: inject a `NpcName` string + write the entity's `NpcParam.nameId` → the
+engine shows OUR name in its own stable red tag. **Proven end-to-end on a generic** (an Aigle, nameId=0):
+`fmg_set 18 999001 "TESTAIGLE_MFG"` + `param_set NpcParam 60010010 0xc s32 999001` → the native red
+`EnemyTag` rendered "TESTAIGLE_MFG". **Remaining = IMPLEMENTATION (Linux takes the lead), not RE.** See
+"★ THE SOLUTION" below; RE detail in `docs/re/windows_enemy_name_hud_feed_re_findings.md`.
+
+## ★ THE SOLUTION — native enemy names via the engine's own data path (CONFIRMED)
+
+Drive the engine's `nameId → NpcName` HUD path for entities it leaves blank (`nameId == 0` generics), using
+the names OUR resolver already computes. No Scaleform, no gfx edit, mod-agnostic (it IS the engine's path).
+
+**Proven facts (live, ER 2.6.2.0):**
+- Writer of the native red `EnemyTag_ColorText` is `eldenring.exe` (vanilla engine); `reforged.dll` has no
+  Scaleform/name strings → ERR does NOT feed the tag, it just sets `nameId` on its NPCs.
+- `EnemyTag_ColorText` has **no gfx-side gating** (FFDEC: trivial `MovieClip`, no visibility/nameId logic) —
+  it displays whatever the engine feeds. The "NPC-only" behaviour is purely the engine's `nameId==0 → no
+  feed` (the engine only writes the tag when the resolved name != "", user-observed).
+- The engine **re-reads `NpcParam.nameId` per tag-refresh** (changed it on a live, already-spawned Aigle →
+  the tag updated on re-acquire). So a runtime edit takes effect without respawn.
+- Offsets/tools (all live-verified): **`NpcParam.nameId` @ +0x0c (s32)** (`goblin_item_classify.cpp`
+  `npc_team_and_name`); **NpcName base FMG slot = 18** (`fmg_set 18 <id> <text>` works; `kNpcNameSlots =
+  {428,328,18}`); the engine looks up `NpcName[nameId]` (our tier-1 mirror: `lookup_text_utf8(nameId +
+  700000000)`).
+
+**Implementation sketch (Linux):**
+1. In the enemy-bar update (host side, where we already walk the 8 `entityHpBars` → ChrIns → `npcParam`/
+   `model`): for each visible bar whose `NpcParam.nameId == 0`, resolve `goblin::enemy_display_name(npcParam,
+   model)`. Skip if empty (true nameless → stay vanilla-blank).
+2. Allocate a **stable, collision-free NpcName id per npcParamId** (e.g. a reserved high band like
+   `kMfgNameBase + npcParamId`; verify the band is unused in NpcName across installs). Cache processed
+   `npcParamId`s → inject + set once per type, not per frame.
+3. `inject_fmg_entries(NpcName_slot=18, {{id, wname}})` with our resolved name; then write
+   `NpcParam.nameId = id` for that row (live param table, +0x0c). The engine then renders it in the native
+   red tag for every instance of that type.
+4. **Delete the ImGui draw** (`draw_enemy_bar_names` in `goblin_overlay_render.cpp`, the
+   `get_enemy_bar_labels`/`EnemyBarLabel` feed, the `cfg_enemyNames*` overlay bits) — this removes the
+   overlap + jitter. **Keep** `goblin::enemy_display_name` (still used by the map boss-marker supplement).
+5. Verify: stable under abrupt camera swings, accents correct (game font), generics/sheep named, single tag
+   (no ImGui dup). On VANILLA: same path (it's the engine's own), generics named too — the mod-agnostic win.
+
+**Open implementation questions / risks:**
+- **Id band choice** — must not collide with real NpcName ids (vanilla + the active mod). Pick a reserved
+  band and validate at boot.
+- **Gameplay side-effects of setting `nameId`** — `nameId` should be display-only, but confirm it doesn't
+  alter invader/summon/aggro text logic or a "named enemy" behaviour flag. Low risk; verify.
+- **Per-type vs per-instance** — `NpcParam.nameId` is per-npcParamId (shared by all instances of a type),
+  which is correct (all Aigles = "Aigle"). If two live entities share a param but need different names
+  (rare), the data path can't split them — acceptable.
+- **Timing** — inject before the first tag-show for a new type; the engine picks it up on the next
+  refresh (re-acquire). A one-time-per-type pass in the bar loop covers it.
+- Runtime-only: param edit + FMG injection reset on reboot; the bar-loop pass re-applies each session.
+
+---
+_The original Scaleform-RE plan is kept below for history; it is NOT the chosen path (the data path above
+supersedes it — simpler, no GFx RE, and the GATE it worried about is moot since the engine, not a shipped
+gfx, does the feed)._
 
 ## Goal
 

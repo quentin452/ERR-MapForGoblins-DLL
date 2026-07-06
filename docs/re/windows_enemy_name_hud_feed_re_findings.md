@@ -1,9 +1,31 @@
 # RE FINDINGS (Windows, 2026-07-06) — enemy-name HUD feed (`01_000_fe.gfx` / `EnemyTag_ColorText`), live recon
 
-Progress toward `docs/plans/native_enemy_names_scaleform_plan.md`. This is a **live external-RPM recon**
-session on the running game (Windows box, user-launched ER); it did NOT yet answer the plan's mod-agnostic
-GATE (Q1) or capture the engine name-feed write site. It hands off to the Linux (daily-build) agent with a
-concrete next step + one small DLL enhancement needed. Read the plan first.
+Progress toward `docs/plans/native_enemy_names_scaleform_plan.md`.
+
+## ★★ SOLVED 2026-07-06 — mechanism confirmed, native DATA path proven live (read this first)
+
+The enemy name is drawn by the **VANILLA ENGINE**, not ERR: a find-what-writes on Varré's live
+`EnemyTag_ColorText` buffer logged the writer RIPs in **`eldenring.exe`** (and `reforged.dll` has no
+Scaleform/name strings). The engine feeds it from **`NpcParam.nameId → NpcName`**, and **re-reads `nameId`
+LIVE** (not cached at spawn). Proven end-to-end on a GENERIC (Aigle `npcParamId=60010010`, `nameId=0`):
+`fmg_set 18 999001 "TESTAIGLE_MFG"` + `param_set NpcParam 60010010 0xc s32 999001` → the native red tag
+rendered "TESTAIGLE_MFG" (screenshot-confirmed). Also FFDEC-decompiled the gfx: `EnemyTag_ColorText` is a
+trivial `MovieClip` with **no visibility/nameId gating** → it displays whatever the engine feeds; the
+"NPC-only" behaviour is purely `nameId==0 → engine writes nothing`.
+
+**Consequence:** the plan's Scaleform-`SetTextHTML` capture is UNNECESSARY. The solution is a pure DATA
+path — inject a `NpcName` + set `NpcParam.nameId` for `nameId==0` generics, using the name our resolver
+already computes; delete the ImGui path. Offsets/tools live-verified: **`NpcParam.nameId` @ +0x0c (s32)**,
+**NpcName base FMG slot = 18**, engine looks up `NpcName[nameId]`. Implementation sketch + risks in
+`docs/plans/native_enemy_names_scaleform_plan.md` "★ THE SOLUTION". **Linux takes the implementation lead.**
+
+Everything below is the recon that led here (kept for context — the volatile-buffer capture, the FFDEC
+gate check, the tooling notes).
+
+---
+
+This was a **live external-RPM recon** session on the running game (Windows box, user-launched ER). It
+hands off to the Linux (daily-build) agent. Read the plan first.
 
 - **Platform/build:** `er_version = 2.6.2.0`. Live DLL `built = Jul 5 2026 09:41:48` (STALE vs Linux daily
   build — missing the Jul-6 accent fix `d23b779`; see the two standing Windows rules in
@@ -44,12 +66,15 @@ concrete next step + one small DLL enhancement needed. Read the plan first.
 > ⚠ **All hex addresses above are SESSION-SPECIFIC** (heap + ASLR — `er_base` was `0x7ff762b90000` this
 > session). Re-scan every boot. They are recorded only to show the shape, not to be hardcoded.
 
-## ❓ STILL OPEN — the mod-agnostic GATE (Q1) is NOT answered
+## ✅ RESOLVED — the mod-agnostic GATE (Q1)
 
-Q1 (does VANILLA display `EnemyTag_ColorText` when fed a name, or hide it for non-boss?) is **behavioral** —
-it needs a `SetText` + observe, or the write-site captured then reasoned about. Not done. Do NOT delete the
-ImGui path until Q1 = "displays when fed". (This session only proved the ERR case: the tag shows a named
-boss.)
+Q1 (does the tag DISPLAY when fed a name for a non-boss?) = **YES**, answered two ways:
+- **Static (FFDEC):** `EnemyTag_ColorText_12` is a trivial `MovieClip` (just `Text_0:MovieClip` + a
+  `stop()` frame script) — no visibility/nameId/empty-text gating anywhere in the gfx ActionScript.
+- **Live:** feeding a generic (the Aigle) a `nameId` + injected `NpcName` made the native red tag render
+  our string. The tag displays whatever the engine feeds; the "NPC-only" limit is the engine's `nameId==0`
+  no-feed, NOT a gfx gate. And it's the ENGINE's own data path → mod-agnostic (works on vanilla + any mod),
+  so we can retire the ImGui path once the data-path inject is wired (see the SOLVED banner + the plan).
 
 ## 🔬 Pause finding (answers "can find-what-writes trigger while paused?") — NO for writes
 

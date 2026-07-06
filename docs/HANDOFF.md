@@ -9,6 +9,32 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
+## ⇒ SESSION WRAP 2026-07-06d (Windows/Opus) — ★ native enemy names SOLVED (engine data-path, proven live) + minimap-coupling bug fixed; LINUX takes implementation
+
+Windows box, live RE on the running game. Two landed things + a major unblock handed to Linux.
+
+- **★★ NATIVE ENEMY NAMES — mechanism SOLVED, native path PROVEN LIVE.** The red enemy name is drawn by the
+  **VANILLA ENGINE** (find-what-writes on Varré's `EnemyTag_ColorText` → writer RIPs in `eldenring.exe`;
+  `reforged.dll` has no Scaleform/name strings), from **`NpcParam.nameId → NpcName`**, and the engine
+  **re-reads `nameId` LIVE**. FFDEC of the gfx: `EnemyTag_ColorText` is a trivial MovieClip, **no gating**
+  → GATE Q1 = YES. **Proven end-to-end on a GENERIC** (Aigle nameId=0): `fmg_set 18 999001 "TESTAIGLE_MFG"`
+  + `param_set NpcParam 60010010 0xc s32 999001` → native red tag rendered our string (screenshot). So the
+  Scaleform-RE plan is **superseded**: the solution is a pure DATA path (inject NpcName + set nameId for
+  nameId==0 generics, using our existing resolver), then delete the ImGui draw → kills the overlap + jitter.
+  Offsets: **`NpcParam.nameId` @ +0x0c s32**, **NpcName FMG slot 18**. Full impl sketch + risks in
+  `docs/plans/native_enemy_names_scaleform_plan.md` "★ THE SOLUTION"; RE in
+  `docs/re/windows_enemy_name_hud_feed_re_findings.md` (SOLVED banner). **→ LINUX IMPLEMENTS** (the
+  daily-build box): wire the per-type inject-and-set in the enemy-bar loop, pick a collision-free NpcName id
+  band, verify no gameplay side-effect of setting nameId, delete `draw_enemy_bar_names`, keep
+  `enemy_display_name`.
+- **✅ Minimap-coupling bug FIXED (`dab061c`).** Enemy-name draw was gated behind `if (minimap)` (called
+  inside `draw_minimap_hud`) → invisible whenever `show_minimap=false` (the Windows ini; Linux has it on) →
+  looked "Linux works / Windows doesn't". Now `if (minimap || config::enemyNames)`; the minimap self-gates
+  internally. Host-side → restart to load. Post-mortem in `docs/memory/bugs/README.md`.
+- **Tooling proven on Windows:** external RPM + capstone live-disasm (found the timestep dt driver + the
+  enemy-name writer), FFDEC gfx decompile, `fmg_set`/`param_set` for the data-path test. `mem_fwa off` (from
+  70d8ff3) unblocked the capture. Windows build+deploy: `build.bat` → `build-err/` → copy to `dll/offline/`.
+
 ## ⇒ SESSION WRAP 2026-07-06c (Linux/Opus) — DX/UX sweep, freeze detection, live enemy-name capture (routed to Windows), font + gamepad + OSK
 
 Long session on top of 06/06b. Local master well ahead of origin; USER pushes. All committed.
