@@ -9,6 +9,23 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
+## ⇒ 2026-07-06i — SESSION WRAP: v2.1.0 first release PREPARED (user pushes) + co-op markers shipped
+
+- **★ v2.1.0 = first tagged fork release, PREPARED locally (not pushed — user's job):** changelog rolled
+  (`[Unreleased]` → `[v2.1.0] - 2026-07-06`, commit `78f67930`), annotated tag `v2.1.0` on that commit, notes
+  drafted (was at `~/.claude/jobs/…/RELEASE_NOTES_v2.1.0.md`). Process saved: `docs/memory/process/release-process.md`.
+  Push/publish steps: `git push origin master && git push origin v2.1.0`; `gh release create v2.1.0 --repo
+  quentin452/ERR-MapForGoblins-DLL --notes-file … [build-linux/MapForGoblins.dll]`. Remotes: origin=quentin452
+  fork (release target), upstream=VirusAlex, gacsam=Gacsam; inherited tags v1.0.x–v2.0.4 are NOT on this master.
+- **Co-op partner markers SHIPPED (`19d7169f`)** — `MENU_MAP_Host` figure-in-ring (no rotation; remote facing
+  isn't synced) on WorldMap + Minimap via `goblin::coop::markers()` + `get_chr_map_pos` (v1 same-tile). Solo-safe
+  (empty solo). **★ NEEDS live 2-player validation** (position chain for remote PlayerIns + same-tile placement).
+- **Vmap redirect #3 fully done this session:** world-freeze while the fullscreen vmap is open
+  (`SetDisableAllChrUpdate`, instant resume), combat detection ABANDONED (no fixed EnemyIns→CSAiThink offset),
+  branch-flip pause + dead timescale hook REMOVED, freeze auto-skips in co-op, auto-close on death/not-playable.
+- **Boot infra flaky this session** — Proton/me3 died instantly ~every 2nd `boot_hold` after many cycles; a
+  second attempt always worked. Not a code issue.
+
 ## ⇒ 2026-07-06h — vmap-in-combat SOLVED by FREEZING the world (combat detection ABANDONED) ✅ SHIPPED
 
 Redirect #3 is done, but NOT via combat detection — that whole track was abandoned as a dead end and replaced
