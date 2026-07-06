@@ -1686,6 +1686,38 @@ static uintptr_t resolve_movie_impl()
     return static_cast<uintptr_t>(movie);
 }
 
+// CSScaleformSwfPlayer primary RTTI vtable RVA (imagebase 0x140000000) —
+// docs/re/windows_native_map_drawvfunc_re_findings.md §3/§5. The 0xe8-byte per-movie player
+// reached WorldMapDialog+0x140 -> +0x58; goal B = A/B a render/visible gate byte on it.
+constexpr uintptr_t SWFPLAYER_VTABLE_RVA = 0x2bbb360;
+constexpr int       SWFPLAYER_SIZE       = 0xe8;
+
+// Live CSScaleformSwfPlayer for the OPEN world map (0 if unresolved). Same cursor->dialog anchor
+// as resolve_movie_impl, then movieHandle(+0x140) -> +0x58 = player. VALIDATED by the player's own
+// RTTI vtable (er+SWFPLAYER_VTABLE_RVA) so we never read/write a wrong object.
+static uintptr_t resolve_swf_player()
+{
+    uintptr_t a = g_active_cursor.load(std::memory_order_relaxed);
+    if (!a) return 0;
+    static uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!base) return 0;
+    uint64_t vt = 0;
+    if (!seh_read8(reinterpret_cast<void *>(a), &vt) || vt != base + CURSOR_VTABLE_RVA) return 0;
+    const uintptr_t dialog = a - CURSOR_OFF_IN_MENU;
+    uint64_t handle = 0, player = 0, pvt = 0;
+    if (!seh_read8(reinterpret_cast<void *>(dialog + 0x140), &handle) || !handle || !plausible_ptr(handle))
+        return 0;
+    if (!seh_read8(reinterpret_cast<void *>(handle + 0x58), &player) || !player || !plausible_ptr(player))
+        return 0;
+    if (!seh_read8(reinterpret_cast<void *>(player), &pvt) || pvt != base + SWFPLAYER_VTABLE_RVA)
+        return 0;  // RTTI mismatch: not the SwfPlayer → refuse
+    return static_cast<uintptr_t>(player);
+}
+
+// One-slot A/B snapshot for sfplayer_poke/restore (one field at a time — the goal-B hunt method).
+struct SfPoke { bool active = false; uintptr_t addr = 0; int size = 0; uint64_t orig = 0; };
+static SfPoke g_sf_poke;
+
 bool movieclip_read(int outLTWH[4], int outBufWH[2])
 {
     const uintptr_t movie = resolve_movie_impl();
@@ -1734,6 +1766,85 @@ bool movieclip_maintain()
         g_movie_saved_ok = false;
     }
     return false;
+}
+
+// ── CSScaleformSwfPlayer probe (goal B: A/B a per-movie render/visible gate) ──────────────────
+// docs/re/windows_native_map_drawvfunc_re_findings.md §4 Route 1 (Linux-live RPM A/B). Map must be OPEN.
+int sfplayer_dump(char *out, int cap)
+{
+    if (!out || cap <= 0) return -1;
+    const uintptr_t p = resolve_swf_player();
+    if (!p)
+    {
+        int n = std::snprintf(out, cap, "sfplayer UNRESOLVED (map closed? or RTTI mismatch)");
+        return n;
+    }
+    int w = std::snprintf(out, cap, "sfplayer @%#llx size=0x%x\n", (unsigned long long)p, SWFPLAYER_SIZE);
+    for (int off = 0; off < SWFPLAYER_SIZE && w < cap - 32; off += 8)
+    {
+        uint64_t q = 0;
+        bool ok = seh_read8(reinterpret_cast<void *>(p + off), &q);
+        w += std::snprintf(out + w, cap - w, "+0x%02x: %016llx\n", off, ok ? (unsigned long long)q : 0ull);
+    }
+    return w;
+}
+
+// Read `size` (1/2/4/8) bytes at player+off. false if unresolved / bad size.
+bool sfplayer_read(int off, int size, uint64_t *out)
+{
+    if (!out || off < 0 || off + size > SWFPLAYER_SIZE) return false;
+    const uintptr_t p = resolve_swf_player();
+    if (!p) return false;
+    uint64_t q = 0;
+    if (!seh_read8(reinterpret_cast<void *>(p + (off & ~7)), &q)) return false;  // 8-aligned read, then slice
+    // Re-read exactly `size` bytes at the exact address (unaligned-safe via RPM).
+    uint8_t b[8] = {};
+    SIZE_T n = 0;
+    if (!ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(p + off), b, size, &n) || (int)n != size)
+        return false;
+    uint64_t v = 0;
+    for (int i = 0; i < size; ++i) v |= (uint64_t)b[i] << (8 * i);
+    *out = v;
+    return true;
+}
+
+// A/B write `val` (size 1/2/4/8) at player+off, snapshotting the original ONCE (single slot) for restore.
+// Call sfplayer_restore() to undo. Only one field pending at a time (the goal-B hunt does one at a time).
+bool sfplayer_poke(int off, int size, uint64_t val)
+{
+    if (off < 0 || (size != 1 && size != 2 && size != 4 && size != 8) || off + size > SWFPLAYER_SIZE)
+        return false;
+    const uintptr_t p = resolve_swf_player();
+    if (!p) return false;
+    const uintptr_t addr = p + off;
+    if (!g_sf_poke.active)  // snapshot the original bytes once
+    {
+        SIZE_T n = 0;
+        uint8_t b[8] = {};
+        if (!ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(addr), b, size, &n) || (int)n != size)
+            return false;
+        uint64_t v = 0;
+        for (int i = 0; i < size; ++i) v |= (uint64_t)b[i] << (8 * i);
+        g_sf_poke = SfPoke{true, addr, size, v};
+    }
+    uint8_t wb[8] = {};
+    for (int i = 0; i < size; ++i) wb[i] = (uint8_t)(val >> (8 * i));
+    SIZE_T n = 0;
+    return WriteProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(addr), wb, size, &n) && (int)n == size;
+}
+
+// Restore the last sfplayer_poke's original bytes (by ABSOLUTE address, so it works even after a
+// map close/reopen moved the object — we restore what we changed, then clear the slot).
+bool sfplayer_restore()
+{
+    if (!g_sf_poke.active) return true;
+    uint8_t wb[8] = {};
+    for (int i = 0; i < g_sf_poke.size; ++i) wb[i] = (uint8_t)(g_sf_poke.orig >> (8 * i));
+    SIZE_T n = 0;
+    bool ok = WriteProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(g_sf_poke.addr), wb,
+                                 g_sf_poke.size, &n) && (int)n == g_sf_poke.size;
+    g_sf_poke = SfPoke{};
+    return ok;
 }
 
 bool set_view_center(float mU, float mV, float minZoom)

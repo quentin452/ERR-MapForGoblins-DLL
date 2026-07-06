@@ -236,6 +236,13 @@ namespace goblin::worldmap_probe
     GOBLIN_RENDER_API bool movieclip_hiding();                               // current arm state
     GOBLIN_RENDER_API bool movieclip_maintain();  // per-frame: force clip 0 while armed, else restore
 
+    // CSScaleformSwfPlayer probe — goal B of the native-map render cull (A/B a per-movie render/visible
+    // gate). Map must be OPEN. See docs/re/windows_native_map_drawvfunc_re_findings.md §4 Route 1.
+    GOBLIN_RENDER_API int  sfplayer_dump(char *out, int cap);                 // hex-dump the 0xe8 player
+    GOBLIN_RENDER_API bool sfplayer_read(int off, int size, uint64_t *out);   // read 1/2/4/8 bytes at +off
+    GOBLIN_RENDER_API bool sfplayer_poke(int off, int size, uint64_t val);    // A/B write (snapshots orig)
+    GOBLIN_RENDER_API bool sfplayer_restore();                                // undo the last poke
+
     // No-restart fix for mid-session resolution / display-mode changes: edge-triggered
     // call to ER's complete swapchain re-apply (FUN_1419ed440 — release+ResizeBuffers+
     // recreate all render targets), fixing windowed/fullscreen/borderless. Render-thread

@@ -1409,6 +1409,55 @@ namespace goblin::debug_rpc
                 }
                 return "err usage: movieclip read|hide|show";
             }
+            // sfplayer — goal B of the native-map render cull: A/B the CSScaleformSwfPlayer (0xe8) for a
+            // per-movie render/visible gate (windows_native_map_drawvfunc_re_findings.md §4 Route 1). Map OPEN.
+            //   sfplayer [dump]                 -> hex-dump the 0xe8 player struct (diff open vs closed)
+            //   sfplayer read  <hexoff> <size>  -> read 1/2/4/8 bytes at player+off
+            //   sfplayer poke  <hexoff> <size> <hexval>  -> A/B write (snapshots orig; screenshot to judge)
+            //   sfplayer restore                -> undo the last poke
+            if (cmd == "sfplayer")
+            {
+                std::string sub = next_token(rest);
+                auto parseNum = [](const std::string &s) -> long long {
+                    if (s.empty()) return -1;
+                    return std::strtoll(s.c_str(), nullptr, 0);  // 0x.. or decimal
+                };
+                if (sub == "restore")
+                    return goblin::worldmap_probe::sfplayer_restore() ? "ok sfplayer restore"
+                                                                      : "err sfplayer restore failed";
+                if (sub == "read")
+                {
+                    long long off = parseNum(next_token(rest)), sz = parseNum(next_token(rest));
+                    if (off < 0 || (sz != 1 && sz != 2 && sz != 4 && sz != 8))
+                        return "err usage: sfplayer read <hexoff> <size 1|2|4|8>";
+                    uint64_t v = 0;
+                    if (!goblin::worldmap_probe::sfplayer_read((int)off, (int)sz, &v))
+                        return "err sfplayer read: unresolved (map open? in-world?) or bad off";
+                    char b[96];
+                    std::snprintf(b, sizeof(b), "ok sfplayer +0x%llx (%lld B) = %#llx (%llu)",
+                                  (unsigned long long)off, sz, (unsigned long long)v, (unsigned long long)v);
+                    return std::string(b);
+                }
+                if (sub == "poke")
+                {
+                    long long off = parseNum(next_token(rest)), sz = parseNum(next_token(rest)),
+                              val = parseNum(next_token(rest));
+                    if (off < 0 || (sz != 1 && sz != 2 && sz != 4 && sz != 8))
+                        return "err usage: sfplayer poke <hexoff> <size 1|2|4|8> <hexval>";
+                    if (!goblin::worldmap_probe::sfplayer_poke((int)off, (int)sz, (uint64_t)val))
+                        return "err sfplayer poke: unresolved or bad off/size";
+                    char b[128];
+                    std::snprintf(b, sizeof(b),
+                                  "ok sfplayer poke +0x%llx (%lld B) = %#llx — screenshot; `sfplayer restore` to undo",
+                                  (unsigned long long)off, sz, (unsigned long long)val);
+                    return std::string(b);
+                }
+                // default: dump
+                static char dump[4096];
+                int n = goblin::worldmap_probe::sfplayer_dump(dump, (int)sizeof(dump));
+                if (n <= 0) return "err sfplayer dump failed";
+                return std::string(dump, (size_t)n);
+            }
             // mfg_build — FRESHNESS GUARD. Returns the compile time of THIS RPC translation unit
             // (goblin_debug_rpc.cpp). Adding/changing ANY verb edits this file → its __TIME__ advances,
             // so a stale DLL is detectable: `ping` answers even from an OLD DLL (the listener lives), but
