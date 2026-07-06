@@ -172,3 +172,27 @@ survive `pkill -9`, a stale RPC port, and the 11h D-state husk. **NEXT SESSION: 
 → `er_base` + `mem_dump` around `er+0x7efb89` to pin the opener entry → author an AOB → MinHook it (suppress +
 toggle) → live-test (freeze/fast-travel/page/fog).** The safe-redirect code stays committed as the reusable
 flag/gate base; only the Slice-D trigger is replaced by the opener hook.
+
+## OPENER PIN attempt (2026-07-06, Linux mem_dump) — byte-reading is UNRELIABLE, need the ctor's real caller
+Read the module bytes around the fwa ret-addr `er+0x7efb89` (er_base 0x6ffff4c00000):
+- The function containing `er+0x7efb89` = **`er+0x7efaf0`** (prologue `40 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 30`
+  = push rbp/rsi/rdi/r12-r15; sub rsp,0x30). At `er+0x7efb84` it does `call er+0x792550`.
+- BUT **`er+0x792550` is a GENERIC container op** (entry `49 3b d0 73 73 ... mov rbx,rdx; mov rdi,[rbx]; ...
+  mov [rbx],rbp; add rbx,8` = a bounds-checked vector/list insert), **NOT the WorldMapDialog construction**.
+  So the linear ret-addr scan does NOT give a clean caller→ctor chain — `er+0x9cfb6e` (ctor+0x27e) and
+  `er+0x7efb89` are both on the stack but not directly caller/callee. **Byte-reading alone can't pin the
+  world-map-specific "open" function.**
+
+**⇒ Reliable next step = get the ctor's REAL immediate caller.** `mem_fwa` is DATA-only (can't exec-break the
+ctor; the vtable global er+0x2b2d7d8 is read-only so fwa-write never fires, and fwa-read on it is drowned by
+every method dispatch). So: **add a TEMPORARY diagnostic MinHook on the WorldMapDialog ctor `er+0x9cf8f0`
+(AOB the verified prologue `48 89 4C 24 08 57 48 83 EC 30`) that logs its return address (the caller) once**,
+rebuild + restart (boot_hold makes this cheap now), open the map, read the log → that caller IS the clean
+"open world map" function. Confirm it's world-map-specific (only fires for the map, not other menus), then
+MinHook it: `vmap_on_map_key` → open vmap + return early (suppress); else original. (Alternative: Windows
+Ghidra call-graph.) Only after that is the true-redirect hook safe to wire — no-oping the wrong (generic)
+function would break other menus.
+
+**Infra ready this session:** `tools/boot_hold.py` + VSCode task "MFG: Boot ER + HOLD" (leave ER running,
+socket released for `mfg.py rpc` one-shots). Killing the wedged env = `pkill -9 wineserver` (frees the stale
+RPC port + all wine procs); the D-state husk is unkillable (needs a machine reboot) but is harmless.
