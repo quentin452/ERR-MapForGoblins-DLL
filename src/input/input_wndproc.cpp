@@ -11,6 +11,7 @@
 #include "goblin_config.hpp"          // goblin::config::vmapOnMapKey — vmap-covers-map input gate
 #include "goblin_virtual_world.hpp"   // goblin::vworld::active() — custom-world open-on-map-key path
 #include "goblin_overlay_render_loader.hpp"  // call_inworld_hovered()
+#include "goblin_overlay_render_api.hpp"  // overlay_api::vmap_redirect() — native-map redirect input gate
 
 // ImGui's Win32 backend message handler (defined in imgui_impl_win32.cpp) — not declared by
 // the public backend header in this ImGui version, same extern goblin_overlay.cpp uses.
@@ -26,8 +27,11 @@ bool vmap_covers_map()
     // active — the "M, not F1" path). Both bits are host-side (config + vworld are host-exported), so
     // this needs no render call. Approximates panel::virtual_map_fullscreen()'s s_from_map for input
     // gating (true over the same open→close window).
-    return goblin::world_map_open() &&
-           (goblin::config::vmapOnMapKey || goblin::vworld::active() != 0);
+    // OR the redirect flag: once we force-close the native (redirect), world_map_open() is false but the
+    // vmap is STILL the active fullscreen map — keep the game's mouse locked out + ImGui fed.
+    return goblin::overlay_api::vmap_redirect() ||
+           (goblin::world_map_open() &&
+            (goblin::config::vmapOnMapKey || goblin::vworld::active() != 0));
 }
 
 namespace

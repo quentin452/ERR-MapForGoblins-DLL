@@ -2,6 +2,7 @@
 // function here is a mechanical one-line forward to the real host symbol; no logic lives here.
 
 #include "goblin_overlay_render_api.hpp"
+#include <atomic>
 
 #include "goblin_config.hpp"
 #include "goblin_config_schema.hpp"  // err_features_enabled
@@ -52,6 +53,14 @@ namespace goblin::overlay { void request_f1_tab(int idx); }  // goblin_overlay_r
 
 namespace goblin::overlay_api
 {
+    // Native-map REDIRECT flag (docs/re/native_map_redirect_linux_re_plan.md). Set by the render vmap
+    // (panel_virtual_map) when it stands in as the map AND has force-closed the native WorldMapDialog, so
+    // the vmap stays the active map surface even though world_map_open() is now false. The input hooks read
+    // it (vmap_covers_map) to keep the game's mouse locked out + feed ImGui while redirected. Host atomic.
+    static std::atomic<bool> g_vmap_redirect{false};
+    void set_vmap_redirect(bool v) { g_vmap_redirect.store(v, std::memory_order_relaxed); }
+    bool vmap_redirect() { return g_vmap_redirect.load(std::memory_order_relaxed); }
+
 #define GOBLIN_CFG_DEF_PTR(name) \
     decltype(&goblin::config::name) cfg_##name##_ptr() { return &goblin::config::name; }
     GOBLIN_CFG_BOOL_LIST(GOBLIN_CFG_DEF_PTR)

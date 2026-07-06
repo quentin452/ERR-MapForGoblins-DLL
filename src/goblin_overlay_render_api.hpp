@@ -147,6 +147,12 @@ namespace goblin::overlay_api
     GOBLIN_RENDER_API void clear_locate_target();
     GOBLIN_RENDER_API bool locate_target_clamped();
     GOBLIN_RENDER_API bool err_features();  // reforged.dll loaded — ERR-only UI exists
+
+    // Native-map REDIRECT flag: true while the vmap stands in as the map with the native WorldMapDialog
+    // force-closed (see native_map_redirect_linux_re_plan.md). Render sets it; input hooks read it to keep
+    // the game's mouse locked out even though world_map_open() is false.
+    GOBLIN_RENDER_API void set_vmap_redirect(bool v);
+    GOBLIN_RENDER_API bool vmap_redirect();
     GOBLIN_RENDER_API bool page_switch_busy();
     GOBLIN_RENDER_API void request_switch_to_page(int group);
     GOBLIN_RENDER_API const goblin::worldmap_probe::LocateDebug &last_locate_debug();
