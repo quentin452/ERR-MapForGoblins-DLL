@@ -34,6 +34,12 @@ by **freezing all characters while the fullscreen vmap is open** (ER's own cutsc
   mediated), so per-enemy detection was never viable; the freeze sidesteps it entirely.
 - **Enemies-only freeze (player-exempt)** via `[LocalPlayer+0x531]` XOR bit is wired (`freeze enemies`) but
   UNTESTED + not needed for the fullscreen vmap (player isn't controllable under it anyway).
+- **★ CO-OP follow-up (`docs/re/coop_player_list_re_prompt.md`):** the freeze is a LOCAL sim change → in
+  seamless co-op it would desync. Need a `goblin::coop::others_present()` gate to SKIP the freeze when other
+  players are in the session (`request_freeze(FREEZE_VMAP, vmap_redirect() && !coop::others_present())`). Same
+  accessor feeds co-op **player markers** on the WorldMap/Minimap. Recon done: Seamless Co-op v1.9.9, source
+  closed, buddies likely = `PlayerIns` in WorldChrMan (approach B = count PlayerIns, no ersc RE — do first).
+  Blocked on a live 2-player session to validate. Interim: a `vmap_freeze` config toggle (manual off in co-op).
 
 ## ⇒ 2026-07-06g — vmap-on-map-key F1 option SHIPPED + verified working (input authority = follow-up)
 
