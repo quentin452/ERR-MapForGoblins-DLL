@@ -121,6 +121,9 @@ map-viewport diagnostic; `hide/show` are kept as reusable scaffolding (resolve +
 Track B fast-travel anyway, so this is not urgent):
 - **Candidate 1 — the Scaleform DRAW vfunc no-op** (skip submitting the movie's GFx render pass). Needs the draw
   slot — findings §4 flagged this as "several uncertain Ghidra runs" (Windows). The real remaining path.
+  **← CHOSEN 2026-07-06 (user): pursue this. Sharpened Windows prompt written →
+  `windows_native_map_drawvfunc_re_prompt.md`** (has the anchors, the two dead levers to skip, and a
+  fallback B = a render-enable field on `CSScaleformSwfPlayer`/MovieImpl).
 - **A movie/player visible/enable flag** — blind RPM field-scan of MovieImpl / `CSScaleformSwfPlayer`
   (`movieHandle+0x58`) for a boolean that gates render. Linux-doable but a risky spike (flipping unknown fields
   can crash); reuse the `movieclip` scaffolding.

@@ -196,6 +196,13 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
   **Recommended collision-viz = draw hknp shapes ourselves via ESP, unblocked by `w2s3d`** (no native flag, no
   Havok-version lock). A manager global `DAT_1447dacd0` (er+0x47dacd0) + a disp-mask (inst+0x10, `0x1FFFF`) exist
   as anchors if anyone attempts the standup anyway.
+- **Native world-map RENDER cull (stop the WorldMapDialog Scaleform draw) — OPEN, Windows.** The vmap already
+  covers + input-locks the native map; the last brick = stop the native map from RENDERING (wasted GPU under
+  the opaque vmap). BOTH cheap Linux levers PROVEN DEAD (`windows_native_map_render_toggle_re_findings.md`
+  §4c/§4d): the D3D12 scissor (map draws full-screen through generic scissors, no map-specific rect) and the
+  `MovieImpl+0xB0` GFx clip write (descriptive, inert). Remaining = **candidate 1 = no-op the WorldMapDialog
+  DRAW vfunc** (the separate Scaleform render pass), keeping the update tick `FUN_140766980` live → prompt
+  `windows_native_map_drawvfunc_re_prompt.md`. Gated on vmap Track A/B in production; the lever enables A/B now.
 - **In-game pause** (`windows_ingame_pause_re_prompt.md`), **gamepad input device**
   (`windows_gamepad_input_device_re_prompt.md`), **silent deadlock freeze** (unsolved; watchdog shipped).
 - **Keybinding config (read the user's LIVE kb+pad binds) — OPEN, `windows_keybinding_config_re_prompt.md`.**
