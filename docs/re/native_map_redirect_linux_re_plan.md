@@ -47,6 +47,34 @@ regardless of the player's fields; no safe pokeable gate exists (the two fields 
 present). Redirect sidesteps that entire subsystem — the native map simply isn't open, so there's nothing to
 cull.
 
+## RECON DONE (2026-07-06, Linux mem_fwa) + refined hook point = the OPEN-menu CONVERGENCE
+`mem_fwa` (write) on the map-open state byte **`CSMenuMan+0xCD`** (=7 when the world map is up; live addr this
+boot `0x12a8474d`, `CSMenuMan=0x12a84680` via slot `0x6ffff896b7b0`; eldenring.exe base `0x6ffff4ba0000`).
+Cycling `key m`/`key Escape` captured **7 distinct writers** of that byte (all in the menu system er+0x74xxxx:
+er+0x7ad512, 0x744ed6, 0x745722, 0x746b77, 0x7457b4, 0x746812, 0x7adb87). +0xCD is a SHARED menu-screen-id
+byte (every menu push/pop writes it) — NOT a per-dialog gate, so writing it directly would desync. The
+**world-map-specific** open frames (hits #2/#4) share the caller chain **`er+0x9cfb6e → er+0x7efb89`**
+(er+0x9cfb6e = WorldMapDialog ctor `er+0x9cf8f0` +0x27e; er+0x7efb89 = the menu code that opens it).
+
+**User's key insight (2026-07-06):** ER has TWO keybind systems (gamepad + kb/mouse), BOTH mapped to open the
+world map. So don't hook a raw key or either bind table — hook the **single call both converge to**: the
+"open world map menu" function (**`er+0x7efb89`** region, the caller of the WorldMapDialog ctor). Both input
+systems funnel through it, so ONE hook covers both automatically.
+
+**⇒ REDIRECT hook (the real "never open"):** MinHook the opener function (entry of the `er+0x7efb89` /
+ctor-caller). When `vmap_on_map_key` is on: **skip the native open** (return without constructing/pushing
+WorldMapDialog) AND open the vmap (`virtual_map_open()=true`, mark `s_redirected`). When off: call original.
+This ALSO fixes the trigger — the hook opens the vmap directly, not via `world_map_open()` detection (which
+would never fire once the native is suppressed). Native never opens ⇒ never renders ⇒ no flash, no Scaleform
+render, no A-style open/close.
+
+**★ NEXT to implement:** pin the ENTRY of the opener function (the function containing/above `er+0x7efb89` that
+calls the WorldMapDialog ctor `er+0x9cf8f0`) — read bytes around it (mem_dump) to find the prologue / author an
+AOB, or hook the ctor `er+0x9cf8f0` and dump a deep stack to name the caller precisely. Then MinHook it,
+gate on `vmap_on_map_key`, open the vmap + skip. **Live-test the freeze** (suppressing the open is the docs'
+freeze caveat — but resident projection removed the VM coupling; if it desyncs, fall back to the SAFE
+force-close: let it open then inject the game's own `Escape` close, which unwinds cleanly).
+
 ## Follow-up — ER cursor render self-disables (needs a left-click to re-arm)
 User-reported (2026-07-06): the ER mouse cursor's RENDER turns off after a while idle; a **left-click**
 re-enables it. This matters for the vmap redirect (the vmap needs a live cursor). Same method as above —
