@@ -199,3 +199,5 @@ tools/rpc_tests/sweep.log
 # per-machine env (real paths) — never commit
 .env.local
 tools/.env.local
+tools/collision_offline/bin/
+tools/collision_offline/obj/

@@ -105,3 +105,53 @@ needs ONE of: (a) hand-decode the `Unk68/Unk80/UnkA8` layout from a real extract
 (a fuller community Havok lib that models `fsnpCustomMeshParameter`), or (c) resolve the Water/Swamp ids in
 Windows/Ghidra (`MatRatio` enum er+0x2bc32b8, `hknpMaterialLibrary` er+0x2ee36b0) and match them against a
 hand-decoded index. Reflection-probe scratch: `$CLAUDE_JOB_DIR/tmp/hkxprobe` (throwaway).
+
+## 8. Probe 2 — offline dvdbnd→collision chain BUILT + VALIDATED on Linux; Oodle is the one wall
+Built `tools/collision_offline/` (C# net10, `dotnet run`, refs `tools/lib/Andre.SoulsFormats.dll`, our own
+RSA). Validated 2026-07-06 on the packed Linux box. The chain, and exactly where it stops:
+```
+Data*.bhd  --RSA(c^e mod n, drop leading byte)-->  BHD5 plaintext   ✓ our BigInteger modexp
+           --SoulsFormats.BHD5.Read(EldenRing)-->  hash→FileHeader   ✓ counts 5824/39684 == memory
+vpath      --prime-0x85 64-bit hash--> FileHeader --.bdt slice-->     ✓ Data0 known file 21056B/DCX exact
+map/mMM/mMM_XX_YY_ZZ/hMM_XX_YY_ZZ.hkx{bhd,bdt}  --> BHF4/BDF4 (uncompressed)  ✓
+           --SoulsFormats.BXF4.Read-->  118 inner h*_######.hkx.dcx  ✓ (m10 hi-collision)
+inner hkx.dcx  == DCX-**KRAK (Oodle)**                                ✗ WALL
+           --SoulsFormats.HKX.Read--> HKNPCompressedMeshShapeData geom + FSNPCustomParam material  (blocked by ↑)
+```
+- **RSA + hash + slice VALIDATED end-to-end** against the memory ground truth (`[[dvdbnd-packed-reader]]`):
+  Data0=5824 / Data2=39684 entries; `menu/hi/01_common.sblytbnd.dcx` slices to exactly 21056 B, `DCX` magic.
+- **Collision vpath convention CONFIRMED live:** `map/mMM/mMM_XX_YY_ZZ/hMM_XX_YY_ZZ.hkxbhd`+`.hkxbdt`
+  (h=hi, l=lo) resolve for m10/m14/m60 tiles → `BHF4`/`BDF4` BXF pair. The BXF pair is stored UNCOMPRESSED
+  in the dvdbnd; only the INNER `hkx.dcx` are compressed.
+- **THE WALL = Oodle.** Every inner `h*_######.hkx.dcx` is `DCX-KRAK`. `SoulsFormats.DCX.Decompress` KRAK
+  P/Invokes `oo2core_6_win64.dll` (Windows PE) → native Linux `dotnet` errors `Could not find a supported
+  version of oo2core`. So the geometry + material decode can't run until an Oodle route is wired. (MSBs are
+  DCX-DFLT/zlib → managed, which is why the earlier MSB probes ran offline fine; collision is KRAK.)
+
+### Oodle routes (pick one — all keep it on this Linux box)
+1. **ooz native `.so`** — build the open-source Kraken decompressor (powzix/ooz) as a Linux shared lib,
+   P/Invoke `Kraken_Decompress` from C#, and hand-unwrap the DCX-KRAK header (uncompressed/compressed sizes)
+   instead of `DCX.Decompress`. ⇒ FULLY OFFLINE, pure build step, no game, no Windows. Cost: build+wire ooz
+   (a new native dep) + verify Oodle-stream compat.
+2. **RPC hybrid** — the game runs under Proton and its in-process `oo2core` already works
+   (`dcx_decompress`); add a debug-RPC verb (thin wrapper over `read_game_file_decompressed`) that writes the
+   DECOMPRESSED inner hkx to disk, then decode HKX/material offline in C#. ⇒ least code, reuses PROVEN Oodle,
+   no new dep. Cost: needs the game booted; awkward for a full 1300-tile bake (one-at-a-time RPC).
+3. **Wine C++ extractor** — a standalone Windows console (clang-cl+xwin, `[[build-toolchain-clang-xwin]]`)
+   linking the existing `dvdbnd_reader` + `dcx_decompress` (loads `oo2core_6_win64.dll` fine under Wine), run
+   under Proton/Wine on this box, dumps decompressed hkx to disk; C# decodes offline. ⇒ offline, no game, no
+   new dep, reuses proven C++. Cost: a new C++ target + Wine invocation.
+
+**Recommendation for the material SPIKE (prove per-triangle material is recoverable, cheapest):** route 2
+(RPC hybrid) — one verb, extract a couple Liurnia/Siofra inner hkx decompressed, then reverse the
+`FSNPCustomParamCompressedMeshShape` `Unk68/Unk80/UnkA8` layout + `HKNPCompressedMeshShapeData.primitives`
+offline to map material→triangle. Decide the whole-map BAKE's Oodle route (1 vs 3) AFTER material decode is
+proven — no point building the fast offline path if the material can't be read.
+
+### Still open
+- Which overworld tile(s) cover the Liurnia lake / open ocean (need a KNOWN-water tile for the histogram).
+  `m60_42_36_00` resolves but isn't confirmed as water. Legacy `m14_00_00_00` (Academy) sits in the lake —
+  a safe first water target; Siofra `m12_01_00_00` for a river.
+- **DLC RSA key** still missing → DLC maps (m40-43, DLC-OW tiles) can't be read offline yet; base-game water
+  (Data2, keys present) is enough for first validation.
+- Tool: `tools/collision_offline/` (selftest / list-collision / extract). Reflection scratch retired.
