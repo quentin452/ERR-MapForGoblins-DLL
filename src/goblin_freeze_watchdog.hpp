@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 
 // Deadlock/freeze watchdog (user ask 2026-07-02): the game can freeze "deadlock-like" with NO
@@ -14,6 +15,12 @@ namespace goblin::freeze_watchdog
 {
 // Call once per rendered frame (top of hk_present). Lock-free, safe from any thread.
 void beat_present();
+
+// The present-thread heartbeat counter (increments once per rendered frame). Exposed so an RPC
+// driver can DETECT a freeze in real time: the RPC listener is a separate thread and answers `ping`
+// even when the render/main thread is deadlocked — poll `status` (field `frame=`) twice, and if this
+// value is unchanged while the process is still alive, the game is frozen. Lock-free.
+std::uint64_t present_beat();
 
 // Start the watchdog thread. No-op when freeze_watchdog_secs == 0. `log_dir` receives
 // MapForGoblins_freeze_<pid>.{txt,dmp} on a detected stall (one dump per session).

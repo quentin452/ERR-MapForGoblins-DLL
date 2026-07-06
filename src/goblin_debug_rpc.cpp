@@ -7,6 +7,7 @@
 #include "goblin_overlay_render_api.hpp"  // overlay_api::rebuild_markers (refresh_markers cmd)
 #include "input/input_cursor.hpp"  // set_cursor_pos_real — pixel-exact mouse_move via the trampoline
 #include "goblin_pause.hpp"    // pause command + paused= status (unfocused-window pause escape)
+#include "goblin_freeze_watchdog.hpp"  // present_beat() — frame= heartbeat for RPC freeze detection
 #include "goblin_overlay.hpp"
 #include "goblin_virtual_world.hpp"  // vworld registry — `vworld` RPC (custom virtual worlds)
 #include "worldmap/loot_disk.hpp"    // read_game_file_decompressed — `assets_probe` path-loading guard
@@ -453,6 +454,9 @@ namespace goblin::debug_rpc
                 return "ok panel=" + std::to_string(goblin::overlay::panel_open() ? 1 : 0) +
                        " hotreload=" + std::to_string(hot ? 1 : 0) +
                        " gen=" + std::to_string(goblin::overlay_render_loader::render_generation()) +
+                       // present-thread heartbeat — poll twice; unchanged while alive = the render/main
+                       // thread is frozen (deadlock) even though this RPC listener thread still answers.
+                       " frame=" + std::to_string(goblin::freeze_watchdog::present_beat()) +
                        " reload_pending=" +
                        std::to_string(goblin::overlay_render_loader::reload_pending() ? 1 : 0) +
                        " map_open=" + std::to_string(goblin::world_map_open() ? 1 : 0) +

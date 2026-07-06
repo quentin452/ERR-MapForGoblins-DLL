@@ -108,6 +108,8 @@ namespace goblin::freeze_watchdog
 {
 void beat_present() { g_present_beat.fetch_add(1, std::memory_order_relaxed); }
 
+uint64_t present_beat() { return g_present_beat.load(std::memory_order_relaxed); }
+
 void install(const std::filesystem::path &log_dir)
 {
     if (goblin::config::freezeWatchdogSecs == 0)

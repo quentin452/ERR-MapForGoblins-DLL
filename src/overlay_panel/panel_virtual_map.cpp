@@ -2100,9 +2100,58 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         }
     }
 
-    // Player cursor — drawn AFTER custom pins + the death marker so it sits ON TOP of them (it used to
-    // draw above the marker loop and got covered). Only on the displayed group (underground overlaps the
-    // overworld in XZ, so a cross-group dot would mislead).
+    // NOTE: the PLAYER cursor is drawn further down, AFTER the region labels, so it sits on top of them
+    // too (region name pills used to cover it). See the "Player cursor" block below the region labels.
+
+    // Region name labels (A7 parity — the coarse major-region names Limgrave/Caelid/… the native map
+    // draws). Base ER only (custom worlds carry no ER regions) and only anchors on the displayed group
+    // (underground overlaps the overworld in XZ). Reuses the world-space projection precomputed above so
+    // the label rides the same pan/zoom as its region's markers. CLICKABLE, parity with the native chip:
+    // a click toggles that region off — which hides its CLUTTER markers (loot/landmarks/bosses) while
+    // graces + the player stay visible (see region_hide_exempt above). The on/off flag is the SHARED
+    // map_renderer state, so a toggle syncs with the native map and persists via config::regionToggles.
+    // Drawn last-but-one so names sit over the markers.
+    if (active_world == 0 && s_show_labels)
+    {
+        ImFont *font = ImGui::GetFont();
+        const float fontSize = ImGui::GetFontSize() * 1.4f * uiScale;
+        const bool clicked = hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+        for (int i = 0; i < regN && i < kRegCap; ++i)
+        {
+            if (!regValid[i] || regGrp[i] != s_group)
+                continue;
+            const char *name = goblin::generated::MAJOR_REGION_ANCHORS[i].name;
+            ImVec2 p = w2s(regWx[i], regWz[i]);
+            if (p.x < origin.x - 64 || p.x > canvas_end.x + 64 ||
+                p.y < origin.y - 32 || p.y > canvas_end.y + 32)
+                continue;
+            ImVec2 ts = font->CalcTextSizeA(fontSize, FLT_MAX, 0.f, name);
+            ImVec2 tp(p.x - ts.x * 0.5f, p.y - ts.y * 0.5f);
+            const float pad = 5.f * uiScale;
+            ImVec2 r0(tp.x - pad, tp.y - pad), r1(tp.x + ts.x + pad, tp.y + ts.y + pad);
+            const bool hot = io.MousePos.x >= r0.x && io.MousePos.x <= r1.x &&
+                             io.MousePos.y >= r0.y && io.MousePos.y <= r1.y;
+            if (hot && clicked)
+                goblin::worldmap::region_set_enabled(i, !goblin::worldmap::region_enabled(i));
+            const bool on = goblin::worldmap::region_enabled(i);
+            // Pill (warmer when hovered, reddish when off) + hover outline + text (gold on / dim off) +
+            // a strike-through when off — same visual language as the native draw_region_labels chip.
+            const ImU32 bg = on ? IM_COL32(30, 26, 18, hot ? 175 : 120)
+                                : IM_COL32(46, 22, 22, hot ? 175 : 120);
+            dl->AddRectFilled(r0, r1, bg, 4.f);
+            if (hot)
+                dl->AddRect(r0, r1, IM_COL32(238, 226, 188, 220), 4.f, 0, 1.5f);
+            const ImU32 col = on ? IM_COL32(238, 226, 188, 235) : IM_COL32(150, 140, 120, 160);
+            dl->AddText(font, fontSize, ImVec2(tp.x + 1.5f * uiScale, tp.y + 1.5f * uiScale), IM_COL32(0, 0, 0, 190), name);
+            dl->AddText(font, fontSize, tp, col, name);
+            if (!on)
+                dl->AddLine(ImVec2(tp.x, p.y), ImVec2(tp.x + ts.x, p.y), col, 2.0f * uiScale);
+        }
+    }
+
+    // Player cursor — drawn AFTER custom pins, the death marker AND the region labels so it sits ON TOP of
+    // all of them (the region name pills used to cover it). Only on the displayed group (underground
+    // overlaps the overworld in XZ, so a cross-group dot would mislead).
     if (active_world == 0)
     {
         int parea = 0, pgroup = 0;
@@ -2165,52 +2214,6 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     dl->AddCircle(pp, 5.0f * uiScale, IM_COL32(255, 255, 255, 235), 0, 1.5f * uiScale);
                 }
             }
-        }
-    }
-
-    // Region name labels (A7 parity — the coarse major-region names Limgrave/Caelid/… the native map
-    // draws). Base ER only (custom worlds carry no ER regions) and only anchors on the displayed group
-    // (underground overlaps the overworld in XZ). Reuses the world-space projection precomputed above so
-    // the label rides the same pan/zoom as its region's markers. CLICKABLE, parity with the native chip:
-    // a click toggles that region off — which hides its CLUTTER markers (loot/landmarks/bosses) while
-    // graces + the player stay visible (see region_hide_exempt above). The on/off flag is the SHARED
-    // map_renderer state, so a toggle syncs with the native map and persists via config::regionToggles.
-    // Drawn last-but-one so names sit over the markers.
-    if (active_world == 0 && s_show_labels)
-    {
-        ImFont *font = ImGui::GetFont();
-        const float fontSize = ImGui::GetFontSize() * 1.4f * uiScale;
-        const bool clicked = hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
-        for (int i = 0; i < regN && i < kRegCap; ++i)
-        {
-            if (!regValid[i] || regGrp[i] != s_group)
-                continue;
-            const char *name = goblin::generated::MAJOR_REGION_ANCHORS[i].name;
-            ImVec2 p = w2s(regWx[i], regWz[i]);
-            if (p.x < origin.x - 64 || p.x > canvas_end.x + 64 ||
-                p.y < origin.y - 32 || p.y > canvas_end.y + 32)
-                continue;
-            ImVec2 ts = font->CalcTextSizeA(fontSize, FLT_MAX, 0.f, name);
-            ImVec2 tp(p.x - ts.x * 0.5f, p.y - ts.y * 0.5f);
-            const float pad = 5.f * uiScale;
-            ImVec2 r0(tp.x - pad, tp.y - pad), r1(tp.x + ts.x + pad, tp.y + ts.y + pad);
-            const bool hot = io.MousePos.x >= r0.x && io.MousePos.x <= r1.x &&
-                             io.MousePos.y >= r0.y && io.MousePos.y <= r1.y;
-            if (hot && clicked)
-                goblin::worldmap::region_set_enabled(i, !goblin::worldmap::region_enabled(i));
-            const bool on = goblin::worldmap::region_enabled(i);
-            // Pill (warmer when hovered, reddish when off) + hover outline + text (gold on / dim off) +
-            // a strike-through when off — same visual language as the native draw_region_labels chip.
-            const ImU32 bg = on ? IM_COL32(30, 26, 18, hot ? 175 : 120)
-                                : IM_COL32(46, 22, 22, hot ? 175 : 120);
-            dl->AddRectFilled(r0, r1, bg, 4.f);
-            if (hot)
-                dl->AddRect(r0, r1, IM_COL32(238, 226, 188, 220), 4.f, 0, 1.5f);
-            const ImU32 col = on ? IM_COL32(238, 226, 188, 235) : IM_COL32(150, 140, 120, 160);
-            dl->AddText(font, fontSize, ImVec2(tp.x + 1.5f * uiScale, tp.y + 1.5f * uiScale), IM_COL32(0, 0, 0, 190), name);
-            dl->AddText(font, fontSize, tp, col, name);
-            if (!on)
-                dl->AddLine(ImVec2(tp.x, p.y), ImVec2(tp.x + ts.x, p.y), col, 2.0f * uiScale);
         }
     }
 

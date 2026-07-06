@@ -2764,8 +2764,17 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
             const float hh = 15.0f * uiScale;          // half-height (bigger — the native yellow pin blended
             const float hw = hh * (72.0f / 150.0f);    // into the yellow markers; half-width keeps aspect)
             // Cool glow halo behind so the warm-yellow player pin POPS off the yellow graces/markers, +
-            // a bright tint over the sprite so it reads clearly on any tile.
-            fg->AddCircleFilled(ctr, hh * 0.95f, IM_COL32(40, 130, 255, 95));
+            // a bright tint over the sprite so it reads clearly on any tile. The halo fades as the minimap
+            // zooms IN (same behaviour as the vmap player halo) so it stops blobbing over the centre —
+            // keyed on minimapZoom (px/world; higher = zoomed in), unaffected at normal zoom.
+            int haloA = 95;
+            if (scale > 1.5f)
+            {
+                const float f = 1.0f - (scale - 1.5f) / 2.5f;   // 1 at 1.5 px/world → 0 by ~4.0
+                haloA = f > 0.0f ? (int)(95.0f * f) : 0;
+            }
+            if (haloA > 0)
+                fg->AddCircleFilled(ctr, hh * 0.95f, IM_COL32(40, 130, 255, haloA));
             const ImVec2 tl(ctr.x - rgt.x * hw + fwd.x * hh, ctr.y - rgt.y * hw + fwd.y * hh);
             const ImVec2 tr(ctr.x + rgt.x * hw + fwd.x * hh, ctr.y + rgt.y * hw + fwd.y * hh);
             const ImVec2 br(ctr.x + rgt.x * hw - fwd.x * hh, ctr.y + rgt.y * hw - fwd.y * hh);

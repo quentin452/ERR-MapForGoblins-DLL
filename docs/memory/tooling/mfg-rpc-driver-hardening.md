@@ -27,6 +27,15 @@ Mandatory pattern for every RPC driver / background validation script:
 4. **Present-thread liveness check** where it matters: a `screenshot` that doesn't return
    within its timeout = the game is frozen even though `ping` works → abort the recipe, report
    "game frozen (present thread dead)", don't keep sending inputs.
+   - **★ `status` now carries `frame=<N>` (present-thread heartbeat, 2026-07-06).** The cheap,
+     non-blocking freeze test: read `status`, wait ~2 s, read again — if `frame=` is UNCHANGED while
+     the process is still alive, the render/main thread is deadlocked (the RPC listener is a separate
+     thread, so `ping`/`status` still answer). Prefer this over the screenshot probe (which itself
+     hangs on a freeze). The in-DLL `freeze_watchdog` (default 20 s, ini `[Debug] freeze_watchdog_secs`)
+     ALSO auto-writes `MapForGoblins_freeze_<pid>.{txt,dmp}` on a present stall — but only that class
+     (present frozen); a freeze where Present keeps running (game-update/input stuck) advances `frame=`
+     and is NOT caught by either. NB a D-state (uninterruptible) frozen game can also hang `pgrep`/`ps`
+     reading its `/proc` — force-kill with `pkill -9` in the background so cleanup doesn't block you.
 5. **DLL-FRESHNESS gate BEFORE verifying new code (user-reported 2026-07-04).** `ping`/`status`
    answer from a **STALE DLL** too — the listener lives, but the running DLL predates your source
    changes, so your new verbs return `err unknown command` and old behaviour silently persists
