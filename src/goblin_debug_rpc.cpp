@@ -278,18 +278,27 @@ namespace goblin::debug_rpc
                 // The game's wndproc DOES see every delivered injected key (WM_KEYDOWN,
                 // validated live via the kbseen counter), so poll it: no arrival within ~240ms
                 // → re-assert foreground and resend once.
+                // RETRY-UNTIL-SEEN: right after a refocus the game's raw-input path can eat the FIRST
+                // few injected keys even though we're foreground + g_has_focus (validated live 2026-07-06:
+                // one 150ms retry still didn't land the map key). Resend the DOWN until the game's wndproc
+                // actually counts a keyboard packet (wm_keydown_total ticks), up to ~5 attempts with a
+                // growing settle + a re-assert of foreground each round; an UP between attempts avoids a
+                // stuck-down. Then the real DOWN(hold)/UP.
                 const unsigned kb_before = goblin::input::wm_keydown_total();
-                send_vk(static_cast<uint16_t>(vk), false);
-                bool retried = false;
-                for (int i = 0; i < 12 && goblin::input::wm_keydown_total() == kb_before; ++i)
-                    Sleep(20);
-                if (goblin::input::wm_keydown_total() == kb_before)
+                bool retried = false, seen = false;
+                for (int attempt = 0; attempt < 5 && !seen; ++attempt)
                 {
-                    if (HWND hw = static_cast<HWND>(goblin::overlay::game_hwnd()))
-                        SetForegroundWindow(hw);
-                    Sleep(150);
+                    if (attempt > 0)
+                    {
+                        retried = true;
+                        send_vk(static_cast<uint16_t>(vk), true);  // clear any half-registered down
+                        if (HWND hw = static_cast<HWND>(goblin::overlay::game_hwnd()))
+                            SetForegroundWindow(hw);
+                        Sleep(80 + attempt * 60);  // growing settle for the raw-input path to come back
+                    }
                     send_vk(static_cast<uint16_t>(vk), false);
-                    retried = true;
+                    for (int i = 0; i < 12 && !(seen = goblin::input::wm_keydown_total() != kb_before); ++i)
+                        Sleep(20);
                 }
                 Sleep(static_cast<DWORD>(hold_ms));
                 send_vk(static_cast<uint16_t>(vk), true);
