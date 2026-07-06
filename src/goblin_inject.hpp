@@ -352,6 +352,10 @@ namespace goblin
     // grace_suppress_native). Phase A logs [WARPPIN] to confirm identification (RE e4b3f6a).
     void install_grace_suppression_hook();
 
+    // Hook the WorldMapDialog create-callback so the native map never opens (the vmap stands in) when the
+    // config vmap_on_map_key is on. See goblin_native_map_redirect.cpp / native_map_redirect_linux_re_plan.md.
+    void install_native_map_redirect_hook();
+
     // Dev probe (dump_icon_textures): iterate EquipParam* live, log rows whose iconId matches
     // the inventory-captured MENU_FL_<iconId> sprites → proves item↔iconId↔sprite.
     void verify_equip_iconids();

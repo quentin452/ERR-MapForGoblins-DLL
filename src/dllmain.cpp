@@ -145,6 +145,7 @@ static void init_save_hook()        { goblin::sidecar::install_save_hook(); }
 static void init_setup_messages()   { goblin::setup_messages(); }
 static void init_icon_tex_probe()   { goblin::install_icon_texture_probe(); }
 static void init_grace_suppress()   { goblin::install_grace_suppression_hook(); }
+static void init_native_map_redirect() { goblin::install_native_map_redirect_hook(); }
 static void init_field_probe()      { goblin::field_probe::initialize(goblin::config::probeFieldSpec); }
 
 static void safe_init_step(InitFn fn, const char *name)
@@ -320,6 +321,7 @@ static void setup_mod()
         // suppression path; no-op until enabled.
         safe_init_step(&init_icon_tex_probe,  "install_icon_texture_probe");
         safe_init_step(&init_grace_suppress,  "install_grace_suppression_hook");
+        safe_init_step(&init_native_map_redirect, "install_native_map_redirect_hook");
         // Dev RE tool: embedded find-what-accesses for the offset source-of-truth work.
         // Arms a HW breakpoint on a live param row+offset; the [FWA] hit names the game's
         // own field-read RIP (mod reads filtered). Off unless probe_field_access is set.

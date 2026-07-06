@@ -375,6 +375,13 @@ namespace goblin::sig
         "40 55 56 57 41 54 41 55 41 56 41 57 48 81 EC 80 00 00 00 48 C7 44 24 30 FE FF FF FF "
         "48 89 9C 24 C8 00 00 00 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 44 24 78 4D 8B F0 4C 8B EA "
         "48 8B F1 48 89 4C 24 38";
+    // FUN_1407fd4b0: the WorldMapDialog create-callback (factory-table slot er+0x2abb910), world-map-ONLY —
+    // allocates 0x3ed0 + calls the ctor, constructs nothing else; kb + gamepad both funnel through it.
+    // Hook target for the native-map REDIRECT (docs/re/native_map_redirect_linux_re_plan.md, Ghidra 7d1f23b).
+    // RVA 0x7fd4b0.
+    inline constexpr const char *WORLDMAP_CREATE_CB =
+        "40 53 48 81 EC 90 00 00 00 48 C7 44 24 20 FE FF FF FF 48 8B C2 48 8B D9 "
+        "48 8D 54 24 28 48 8B C8 E8 ?? ?? ?? ?? 90 4C 8B 43 08 B2 08 48 8B C8 E8 ?? ?? ?? ?? 48 8B D8";
     // FUN_14087ae20: WorldMap(Warp|Point)PinData::SetTo = vt[1] (per-refresh widget bind). RVA 0x87ae20.
     inline constexpr const char *WARPPIN_SETTO_FN =
         "48 8B C4 48 89 50 10 56 57 41 56 48 81 EC A0 00 00 00 48 C7 44 24 28 FE FF FF FF "

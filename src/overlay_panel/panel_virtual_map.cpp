@@ -10,7 +10,6 @@
 // Independent of the game's Scaleform map — this draws whenever the overlay is active and the window is
 // open (toggled from the Dev tab). Gamepad/keyboard nav works via the already-enabled ImGui nav.
 
-#include <windows.h>                   // SendInput/INPUT/VK_ESCAPE — redirect force-close of the native map
 #include "panel_internal.hpp"
 #include "goblin_i18n.hpp"
 #include "goblin_overlay_render_api.hpp"  // lookup_text_utf8 / category_label / warp_to_grace
@@ -52,22 +51,6 @@ namespace
     // Persisted across frames; the whole map lives in ER world units (same space as marker world pos).
     bool s_open = false;
     bool s_from_map = false;  // vmap was opened by the game MAP KEY (→ draw fullscreen over the native map)
-
-    // Close the native world map the game just opened, via its OWN close key (Escape) — SendInput so the
-    // game's wndproc unwinds the WorldMapDialog cleanly (proven: `key Escape` closes it, no freeze). Used by
-    // the redirect (native_map_redirect_linux_re_plan.md): the vmap stands in, the native flashes closed.
-    inline void inject_native_map_close()
-    {
-        // ER reads keyboard via RAW input (RIDEV_NOLEGACY) — the raw reader wants the SCAN CODE, not the
-        // virtual key (same reason the debug-RPC `key` verb sets KEYEVENTF_SCANCODE for non-char keys). A
-        // wVk-only SendInput is dropped by the game. Escape scancode = 0x01.
-        const WORD sc = static_cast<WORD>(MapVirtualKeyW(VK_ESCAPE, MAPVK_VK_TO_VSC));
-        INPUT in[2] = {};
-        in[0].type = INPUT_KEYBOARD; in[0].ki.wVk = VK_ESCAPE; in[0].ki.wScan = sc;
-        in[0].ki.dwFlags = KEYEVENTF_SCANCODE;
-        in[1] = in[0]; in[1].ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
-        SendInput(2, in, sizeof(INPUT));
-    }
     float s_cam_x = 0.0f, s_cam_z = 0.0f;
     float s_zoom = 0.05f;  // 0.05 px/unit → ~10k-unit ER map spans ~525px; a sane default overview
     // Orientation calibration (dev): sign per axis for world→screen. Minimap convention = +X, -Z
@@ -763,35 +746,22 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // opened it (so a Dev-toggle-opened vmap isn't closed by the game map). Runs every frame (this entry is
     // called unconditionally, independent of the F1 panel).
     {
-        static bool s_prev_map = false;   // s_from_map is file-scope (read at the fullscreen Begin below)
-        static bool s_redirected = false; // vmap stands in as the map AND we force-closed the native
+        static bool s_prev_map = false;  // s_from_map is file-scope (read at the fullscreen Begin below)
         const bool map_now = goblin::overlay_api::world_map_open();
-        const bool redirect_mode = *goblin::overlay_api::cfg_vmapOnMapKey_ptr();  // base-world "vmap IS the map"
-        const bool vworld_cover = goblin::vworld::active() != 0;                  // custom world: cover, keep native
-
-        if (map_now && !s_prev_map)
+        if (*goblin::overlay_api::cfg_vmapOnMapKey_ptr())
         {
-            // The game just opened the native world map (map key, gamepad OR mouse — both funnel here).
-            if (redirect_mode)
-            {
-                // REDIRECT: the map key TOGGLES the vmap; either way force-close the native so it never
-                // renders (docs/re/native_map_redirect_linux_re_plan.md — "safe" force-close via the game's
-                // own close). vmap stays open across the native close (s_redirected gates the auto-close).
-                if (!s_redirected) { s_open = true;  s_from_map = true;  s_redirected = true; }
-                else               { s_open = false; s_from_map = false; s_redirected = false; }
-                goblin::overlay_api::set_vmap_redirect(s_redirected);
-                inject_native_map_close();  // close the native the game just opened (its own Escape unwind)
-            }
-            else if (vworld_cover)
-            {
-                s_open = true; s_from_map = true;  // custom world: cover the native (legacy behaviour)
-            }
+            // REDIRECT: the WorldMapDialog create-callback is HOOKED (goblin_native_map_redirect) — pressing
+            // the map key (kb OR gamepad) is intercepted BEFORE the native constructs, so the native never
+            // opens; the hook TOGGLES the redirect flag instead. Mirror the vmap open state to that flag.
+            const bool want = goblin::overlay_api::vmap_redirect();
+            s_open = want;
+            s_from_map = want;  // fullscreen stand-in
         }
-        // Auto-close the vmap when the native closes — but NOT while redirected (WE closed the native; the
-        // vmap must stay as the standalone map until the next map-key toggle).
-        else if (!map_now && s_prev_map && s_from_map && !s_redirected)
+        else
         {
-            s_open = false; s_from_map = false;
+            // Custom virtual world (legacy "M, not F1"): open on the native map-open edge, COVER the native.
+            if (map_now && !s_prev_map && goblin::vworld::active() != 0) { s_open = true; s_from_map = true; }
+            else if (!map_now && s_prev_map && s_from_map) { s_open = false; s_from_map = false; }
         }
         s_prev_map = map_now;
     }

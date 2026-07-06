@@ -202,6 +202,7 @@ set(GOBLIN_HOST_SOURCES
   src/goblin_enemy_names.cpp
   src/goblin_tutorial_popup.cpp
   src/goblin_grace_suppression.cpp
+  src/goblin_native_map_redirect.cpp
   src/goblin_kindling.hpp
   src/goblin_kindling.cpp
   src/goblin_param_edit.hpp
