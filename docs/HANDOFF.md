@@ -34,8 +34,16 @@ Implements + validates the "Remaining" step of the resident-converter-affine RE 
   `get_converter_affine()` hpp doc comments (were "Map must be OPEN"; now document the map-closed base
   fallback), and reconciled `docs/plans/procedural_map_derivation_design.md`'s "never hardcode" rule with
   the now-proven exe-invariant fallback (live still preferred; hardcoded only for the proven-invariant base).
-- **★ NEXT (follow-up, not blocking):** extend off-VM coverage to DLC-UG (40–43) + legacy folds if a
-  map-closed node source is found (today they need the live VM node ptr).
+- **✅ OFF-VM COVERAGE EXTENDED to ALL placed areas (2026-07-06).** `project()` → `project_no_vm`: base
+  affine for overworld (60→page0) + DLC-OW (61→page10) direct; legacy dungeons + base-UG (12) + DLC-UG fold
+  via the resident `WorldMapLegacyConvParam` (`goblin::legacy_fold`, no VM node ptr) then base-affine, page
+  from the folded area. Gotcha found live: base-UG 12 has overworld fields but its slot carries a conv node,
+  so a raw area-12 point must be FOLDED (direct 12 mis-projects) — 12 routes through the fold path, not the
+  direct shortcut. Validated `test_converter_offvm.py` **11/11**: live `proj` == forced off-VM `proj_nvm`
+  (same u,v,page) over base + legacy m10/m11/m30/m35 + DLC-UG m40 + base-UG m12 (8/8 placed, all agree). New
+  RPC `proj_nvm` forces the no-VM path so the test can compare with the map open (VM cache would shadow it).
+- **★ NEXT (follow-up, not blocking):** the vmap now has full map-closed projection — could drop any
+  remaining "open the native map once" UX for projection (tile RESIDENCY still needs it; projection doesn't).
 
 ## ⇒ SESSION WRAP 2026-07-06f-pre (Linux/Opus) — off-VM converter affine: validation HARNESS built (fd0ad45), empirical run env-blocked
 

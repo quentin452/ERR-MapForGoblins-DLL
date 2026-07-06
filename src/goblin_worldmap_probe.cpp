@@ -2,6 +2,7 @@
 #include "goblin_heightfield.hpp"  // heightfield sampler tick (game-thread ray-cast, Track D2)
 #include "goblin_bench.hpp"    // GOBLIN_BENCH_QUIET — make dev dump cost visible in the report
 #include "goblin_inject.hpp"   // goblin::world_map_open() — gate the scan on map-open
+#include "goblin_legacy_fold.hpp"  // map-closed legacy-dungeon fold (off-VM projection extension)
 #include "goblin_config.hpp"   // config::dumpConverters
 #include "re_signatures.hpp"   // centralized image RVAs
 #include "modutils.hpp"        // AOB scan (render re-apply fn resolve)
@@ -1058,27 +1059,26 @@ void probe_loop()
 
 uintptr_t debug_active_cursor() { return g_active_cursor.load(std::memory_order_relaxed); }
 
-bool project(int area, int gridX, int gridZ, float posX, float posZ, float &mapU, float &mapV,
-             int &page)
+// Map-CLOSED projection with no live VM (fd0ad45). Base areas (60/61/12) rebuild the exe-invariant slot
+// directly; legacy-dungeon / DLC-underground areas fold through the resident WorldMapLegacyConvParam
+// (goblin::legacy_fold — no VM node ptr needed) to their overworld/field entrance, then run the base
+// off-VM affine on the folded coords. Page follows the (folded) area (60→0 / 61→10 / 12→1), matching the
+// engine's page-table slot. Reproduces FUN_140876140's fold+affine map-closed. Returns false for an area
+// the game doesn't place off-VM (no base match + no fold row) — caller keeps its baked path.
+bool project_no_vm(int area, int gridX, int gridZ, float posX, float posZ, float &mapU, float &mapV,
+                   int &page)
 {
-    page = -1;
-    uintptr_t vm = find_view_model();
-    if (!vm)
-    {
-        // OFF-VM base-affine fallback — the native map was NEVER opened this session, so no live VM.
-        // fd0ad45 proved (and test_converter_offvm.py confirmed du/dv==0, live conv_affine==this) the base
-        // converters are exe-invariant: origin 0, gridbase 28/64, bias 128, scale 1 — shared by overworld
-        // (60), DLC overworld (61) and base underground (12). Rebuild the matching slot in our own memory
-        // and run FUN_140876140 map-closed → projection works with the map closed, no "silent prime".
-        // Legacy-dungeon folds need the VM's per-slot node ptr, so those areas return false here and the
-        // caller falls back to goblin::legacy_fold / the baked affine exactly as before (no regression).
-        struct BaseSlot { int area, page; } bases[] = {{60, 0}, {61, 10}, {12, 1}};
+    // Target set = the areas whose converter is a plain exe-invariant affine (no fold node): overworld
+    // (page 0), DLC overworld (page 10), base underground (page 1). try_base runs the shared affine (all
+    // three share origin 0 / gridbase 28,64 / bias 128 / scale 1 — confirmed live) and stamps the page.
+    struct BaseSlot { int area, page; } bases[] = {{60, 0}, {61, 10}, {12, 1}};
+    auto try_base = [&](int a, int gx, int gz, float px, float pz) -> bool {
         for (const BaseSlot &b : bases)
         {
-            if (area != b.area)
+            if (a != b.area)
                 continue;
             float u = 0.f, v = 0.f;
-            if (project_offvm(b.area, 28, 64, 0.f, 0.f, 128.f, 128.f, 1.f, gridX, gridZ, posX, posZ, u, v))
+            if (project_offvm(b.area, 28, 64, 0.f, 0.f, 128.f, 128.f, 1.f, gx, gz, px, pz, u, v))
             {
                 mapU = u;
                 mapV = v;
@@ -1087,7 +1087,32 @@ bool project(int area, int gridX, int gridZ, float posX, float posZ, float &mapU
             }
         }
         return false;
+    };
+    // DIRECT (no fold): only the true field pages — overworld 60 + DLC overworld 61. Base underground (12)
+    // is NOT direct: the engine's area-12 slot carries a conv node, so a raw area-12 point is folded before
+    // the affine (proven live: direct 12 mis-projects). Route it through legacy_fold below, like any dungeon.
+    if ((area == 60 || area == 61) && try_base(area, gridX, gridZ, posX, posZ))
+        return true;
+    // FOLD path (legacy dungeons + base-UG 12 + DLC-UG): fold to the field/overworld/underground frame via
+    // the resident WorldMapLegacyConvParam (goblin::legacy_fold, no VM), then base-affine. The folded area
+    // (in the target set) drives the page — so underground folds land on page 1, DLC on page 10.
+    if (goblin::legacy_fold::ensure_built() && goblin::legacy_fold::available())
+    {
+        goblin::legacy_fold::Folded fr =
+            goblin::legacy_fold::fold((uint8_t)area, (uint8_t)gridX, (uint8_t)gridZ, posX, posZ);
+        if (fr.matched && try_base((int)fr.area, fr.gx, fr.gz, fr.posX, fr.posZ))
+            return true;
     }
+    return false;
+}
+
+bool project(int area, int gridX, int gridZ, float posX, float posZ, float &mapU, float &mapV,
+             int &page)
+{
+    page = -1;
+    uintptr_t vm = find_view_model();
+    if (!vm)
+        return project_no_vm(area, gridX, gridZ, posX, posZ, mapU, mapV, page);
     ProjPointFn fn = resolve_proj_point();
     if (!fn)
         return false;

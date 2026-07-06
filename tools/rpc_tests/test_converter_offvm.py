@@ -33,8 +33,16 @@ from mfg_session import run_test  # noqa: E402
 REF_AREA, REF_GX, REF_GZ = 60, 42, 36  # findings reference point: proj 60 42 36 -> u=3712 v=7296
 
 
-def _proj(g, area, gx, gz):
-    r = g.rpc(f"proj {area} {gx} {gz}")
+def _proj(g, area, gx, gz, px=None, pz=None):
+    extra = f" {px} {pz}" if px is not None else ""
+    r = g.rpc(f"proj {area} {gx} {gz}{extra}")
+    m = re.search(r"u=(-?[\d.]+) v=(-?[\d.]+) page=(-?\d+)", r)
+    return (float(m.group(1)), float(m.group(2)), int(m.group(3))) if m else None, r
+
+
+def _proj_nvm(g, area, gx, gz, px=None, pz=None):
+    extra = f" {px} {pz}" if px is not None else ""
+    r = g.rpc(f"proj_nvm {area} {gx} {gz}{extra}")
     m = re.search(r"u=(-?[\d.]+) v=(-?[\d.]+) page=(-?\d+)", r)
     return (float(m.group(1)), float(m.group(2)), int(m.group(3))) if m else None, r
 
@@ -114,6 +122,42 @@ def _test(g):
             du = abs(open_uv[0] - rep[0]) + abs(open_uv[1] - rep[1])
             g.check("off-VM replay == live VM proj (du/dv==0) — VM/prime coupling droppable", du < 0.01,
                     f"live={open_uv[:2]} offvm={rep} du={du}")
+
+    # ── (3) EQUIVALENCE: live `proj` (VM path) vs forced `proj_nvm` (off-VM base + legacy_fold) over a
+    # sweep of base + legacy-dungeon + DLC-UG samples. The VM is still cached here (persists past close), so
+    # `proj` uses the live engine and `proj_nvm` forces the map-closed path — they must AGREE for every
+    # sample: both reject (area not placed), or both accept with du/dv<eps AND the same page. This is what
+    # extends off-VM coverage past the base areas (fold path). Base samples always place (guaranteed
+    # exercise); legacy/DLC-UG samples exercise the fold only where the game actually places that block. ──
+    samples = [
+        (60, 42, 36, 0.0, 0.0, "overworld base"),
+        (61, 40, 40, 0.0, 0.0, "DLC overworld base"),
+        (12, 1, 0, 50.0, 50.0, "base underground"),
+        (11, 0, 0, 0.0, 0.0, "legacy m11 (Leyndell)"),
+        (10, 0, 0, 0.0, 0.0, "legacy m10 (Stormveil)"),
+        (30, 0, 0, 0.0, 0.0, "minor dungeon m30"),
+        (35, 0, 0, 0.0, 0.0, "legacy chain m35"),
+        (40, 1, 0, 50.0, 50.0, "DLC underground m40"),
+    ]
+    placed = 0
+    agree = True
+    detail = []
+    for area, gx, gz, px, pz, what in samples:
+        lv, _ = _proj(g, area, gx, gz, px, pz)
+        nv, _ = _proj_nvm(g, area, gx, gz, px, pz)
+        if (lv is None) != (nv is None):
+            agree = False
+            detail.append(f"{what}: DISAGREE placed live={lv is not None} nvm={nv is not None}")
+        elif lv is not None:
+            placed += 1
+            du = abs(lv[0] - nv[0]) + abs(lv[1] - nv[1])
+            if du >= 0.5 or lv[2] != nv[2]:
+                agree = False
+                detail.append(f"{what}: MISMATCH live={lv} nvm={nv} du={du}")
+    g.check("live proj == forced off-VM proj_nvm over base+legacy+DLC-UG samples (fold coverage)",
+            agree, f"placed={placed}/{len(samples)}; " + ("; ".join(detail) if detail else "all agree"))
+    print(f"[OFFVM] equivalence sweep: {placed}/{len(samples)} samples placed; "
+          f"{'ALL AGREE' if agree else 'DISAGREEMENTS: ' + '; '.join(detail)}", flush=True)
 
 
 SWEEP = _test  # single-boot, self-loads

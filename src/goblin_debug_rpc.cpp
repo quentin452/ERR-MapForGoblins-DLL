@@ -1228,6 +1228,26 @@ namespace goblin::debug_rpc
                 std::snprintf(b, sizeof(b), "ok proj_conv area=%d grid=(%d,%d) -> u=%.2f v=%.2f", area, gx, gz, u, v);
                 return std::string(b);
             }
+            // proj_nvm <area> <gx> <gz> [px] [pz] — force the map-CLOSED no-VM projection path
+            // (worldmap_probe::project_no_vm): base off-VM affine for 60/61/12, else fold via the resident
+            // WorldMapLegacyConvParam + base affine for legacy-dungeon / DLC-UG areas. Must equal the live
+            // `proj` (same u,v,page) for any placed area. Lets the test check off-VM+fold equivalence even
+            // with the map open — `proj` would otherwise use the cached live VM and shadow this path.
+            if (cmd == "proj_nvm")
+            {
+                std::string as = next_token(rest), gxs = next_token(rest), gzs = next_token(rest),
+                            pxs = next_token(rest), pzs = next_token(rest);
+                int area = 0, gx = 0, gz = 0; float px = 0.f, pz = 0.f;
+                try { area = std::stoi(as); gx = std::stoi(gxs); gz = std::stoi(gzs);
+                      if (!pxs.empty()) px = std::stof(pxs); if (!pzs.empty()) pz = std::stof(pzs); }
+                catch (...) { return "err usage: proj_nvm <area> <gx> <gz> [px] [pz]"; }
+                float u = 0.f, v = 0.f; int page = -1;
+                bool ok = goblin::worldmap_probe::project_no_vm(area, gx, gz, px, pz, u, v, page);
+                char b[128];
+                if (!ok) { std::snprintf(b, sizeof(b), "err proj_nvm: no base match + no fold row (area not placed off-VM)"); return std::string(b); }
+                std::snprintf(b, sizeof(b), "ok proj_nvm area=%d grid=(%d,%d) -> u=%.2f v=%.2f page=%d", area, gx, gz, u, v, page);
+                return std::string(b);
+            }
             // conv_affine <area> — dump the LIVE per-area converter slot fields (origin/bias/scale/gridbase)
             // read from the resolved VM (needs the map opened once). Lets the test CAPTURE the exe-invariant
             // fields, close the map, then replay them through proj_conv (off-VM) and assert du/dv==0.

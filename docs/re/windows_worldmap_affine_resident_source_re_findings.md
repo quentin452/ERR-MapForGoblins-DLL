@@ -68,12 +68,17 @@ is exactly what the empirical test must confirm:
   (bias 128, scale 1). So the findings' static origin=0 is exactly what the real VM holds; the 7168/16384
   offset lives in the grid decode (`gridbase 28/64 → 28*256=7168, 64*256=16384`), NOT the converter origin.
 - Capture-replay (open → capture live fields → close → off-VM) → **du/dv==0** vs the live VM.
-- **Shipped:** `project()` and `get_converter_affine()` now fall back to an off-VM base-affine build
-  (areas 60/61/12; `origin 0 / gridbase 28,64 / bias 128 / scale 1`, `legacyNode 0`) when no live VM →
-  `proj 60 42 36 → u=3712 v=7296 page=0` **with the native map NEVER opened**. Legacy-dungeon fold areas
-  still need the VM node ptr, so they return false off-VM and the caller keeps its `legacy_fold`/baked
-  path (no regression). The "silent prime" / `world_map_open()` coupling is no longer required for the
-  base overworld/DLC/UG projection.
+- **Shipped:** `project()` / `get_converter_affine()` fall back to `project_no_vm` when no live VM →
+  `proj 60 42 36 → u=3712 v=7296 page=0` **with the native map NEVER opened**.
+- **Off-VM coverage EXTENDED to ALL placed areas (2026-07-06):** `project_no_vm` does the base affine for
+  overworld (60→page 0) + DLC-OW (61→page 10) directly, and for legacy dungeons + base underground (12) +
+  DLC underground it **folds via the resident `WorldMapLegacyConvParam` (`goblin::legacy_fold`, no VM node
+  ptr) then base-affines the folded coords** — page follows the folded area. NB base-UG (12) is NOT a
+  direct base area: its fields match overworld (`gxbase 28 gzbase 64 origin 0`) but its slot carries a conv
+  node, so a raw area-12 point must be folded first (direct 12 mis-projects — proven live). Validated by
+  `test_converter_offvm.py` **11/11**: live VM `proj` == forced off-VM `proj_nvm` (same u,v,page) over
+  base + legacy (m10/m11/m30/m35) + DLC-UG (m40) + base-UG (m12) — 8/8 samples placed, all agree. The
+  "silent prime" / `world_map_open()` coupling is no longer required for ANY placed projection.
 
 ## Validation HARNESS — IMPLEMENTED 2026-07-06 (Linux)
 

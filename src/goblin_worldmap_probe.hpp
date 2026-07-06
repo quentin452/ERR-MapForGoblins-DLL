@@ -143,11 +143,11 @@ namespace goblin::worldmap_probe
     // + DLC eyeball. Returns false only if the area isn't placed by the game (e.g. m19
     // Chapel has no converter) → caller falls back / gates.
     // Self-resolves the VM from the active cursor (cached); direct in-process call (fast,
-    // safe to batch at marker-build time). MAP-CLOSED OK for the base areas (60 overworld / 61 DLC-OW /
-    // 12 base-UG): when no live VM is resolved, falls back to an exe-invariant off-VM base-affine build
-    // (fd0ad45, validated du/dv==0 — see project_offvm) so projection works with the native map NEVER
-    // opened, no "silent prime". Legacy-dungeon fold areas still need the live VM's per-slot node ptr, so
-    // those return false map-closed and the caller keeps its legacy_fold/baked path (no regression).
+    // safe to batch at marker-build time). MAP-CLOSED OK for ALL placed areas (fd0ad45): when no live VM
+    // is resolved, falls back to project_no_vm — the exe-invariant base affine for overworld/DLC-OW, plus
+    // the resident-param legacy fold (goblin::legacy_fold) for legacy dungeons + base/DLC underground —
+    // so projection works with the native map NEVER opened, no "silent prime". Validated equivalent to the
+    // live VM (same u,v,page) over base+legacy+DLC-UG samples in test_converter_offvm.py.
     // page out: the live map PAGE the point lands on — 0 overworld, 1 base underground,
     // 10 DLC (the engine's page-table + area-12 override). Lets the overlay derive the
     // marker group without the baked LegacyConv fold: group = (page==10?2:0) |
@@ -164,6 +164,14 @@ namespace goblin::worldmap_probe
     GOBLIN_RENDER_API bool project_offvm(int area, int gridXbase, int gridZbase, float originX, float originZ,
                        float biasX, float biasZ, float scale, int gridX, int gridZ, float posX,
                        float posZ, float &mapU, float &mapV);
+
+    // Map-CLOSED projection with NO live VM (fd0ad45). Base areas (60/61/12) rebuild the exe-invariant
+    // slot; legacy-dungeon / DLC-underground areas fold via the resident WorldMapLegacyConvParam
+    // (legacy_fold, no VM) then run the base off-VM affine → same map-space (u,v) + page as the live VM.
+    // This is what project() uses whenever no VM is resolved. Exposed for the RPC `proj_nvm` so the test can
+    // exercise the off-VM (+ fold) path even with the map open (the VM cache would otherwise shadow it).
+    GOBLIN_RENDER_API bool project_no_vm(int area, int gridX, int gridZ, float posX, float posZ, float &mapU,
+                       float &mapV, int &page);
 
     // The per-area converter affine (VM+0xF8 slot, findings §1) — the map-space transform the map ART
     // tiles must share so they align with markers (endgame phase-1a slice 3). Read LIVE from the active VM
