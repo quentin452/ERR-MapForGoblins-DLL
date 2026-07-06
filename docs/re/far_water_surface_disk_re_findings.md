@@ -72,3 +72,36 @@ overworld collision at all. The **only** disk signal that distinguishes water is
 - The shared bake + hkxpwv/material anchors: `far_terrain_heightmap_re_findings.md` (§5b).
 - Probes: `tools/_probe_water_msb.py` (taxonomy + token scan), `tools/_probe_water_deep.py` (per-map deep dump
   + HitFilterID histogram). Read the vanilla `game_dir/map/mapstudio` via SoulsFormats.
+
+## 7. Probe 2 — offline feasibility on the LINUX box (2026-07-06, packed install)
+Scoped whether the Source-A material bake can be built OFFLINE on the daily Linux box (no Windows).
+Reflection-probed `tools/lib/Andre.SoulsFormats.dll` with a `dotnet run` net10 console (no pythonnet).
+
+- **.NET runs on Linux** (dotnet SDK 10 + runtimes 8/10 present). The "pipeline is Windows-only"
+  ([[mapforgoblins-pipeline-setup]]) note is about the DATA, not the runtime: that box is UXM-**unpacked**
+  (`map/mapstudio/*.msb.dcx` loose). **This box is PACKED** — `GAME_DIR` has only `Data0-3.bhd/.bdt` +
+  `DLC.bhd/.bdt`, no loose `map/`. So the water probes ran on Windows because the loose files were there,
+  not because pythonnet needs Windows.
+- **SoulsFormats decodes ER collision GEOMETRY offline.** `SoulsFormats.HKX.HKNPCompressedMeshShapeData`
+  exposes `primitives` (`MeshPrimitive{Idx0..3}`), `packedVertices`/`sharedVertices`/`sharedVerticesIndex`,
+  `sections`, `BoundingBoxMin/Max`. ⇒ **whole-map seabed Y / far-relief IS extractable on Linux** — the same
+  bake far-terrain wants (`far_terrain_heightmap_re_findings.md`). Confirmed the types load + members present.
+- **Per-triangle MATERIAL is the wall.** ER wraps the mesh in `SoulsFormats.HKX.FSNPCustomParamCompressedMeshShape`
+  (`MeshShapeData` + `CustomParam` `HKXGlobalReference`, plus opaque `Unk68 / Unk80 / UnkA8` `HKArray`s).
+  SoulsFormats does **NOT** name/decode the per-primitive material — it stops at the geometry. The Water/Swamp
+  tag rides `CustomParam` (the `fsnpCustomMeshParameter` / `hknpMaterialLibrary` id per primitive), which this
+  DLL leaves as un-typed `Unk*` buffers. So geometry is free offline; the MASK is NOT, out of the box.
+- **dvdbnd read still needs our RSA.** `BHD5.Read(Memory<byte>, Game)` expects an ALREADY-DECRYPTED header —
+  SoulsFormats does no RSA. To read a collision file offline: RSA-decrypt the `Data*.bhd` ourselves (keys+algo
+  already in `src/worldmap/dvdbnd_reader.cpp` + [[dvdbnd-packed-reader]]), `BHD5.Read` the plaintext, prime-0x85
+  hash the vpath, slice the `hkxbhd`+`hkxbdt` out of the `.bdt`, `BXF4.Read` → `h######.hkx.dcx` →
+  `DCX.Decompress` → `HKX.Read`. All pieces exist; it's glue (a C# build step). **DLC maps (m40-43, DLC-OW
+  tiles) need the DLC RSA key**, still not captured here (base-game water — Liurnia/Siofra — is in `Data*`,
+  keys present, so the first validation is unblocked).
+
+**Net:** offline whole-map RELIEF (seabed Y) is a green light on Linux via SoulsFormats. The water MASK is
+blocked on getting the per-triangle material out of `FSNPCustomParamCompressedMeshShape.CustomParam`, which
+needs ONE of: (a) hand-decode the `Unk68/Unk80/UnkA8` layout from a real extracted file, (b) add **HKLib**
+(a fuller community Havok lib that models `fsnpCustomMeshParameter`), or (c) resolve the Water/Swamp ids in
+Windows/Ghidra (`MatRatio` enum er+0x2bc32b8, `hknpMaterialLibrary` er+0x2ee36b0) and match them against a
+hand-decoded index. Reflection-probe scratch: `$CLAUDE_JOB_DIR/tmp/hkxprobe` (throwaway).
