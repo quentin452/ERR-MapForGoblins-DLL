@@ -766,6 +766,28 @@ namespace goblin::debug_rpc
                     return "err pause takes 0|1|toggle";
                 return "ok paused=" + std::to_string(goblin::pause::paused() ? 1 : 0);
             }
+            // freeze [1|0|toggle] [enemies] — CALL CS::CSEventUtility::SetDisableAllChrUpdate: freeze all
+            // ChrIns (player+enemies+NPCs) in pose, render/UI live, INSTANT resume (no dt catch-up). `enemies`
+            // = player-exempt variant (untested). No arg = report. Replaces the branch-flip pause + the vmap
+            // combat gate (game_timestep_freeze_re_findings.md "SOLVED").
+            if (cmd == "freeze")
+            {
+                if (!goblin::pause::chr_freeze_available())
+                    return "err SetDisableAllChrUpdate not resolved (game update?)";
+                std::string arg = next_token(rest), mode = next_token(rest);
+                const bool enemies = (arg == "enemies" || mode == "enemies");
+                if (enemies)
+                    goblin::pause::set_chr_freeze(true, true);  // dev: raw player-exempt test (bypasses the mask)
+                else if (arg == "0")
+                    goblin::pause::request_freeze(goblin::pause::FREEZE_MANUAL, false);
+                else if (arg == "1")
+                    goblin::pause::request_freeze(goblin::pause::FREEZE_MANUAL, true);
+                else if (arg.empty() || arg == "toggle")
+                    goblin::pause::request_freeze(goblin::pause::FREEZE_MANUAL, !goblin::pause::chr_frozen());
+                else
+                    return "err freeze takes 1|0|toggle|enemies";
+                return "ok frozen=" + std::to_string(goblin::pause::chr_frozen() ? 1 : 0);
+            }
             // param_get <ParamName> <rowId> <offset(0x..)> <type> — read a live param field.
             // param_set <ParamName> <rowId> <offset(0x..)> <type> <value> — write it, return read-back.
             // Slice 1 in-game smoke test for goblin::paramedit (docs/plans/param_override_loader_plan.md).

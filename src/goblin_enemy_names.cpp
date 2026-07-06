@@ -259,6 +259,7 @@ int combat_diag_seh(void **wcm_slot, char *buf, int cap)
     return w;
 }
 
+
 // Strip the codex-entry prefix from a TutorialTitle bestiary name: "116. Tree Sentinel" ->
 // "Tree Sentinel", "172a. Troll" -> "Troll". Pattern: ^\d+[a-z]?\.\s*
 std::string strip_codex_prefix(const std::string &s)

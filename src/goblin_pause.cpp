@@ -8,60 +8,92 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include <cstdint>
 #include <mutex>
 
 namespace goblin::pause
 {
+    // ── Character-update freeze (ER's own cutscene freeze) ───────────────────────────────────────
+    // FUN_1405f4d40 = CS::CSEventUtility::SetDisableAllChrUpdate(char). Freezes EVERY ChrIns (player +
+    // enemies + NPCs) in pose while render/UI/input keep running; resume is INSTANT even after minutes
+    // (a disabled chr isn't updated → no dt accumulates → nothing to catch up). Supersedes the dead
+    // FUN_140623410 timescale hook (RET-tested = zero effect live) AND the branch-flip pause (whose resume
+    // hitch grew with duration). MUST be CALLED — poking the flag [WorldChrManDbg+0x8] is a no-op; the
+    // per-chr propagation happens inside via a ChrFinder. docs/re/game_timestep_freeze_re_findings.md.
     namespace
     {
-        // The two bytes of the frame-step branch: 0F 84 = je = RUNNING, 0F 85 = jne = PAUSED.
-        uint8_t *g_branch = nullptr;
+        using DisableAllChrUpdateFn = void(__fastcall *)(char);  // 1 = freeze, 0 = resume
+        DisableAllChrUpdateFn g_disable_chr = nullptr;
+        bool g_chr_tried = false;
+        bool g_chr_frozen = false;
 
-        uint8_t *resolve()
+        DisableAllChrUpdateFn resolve_chr_freeze()
         {
-            static std::once_flag once;
-            std::call_once(once, [] {
-                // Tolerant variant of sig::PAUSE_BRANCH: first two bytes wildcarded so the scan
-                // still finds the branch if another pauser (PauseTheGame.dll) already flipped it
-                // to 0F 85 before we looked. The health-check table keeps the strict 0F 84 form
-                // (it runs at init, pre-flip).
-                g_branch = modutils::scan<uint8_t>(
-                    {.aob = "?? ?? ?? ?? ?? ?? C6 83 ?? ?? 00 00 00 48 8D ?? ?? ?? ?? ?? 48 89 ?? ?? 89"});
-                if (g_branch && (g_branch[0] != 0x0F || (g_branch[1] != 0x84 && g_branch[1] != 0x85)))
-                {
-                    spdlog::warn("[PAUSE] branch candidate at {} is not je/jne ({:02x} {:02x}) — disabled",
-                                 static_cast<void *>(g_branch), g_branch[0], g_branch[1]);
-                    g_branch = nullptr;
-                }
-                spdlog::info("[PAUSE] frame-step branch {}", g_branch ? "resolved" : "NOT found — pause disabled");
-            });
-            return g_branch;
+            if (!g_chr_tried)
+            {
+                g_chr_tried = true;
+                g_disable_chr = reinterpret_cast<DisableAllChrUpdateFn>(
+                    modutils::scan<void>({.aob = goblin::sig::SET_DISABLE_ALL_CHR_UPDATE}));
+                spdlog::info("[CHRFREEZE] SetDisableAllChrUpdate {}",
+                             g_disable_chr ? "resolved" : "NOT found — freeze disabled");
+            }
+            return g_disable_chr;
+        }
+
+        // Player-exempt (enemies-only) theory: per-chr effective-disable = [WorldChrManDbg+0x8] XOR
+        // [ChrIns+0x531]&1 (FUN_1405ed590). Setting the player's +0x531 bit0=1 before a freeze(1) call
+        // makes the player read active (1 XOR 1 = 0) while enemies freeze (1 XOR 0 = 1). LocalPlayer =
+        // [[er+0x3d65f88]+0x1e508]. SEH-guarded; best-effort (untested theory — safe if it no-ops).
+        void set_player_exempt_bit(bool exempt)
+        {
+            __try
+            {
+                auto er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+                if (!er) return;
+                auto wcm = *reinterpret_cast<uint8_t **>(er + 0x3d65f88);
+                if (!wcm) return;
+                auto player = *reinterpret_cast<uint8_t **>(wcm + 0x1e508);
+                if (!player) return;
+                uint8_t &b = player[0x531];
+                b = exempt ? (b | 1) : (b & ~1);
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) {}
         }
     }
 
-    bool available() { return resolve() != nullptr; }
+    bool chr_freeze_available() { return resolve_chr_freeze() != nullptr; }
+    bool chr_frozen() { return g_chr_frozen; }
 
-    bool paused()
+    void set_chr_freeze(bool freeze, bool enemies_only)
     {
-        uint8_t *b = resolve();
-        return b && b[1] == 0x85;
+        auto fn = resolve_chr_freeze();
+        if (!fn) return;
+        if (freeze && enemies_only) set_player_exempt_bit(true);
+        fn(freeze ? 1 : 0);
+        if (!freeze) set_player_exempt_bit(false);  // clear the exempt bit on resume
+        g_chr_frozen = freeze;
+        spdlog::info("[CHRFREEZE] {} ({})", freeze ? "FROZEN" : "resumed",
+                     enemies_only ? "enemies-only" : "all chrs");
     }
 
-    void set_paused(bool want)
+    // ── Pause API (F1 "Pause game" / pauseOnOpen / `pause` verb / `paused=` status) ───────────────
+    // Now backed by the chr-update freeze, NOT the old frame-step branch flip (removed): the branch flip
+    // paused the whole sim but its resume hitch grew with duration; chr-freeze is ER's own cutscene freeze
+    // (instant resume). The visible difference is theoretical (non-chr world sim keeps ticking under freeze),
+    // so the pause toggle uses all-chr freeze. game_timestep_freeze_re_findings.md "SOLVED".
+    bool available() { return chr_freeze_available(); }
+    bool paused() { return chr_frozen(); }
+
+    namespace { unsigned g_freeze_mask = 0; }
+
+    void request_freeze(unsigned reason, bool on)
     {
-        uint8_t *b = resolve();
-        if (!b) return;
-        const uint8_t target = want ? 0x85 : 0x84;  // jne = paused, je = running
-        if (b[1] == target) return;
-        DWORD old = 0;
-        if (!VirtualProtect(b, 2, PAGE_EXECUTE_READWRITE, &old))
-        {
-            spdlog::error("[PAUSE] VirtualProtect failed, gle={}", GetLastError());
-            return;
-        }
-        b[1] = target;
-        VirtualProtect(b, 2, old, &old);
-        FlushInstructionCache(GetCurrentProcess(), b, 2);
-        spdlog::info("[PAUSE] game {}", want ? "PAUSED" : "resumed");
+        unsigned m = on ? (g_freeze_mask | reason) : (g_freeze_mask & ~reason);
+        if (m == g_freeze_mask) return;
+        bool was = g_freeze_mask != 0, now = m != 0;
+        g_freeze_mask = m;
+        if (was != now) set_chr_freeze(now, false);  // apply only on the 0↔nonzero edge
     }
+
+    void set_paused(bool want) { request_freeze(FREEZE_MANUAL, want); }
 }

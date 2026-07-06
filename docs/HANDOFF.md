@@ -9,24 +9,31 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
-## ⇒ 2026-07-06h — COMBAT gate: WCM block list pinned, but the AI-carrying instance is WRONG → Windows Ghidra needed
+## ⇒ 2026-07-06h — vmap-in-combat SOLVED by FREEZING the world (combat detection ABANDONED) ✅ SHIPPED
 
-Tried to rewire `combat_active()` (redirect #3) off the WorldChrMan enemy list. **Reverted to the HP-bar
-stopgap — the walk read garbage, `battle` was always 0.** What's confirmed vs open (`docs/re/
-combat_state_gate_re_findings.md` "PARTIAL" + new prompt `combat_enemy_list_structure_re_prompt.md`):
-- **✅ CONFIRMED live:** `IsBattleState` (er+0x2c31d0) → jne er+0x33B120 = `cmp [rcx+0x30C],6; sete` — so the
-  semantic `[[chr+0xC950]+0x30C]==6` (offset 0x30C, value 6, sibling `==5`=alert) is correct for whatever ChrIns
-  ER passes. `FUN_140507ca0` (er+0x507ca0) walks `WCM+0x1CC60` (block array, count `WCM+0x1CC58`, stride 0x18);
-  per block `FUN_140494B30` does a keyed `std::_Tree` lookup on **`block+0x48`** (NOT a flat walk).
-- **✗ WRONG:** the impl walked `block+0x18` (flat `CS::EnemyIns*` array). `[EnemyIns+0xC950]` there reads
-  floats / a `GXFlverTexture` ptr (NOT an AI module) and the array is volatile (33→0 enemies). The HP-bar
-  `CS::EnemyIns` also has garbage at +0xC950. So neither gives the AI-carrying ChrIns `IsBattleState` wants.
-- **★ NEXT = Windows Ghidra** (`combat_enemy_list_structure_re_prompt.md`): (1) which class does IsBattleState
-  run on + is +0xC950 its AI-module (or a different subclass); (2) trace `FUN_1405d8790` — the real roster +
-  `param_1` key source (NearEnemyFinder?); (3) `block+0x18` vs `block+0x48` (WorldBlockChr) — which holds live
-  AI ChrIns + the tree node→ChrIns layout; (4) is there a simpler GLOBAL combat flag (battle BGM / CSFeMan
-  bool) the map-disable really reads. The `combat` RPC verb runs the WCM walk (reports `blocks/enemies/withAI/
-  battle`) as a live probe for that RE. HP-bar stopgap stays meanwhile (locked-combat only).
+Redirect #3 is done, but NOT via combat detection — that whole track was abandoned as a dead end and replaced
+by **freezing all characters while the fullscreen vmap is open** (ER's own cutscene freeze). Shipped + user-verified.
+
+- **The freeze = `CS::CSEventUtility::SetDisableAllChrUpdate(char)`** (`FUN_1405f4d40`, er+0x5f4d40, AOB
+  `SET_DISABLE_ALL_CHR_UPDATE`). MUST be CALLED (flag poke is a no-op — a ChrFinder propagates per-chr inside).
+  Freezes player+enemies+NPCs in pose; render/UI/input live; **resume INSTANT even after minutes** (a disabled
+  chr isn't updated → no dt accumulates). `docs/re/game_timestep_freeze_re_findings.md` "SOLVED".
+- **Wiring (`goblin_pause.cpp`):** the pause API (`available/paused/set_paused`) is now backed by this freeze;
+  the **branch-flip pause was removed** (its resume hitch grew with duration — ~0.5s at 2min). A freeze-reason
+  MASK (`FREEZE_MANUAL/PANEL/VMAP`, `request_freeze`) OR-combines so the vmap + F1-panel + manual pause don't
+  stomp each other. F1 "Pause game"/pauseOnOpen/`pause` verb + new `freeze 1|0|toggle|enemies` verb all drive it.
+  The vmap gate (`goblin_overlay.cpp`) = `request_freeze(FREEZE_VMAP, vmap_redirect())`.
+- **★ Behaviour contract (user-verified):** (1) can't open the map once ALREADY in combat — ER blocks the map
+  create-cb in combat and the vmap redirect inherits it (no vmap either); (2) open it BEFORE combat → nearby
+  enemies frozen the whole time = safe marker browsing; (3) close anytime, instant resume. → **no combat
+  detection needed at all** (ER's own in-combat block + the freeze cover both cases).
+- **Dead ends removed:** `combat_active()` (HP-bar stopgap) is now unused by the vmap (kept only for the
+  `combat` diag verb). The `FUN_140623410` timescale/dt hook was RET-proven a no-op live (removed). The
+  combat-detection RE (`combat_state_gate_re_findings.md`, `combat_enemy_list_structure_re_prompt.md`) is
+  SUPERSEDED — the AI battle-state lives on a pooled `CS::CSAiThink` with no fixed EnemyIns offset (manager-
+  mediated), so per-enemy detection was never viable; the freeze sidesteps it entirely.
+- **Enemies-only freeze (player-exempt)** via `[LocalPlayer+0x531]` XOR bit is wired (`freeze enemies`) but
+  UNTESTED + not needed for the fullscreen vmap (player isn't controllable under it anyway).
 
 ## ⇒ 2026-07-06g — vmap-on-map-key F1 option SHIPPED + verified working (input authority = follow-up)
 

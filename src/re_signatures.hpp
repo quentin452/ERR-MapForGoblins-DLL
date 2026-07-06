@@ -260,6 +260,14 @@ namespace goblin::sig
     // (no RIP deref). ChrIns+0x60 = npcParam (the npcParamId → name).
     inline constexpr const char *GET_CHRINS_FROM_HANDLE =
         "48 83 EC 28 E8 17 FF FF FF 48 85 C0 74 08 48 8B 00 48 83 C4 28 C3";
+    // CS::CSEventUtility::SetDisableAllChrUpdate(char) ENTRY = FUN_1405f4d40 (er+0x5f4d40). Matched address
+    // IS the function; `void __fastcall(char freeze)` (rcx: 1=freeze all chrs in pose, 0=resume). ER's own
+    // cutscene freeze — writes [WorldChrManDbg+0x8] AND runs a ChrFinder that propagates the disable per-chr
+    // (the propagation is the point — poking the flag alone is a NO-OP; you MUST call the fn). Render/UI/input
+    // stay live; resume is INSTANT even after minutes frozen (a disabled chr isn't updated → no dt to catch
+    // up). docs/re/game_timestep_freeze_re_findings.md "SOLVED". The rip disp (48 83 3D ..) is masked.
+    inline constexpr const char *SET_DISABLE_ALL_CHR_UPDATE =
+        "40 53 48 83 EC 40 48 C7 44 24 20 FE FF FF FF 48 83 3D ?? ?? ?? ?? 00 0F";
 
     // ── World→map-space projection (the native map's per-icon projection) ──
     // RE: docs/re/windows_world_to_mapspace_projection_re_findings.md (FUN_140876140

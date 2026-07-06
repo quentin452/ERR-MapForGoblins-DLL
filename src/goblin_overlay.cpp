@@ -1630,31 +1630,12 @@ namespace
                 }
             }
         }
-        // Pause-on-open (config::pauseOnOpen): freeze the world sim while the F1 panel is open — the same
-        // branch flip as the "Pause the game" button, but driven by the menu open/close edge (keyboard F1
-        // OR the gamepad combo, since both flip g_user_show → g_show above). We ONLY release a pause we
-        // set ourselves, so a manual pause taken before opening survives the close.
-        static bool s_auto_paused = false;
-        if (goblin::config::pauseOnOpen && goblin::pause::available())
-        {
-            if (!s_prev_show && g_show && !goblin::pause::paused())  // rising edge: menu just opened
-            {
-                goblin::pause::set_paused(true);
-                s_auto_paused = true;
-            }
-            else if (s_prev_show && !g_show && s_auto_paused)        // falling edge: menu just closed
-            {
-                goblin::pause::set_paused(false);
-                s_auto_paused = false;
-            }
-        }
-        else if (s_auto_paused && !g_show && goblin::pause::available())
-        {
-            // Option was turned off (or pause became unavailable) while we still held an auto-pause and
-            // the panel is closed — release it so the game isn't left frozen.
-            goblin::pause::set_paused(false);
-            s_auto_paused = false;
-        }
+        // Pause-on-open (config::pauseOnOpen): freeze the world while the F1 panel is open. Its own freeze
+        // REASON (FREEZE_PANEL), OR-combined with the manual pause + the vmap freeze, so none stomps another.
+        // request_freeze is idempotent (no-op when unchanged), so a per-frame set is safe + self-clearing when
+        // the option is toggled off. Driven by g_show (keyboard F1 OR the gamepad combo both flip it).
+        goblin::pause::request_freeze(goblin::pause::FREEZE_PANEL,
+                                      goblin::config::pauseOnOpen && g_show);
         s_prev_show = g_show;
 
         // Item 6: recenter the cursor on the world map's (re)open transition, so the ImGui cursor
@@ -1947,12 +1928,13 @@ namespace
             // when the master toggle is OFF — otherwise it could never revert a name after you disable
             // it. Self-gates internally on CSFeMan/WCM resolve + settings; cheap when idle. Host-only.
             goblin::update_native_enemy_names();
-            // COMBAT gate for the native-map redirect: ER auto-disables the map in combat, but our redirect
-            // hooks the map-open create-callback which ER doesn't call in combat → a vmap already OPEN would
-            // be stuck. So while the vmap stands in as the map, force-close it the instant combat starts
-            // (any nearby enemy in AI battle state), mirroring the native map. (native_map_redirect_linux_re_plan.md #3)
-            if (goblin::overlay_api::vmap_redirect() && goblin::combat_active())
-                goblin::overlay_api::set_vmap_redirect(false);
+            // FREEZE while the vmap stands in for the native map: instead of detecting combat and force-closing
+            // (the old combat_active gate — unreliable: the AI battle-state lives on a pooled CS::CSAiThink with
+            // no fixed EnemyIns offset, so per-enemy detection never worked), we FREEZE all characters while the
+            // vmap redirect is open (ER's own cutscene freeze, SetDisableAllChrUpdate). Enemies can't act → no
+            // combat can start → the map is always openable, and resume is instant on close. Own freeze reason,
+            // OR-combined with the F1-panel/manual pause. (game_timestep_freeze_re_findings.md "SOLVED", #3)
+            goblin::pause::request_freeze(goblin::pause::FREEZE_VMAP, goblin::overlay_api::vmap_redirect());
             if (minimap)
                 goblin::overlay_render_loader::call_draw_minimap_hud(frame_ctx);   // minimap HUD (self-gates overworld-only)
 

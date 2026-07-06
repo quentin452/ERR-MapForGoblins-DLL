@@ -1,5 +1,14 @@
 # RE findings — the ER IN-COMBAT state (gate the vmap like the native map)
 
+> **⚠ SUPERSEDED (2026-07-06) — combat detection ABANDONED, the vmap FREEZES the world instead.** Per-enemy
+> combat detection was never viable live: the AI battle-state (`[[x+0xC950]+0x30C]==6`) lives on a pooled
+> `CS::CSAiThink`, not at any fixed `CS::EnemyIns`/`ChrIns` offset (the link is manager-mediated — see
+> `combat_enemy_list_structure_re_prompt.md`'s RESOLVED banner). The vmap-in-combat problem is now solved by
+> **freezing all characters while the fullscreen vmap is open** (`SetDisableAllChrUpdate`, see
+> `game_timestep_freeze_re_findings.md` "SOLVED"): opening the map before combat freezes nearby enemies (safe
+> browsing), and ER already blocks the map once you're in combat. No detection needed. `combat_active()` is kept
+> only for the `combat` diag RPC verb. The analysis below is retained for the RE it did pin.
+
 Answers `combat_state_gate_re_prompt.md`. **Route 2 (Windows Ghidra, `D:\ghidra_proj2\ER`, build 2.6.2.0,
 imagebase 0x140000000).** Route 1 (Linux-live diff-scan) still owns the final confirmation — see the checklist.
 

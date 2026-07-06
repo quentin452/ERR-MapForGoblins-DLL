@@ -25,6 +25,18 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **The fullscreen Virtual World Map freezes the world while it's open (safe marker browsing).** When the vmap
+  stands in for the native map (**Virtual map on map key**), opening it freezes every character — enemies, NPCs,
+  the player — in pose (ER's own cutscene freeze), so you can study markers without being attacked. Closing the
+  map resumes instantly, with no catch-up hitch no matter how long it stayed open. Behaviour contract:
+  1. **Can't open the map once you're already in combat** — ER blocks the map in combat and the vmap inherits that
+     (no vmap either); disengage first.
+  2. **Open it before combat and you're protected** — nearby enemies are frozen the whole time the map is up.
+  3. **Close the map at any moment** — instant, always. (This also replaced the old, unreliable "detect combat and
+     force-close the map" attempt — combat detection was abandoned; freezing is simpler and correct.)
+- **In-game pause is now ER's cutscene freeze (instant resume).** The "Pause game" toggle / pause-on-open / the
+  `pause` RPC no longer flip the frame-step branch (whose un-pause hitch grew with how long you paused); they call
+  `SetDisableAllChrUpdate`, which freezes characters with a zero-cost resume even after minutes paused.
 - **The Virtual World Map fully REPLACES the native map (redirect).** With **Virtual map on map key** on, pressing
   the game's map button (keyboard OR gamepad) opens the fullscreen MapForGoblins map and the native ER world map
   **never opens at all** — the create-callback is intercepted, so there's no native map flash, no wasted render,
