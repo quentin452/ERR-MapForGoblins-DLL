@@ -9,7 +9,16 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
-## ⇒ SESSION WRAP 2026-07-06f (Linux/Opus) — ★ off-VM converter affine VALIDATED + SHIPPED (fd0ad45 done): projection works map-closed, prime dropped
+## ⇒ SESSION WRAP 2026-07-06f (Linux/Opus) — off-VM projection SHIPPED + underground/DLC fixes + gamepad M4 + sea-tag RE routed
+
+Long session, 12 commits (`c03b90e`..`37c5ac5`), local master 1 ahead of origin (user pushed through
+`2514486`). Threads, top-down: **(1) off-VM converter affine** — validated + shipped, projection works
+map-closed for ALL placed areas (base/legacy/UG/DLC), prime droppable. **(2) underground/DLC marker fixes** —
+merchant pins off-map FIXED, DLC-UG (40–43) projection FIXED, player-dim auto-follow VERIFIED. **(3) native
+enemy names** — verified live (Godrick Soldier native tag). **(4) gamepad M4** — reticle drives
+hover/warp/place + cluster/fan + tooltip-at-reticle (needs pad live-test). **(5) sea-tag** — global const is
+wrong, routed to per-region `GXWaterHeightMap` RE. New RPCs: `proj_conv`/`proj_nvm`/`conv_affine`,
+`vmap graces`/`vmap group` read. Each thread's detail below.
 
 Implements + validates the "Remaining" step of the resident-converter-affine RE (`fd0ad45` /
 `docs/re/windows_worldmap_affine_resident_source_re_findings.md`). `test_converter_offvm.py` **10/10** live.
@@ -476,7 +485,9 @@ vmap migration on an UNGATED Linux brick** — candidates: on-canvas ICONS for v
 quality win); extend `vmap offmap` to catch UG/DLC (0,0) render-side; A15 legacy-dungeon sub-maps (last
 pure-Linux parity gap); `active_world`/`s_group`/PlayerDim auto-follow. **Meanwhile the Windows/Ghidra agent
 runs** — priority `windows_world_to_screen_camera_re_prompt.md` (w2s3d = unblocker for the ImGui virtual world),
-then optional `windows_havok_vdb_standup_re_prompt.md` + the new `windows_debug_render_flag_re_prompt.md` (#2a).
+then optional `windows_havok_vdb_standup_re_prompt.md` + `windows_debug_render_flag_re_prompt.md` (#2a) +
+**`windows_water_level_source_re_prompt.md` (2026-07-06, small — the vmap sea-tag: find the water-inclusive
+cast filter OR the `GXWaterHeightMap` sampler; Option 2's filter is Linux-testable once found).**
 The tracks are independent.
 
 **SHIPPED this session (all committed + in-game verified where noted):**
