@@ -144,7 +144,25 @@ namespace goblin::debug_rpc
             HWND hwnd = static_cast<HWND>(goblin::overlay::game_hwnd());
             if (!hwnd) return false;
             if (GetForegroundWindow() == hwnd && goblin::input::has_focus()) return true;
-            SetForegroundWindow(hwnd);
+            // FORCE the focus back. A plain SetForegroundWindow is refused by Wine/X11 when another
+            // window is active (the "can't steal X focus back" case) — the game never refocuses, so the
+            // injected input goes to the caller's window and is lost. Do the classic force-focus: attach
+            // our input queue to the current foreground thread (lifts the foreground lock), then raise +
+            // activate + focus with several belt-and-suspenders calls, then detach.
+            {
+                HWND fg = GetForegroundWindow();
+                DWORD fgTid = fg ? GetWindowThreadProcessId(fg, nullptr) : 0;
+                DWORD gameTid = GetWindowThreadProcessId(hwnd, nullptr);
+                const bool attach = fgTid && gameTid && fgTid != gameTid;
+                if (attach) AttachThreadInput(fgTid, gameTid, TRUE);
+                ShowWindow(hwnd, SW_SHOW);
+                SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+                BringWindowToTop(hwnd);
+                SetForegroundWindow(hwnd);
+                SetActiveWindow(hwnd);
+                SetFocus(hwnd);
+                if (attach) AttachThreadInput(fgTid, gameTid, FALSE);
+            }
             // X11/Wine focus is ASYNC: firing SendInput right after SetForegroundWindow loses
             // the FIRST command — validated live 2026-07-02 (xterm steals focus -> `key M`
             // returns ok but the map never opens; the log shows WM_SETFOCUS landing DURING the
