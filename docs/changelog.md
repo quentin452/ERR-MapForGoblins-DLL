@@ -188,6 +188,13 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   pass is now skipped so our post-present icons don't draw on top of it, via a live "a menu covers
   the map" game-state flag (`CSMenuMan+0x104`). Gated by the `clip_game_ui` setting.
 
+### Removed
+- **Map "UI exclusion zones" settings + the ERR day/night-dial exclusion (vmap-only collapse, phase 2).**
+  Removed the F1 "UI exclusion zones (map clipping)" section — the user-drawn no-icon rectangles, the ERR
+  dial placement editor, and the 10 `ui_exclusion_rects` / `dial_*` ini keys — along with the underlying
+  marker soft-fade. These only hid overlay icons where they overlapped the old native map's own always-on-
+  top UI; the Virtual Map owns its whole surface, so there is nothing to clip under.
+
 ### Changed
 - **F1 settings declutter (vmap-only collapse, phase 1).** Retired seven native-map-only toggles now the
   Virtual Map is the map surface — `grace_overlay`, `grace_suppress_native`, `landmark_suppress_native`,

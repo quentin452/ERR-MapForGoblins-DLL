@@ -16,9 +16,16 @@ kept, always-on): **`grace_overlay`, `grace_suppress_native`, `landmark_suppress
 (all defaulted true/1.0). Both builds green. Deferred to a later Phase: `dial_*` (9), `ui_exclusion_rects`
 (interactive editor), the dev/diag probes (kept — hidden RE tooling, not user settings).
 
+## Phase-1b DONE (2026-07-06) — game-UI exclusion subsystem removed
+Removed the entire ERR-dial / user-zone marker exclusion subsystem (it only clipped overlay markers
+under the retired native map's own always-on-top UI): `ui_exclusion_rects` + the 9 `dial_*` keys, their
+F1 "UI exclusion zones" section (zone editor + dial placement), the `game_ui_exclusion_alpha` soft-fade,
+`in_game_ui_exclusion`, `scale_vtx_alpha`, the `ui_rect_*`/`dial_edit` accessors, and the
+`cfg_uiExclusionRects_ref` export. `draw_marker` no longer fades. Both builds green.
+
 ## DROP — native-map-only / dead (retire after the switch)
-- **Native-map overlay clipping/exclusion:** ~~`clip_game_ui`~~ ✅DONE, `ui_exclusion_rects` (deferred: has editor).
-- **ERR day/night dial (9 keys):** `dial_disc_x/y/r`, `dial_pill_x0/y0/x1/y1`, `dial_fade_margin` (deferred).
+- **Native-map overlay clipping/exclusion:** ~~`clip_game_ui`~~ ✅DONE, ~~`ui_exclusion_rects`~~ ✅DONE.
+- **ERR day/night dial (9 keys):** ~~`dial_disc_x/y/r`, `dial_pill_x0/y0/x1/y1`, `dial_fade_margin`~~ ✅DONE.
 - **Native-pin suppression:** ~~`landmark_suppress_native`, `grace_suppress_native`, `suppress_native_bosses`~~ ✅DONE (baked ON).
 - **Native-basemap motion-sync:** ~~`view_delay_frames`, `view_delay_zoom`~~ ✅DONE (baked to default).
 - **Native-map RE/diag probes:** `debug_worldmap_probe`, `debug_page_switch`, `dump_native_pins`,

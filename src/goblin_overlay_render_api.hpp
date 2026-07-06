@@ -46,9 +46,7 @@ namespace goblin::overlay_api
 #define GOBLIN_CFG_FLOAT_LIST(X) \
     X(iconMinHalfPx) \
     X(minimapOffsetX) X(minimapOffsetY) X(minimapOpacity) X(minimapSize) \
-    X(minimapZoom) X(overlayIconScale) X(overlayMasterScale) \
-    X(dialDiscX) X(dialDiscY) X(dialDiscR) X(dialPillX0) X(dialPillY0) X(dialPillX1) X(dialPillY1) \
-    X(dialFadeMargin)
+    X(minimapZoom) X(overlayIconScale) X(overlayMasterScale)
 #define GOBLIN_CFG_U8_LIST(X) X(clusterFarRadius) X(clusterNearRadius) X(clusterNearThreshold) X(virtualKeyboardLayout)
 #define GOBLIN_CFG_U16_LIST(X) X(overlayToggleGamepad)
 
@@ -68,7 +66,6 @@ namespace goblin::overlay_api
     GOBLIN_RENDER_API bool *cfg_showCategory_ptr();          // array base (bool showCategory[]), index at the call site
     GOBLIN_RENDER_API std::string &cfg_questProgress_ref();  // mutated in place (bit twiddling on the packed string)
     GOBLIN_RENDER_API std::string &cfg_regionToggles_ref();
-    GOBLIN_RENDER_API std::string &cfg_uiExclusionRects_ref(); // user no-icon zones (virtual units)  // assigned wholesale (region-toggle bitset serialization)
 
     // ── goblin::ui::* (host-defined in src/goblin_section_visibility.cpp + goblin_inject.cpp) ──
     GOBLIN_RENDER_API bool section_visible(int s);

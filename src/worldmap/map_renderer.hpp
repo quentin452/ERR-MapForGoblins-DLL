@@ -90,21 +90,7 @@ bool locate_pending();
 // it (worldmap_probe::set_view_center). Returns false when no locate is pending / the marker wasn't
 // on the open page this frame.
 bool take_locate_pos(float *u, float *v);
-// ── UI exclusion-zone editor (F1 "UI exclusion zones") ──────────────────────
-// User-drawn rectangles where overlay icons are hidden on the world map, stored in
-// cfg_uiExclusionRects_ref() as "x0,y0,x1,y1;..." in VIRTUAL-canvas units (1920x1080
-// space) so they hold at every resolution. Edit mode: render_markers draws the zones
-// and handles drag-create / right-click-delete directly on the open map.
-void set_ui_rect_edit(bool on);
-bool ui_rect_edit();
-int ui_rect_count();
-// Fills out[4] = x0,y0,x1,y1 (virtual units); false if index out of range.
-bool ui_rect_get(int index, float out[4]);
-void ui_rect_delete(int index);
-void ui_rect_clear();
-// ERR dial exclusion placement mode: draws the disc + time-pill live on the open map with
-// drag handles that write the cfg::dial* globals (virtual units). ERR-only; "Save to INI" persists.
-void set_dial_edit(bool on);
-bool dial_edit();
+// (The UI exclusion-zone editor + ERR-dial placement mode were removed with the vmap-only collapse —
+// they only clipped overlay markers under the retired native map's own UI.)
 
 } // namespace goblin::worldmap

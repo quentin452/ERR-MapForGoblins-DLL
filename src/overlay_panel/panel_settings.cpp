@@ -3,7 +3,6 @@
 // goblin_overlay_render.cpp::draw_panel in the split (big-files refactor item 1).
 
 #include "panel_internal.hpp"
-#include "worldmap/map_renderer.hpp"  // ui_rect_* (UI exclusion-zone editor)
 #include "goblin_i18n.hpp"
 
 #include <string>
@@ -275,59 +274,8 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
         ImGui::TextDisabled("%s", tr("Live. Save to INI to persist."));
     }
 
-    // User-drawn "no overlay icons here" zones — self-service fix for icons drawing over
-    // the game's own map UI (we render post-present, always on top). Stored in 1920x1080
-    // virtual-canvas units so the zones hold at every resolution.
-    const bool show_uiex = f.match("ui exclusion zones clipping clip rectangles hide icons "
-                                   "under game menu dial clock zone");
-    if (f.filtering && show_uiex) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
-    if (show_uiex && ImGui::CollapsingHeader(tr("UI exclusion zones (map clipping)")))
-    {
-        // (clip-game-UI toggle retired: baked ON. The user zone editor below stays.)
-        bool edit = goblin::worldmap::ui_rect_edit();
-        if (ImGui::Checkbox(tr("Edit zones (open the world map)"), &edit))
-            goblin::worldmap::set_ui_rect_edit(edit);
-        if (edit)
-            ImGui::TextDisabled("%s", tr("On the MAP: drag = new zone, right-click a zone = delete."));
-        const int n = goblin::worldmap::ui_rect_count();
-        for (int i = 0; i < n; ++i)
-        {
-            float r[4];
-            if (!goblin::worldmap::ui_rect_get(i, r)) break;
-            ImGui::Text(tr("Zone %d: (%.0f,%.0f)-(%.0f,%.0f)"), i + 1, r[0], r[1], r[2], r[3]);
-            ImGui::SameLine();
-            ImGui::PushID(i);
-            if (ImGui::SmallButton(tr("Delete")))
-                goblin::worldmap::ui_rect_delete(i);
-            ImGui::PopID();
-        }
-        if (n > 0 && ImGui::SmallButton(tr("Clear all zones")))
-            goblin::worldmap::ui_rect_clear();
-        ImGui::TextDisabled("%s", tr("Zones are saved in 1920x1080 virtual units - they work at every\n"
-                                     "resolution. Save to INI to persist."));
-
-        // ERR day/night dial — a round region the rectangle zones can't express. Placement
-        // handles on the map + precise sliders; the values are the ini-backed cfg::dial* globals.
-        if (goblin::overlay_api::err_features())
-        {
-            ImGui::Separator();
-            ImGui::TextUnformatted(tr("ERR day/night dial exclusion"));
-            bool dedit = goblin::worldmap::dial_edit();
-            if (ImGui::Checkbox(tr("Edit dial (open the world map)"), &dedit))
-                goblin::worldmap::set_dial_edit(dedit);
-            if (dedit)
-                ImGui::TextDisabled("%s", tr("On the MAP: cyan dot = move disc, yellow = radius, magenta = move pill."));
-            ImGui::SliderFloat(tr("Disc X"), goblin::overlay_api::cfg_dialDiscX_ptr(), 0.0f, 1920.0f, "%.0f");
-            ImGui::SliderFloat(tr("Disc Y"), goblin::overlay_api::cfg_dialDiscY_ptr(), 0.0f, 1080.0f, "%.0f");
-            ImGui::SliderFloat(tr("Disc radius"), goblin::overlay_api::cfg_dialDiscR_ptr(), 0.0f, 500.0f, "%.0f");
-            ImGui::SliderFloat(tr("Pill left"), goblin::overlay_api::cfg_dialPillX0_ptr(), 0.0f, 1920.0f, "%.0f");
-            ImGui::SliderFloat(tr("Pill top"), goblin::overlay_api::cfg_dialPillY0_ptr(), 0.0f, 1080.0f, "%.0f");
-            ImGui::SliderFloat(tr("Pill right"), goblin::overlay_api::cfg_dialPillX1_ptr(), 0.0f, 1920.0f, "%.0f");
-            ImGui::SliderFloat(tr("Pill bottom"), goblin::overlay_api::cfg_dialPillY1_ptr(), 0.0f, 1080.0f, "%.0f");
-            ImGui::SliderFloat(tr("Fade margin"), goblin::overlay_api::cfg_dialFadeMargin_ptr(), 0.0f, 200.0f, "%.0f");
-            ImGui::TextDisabled("%s", tr("Disc radius 0 = disc off; pill bottom <= top = pill off.\n"
-                                         "Fade margin = soft dim band around the dial (0 = hard edge). Save to INI to persist."));
-        }
-    }
+    // (The "UI exclusion zones (map clipping)" section — user zone editor + ERR day/night dial
+    // placement — was removed with the vmap-only collapse: it only clipped overlay markers under the
+    // retired native map's own UI, moot now the vmap owns its whole surface.)
 }
 } // namespace goblin::overlay::panel
