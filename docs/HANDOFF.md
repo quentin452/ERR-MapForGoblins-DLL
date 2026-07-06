@@ -57,7 +57,14 @@ than suppressing it (native render flag "does not hide the map" — proven). Bot
     `+0x68/+0x78` = NO effect (map still renders; the two clean bools +0x68/+0x78 aren't it); `+0x08`(ptr) +
     `+0x48` = CRASH (render-critical). Safe player fields exhausted. **★ NEXT: (1) extend the probe to A/B the
     MovieImpl (`handle+0x00`) / GFx movie root, OR (2) RECOMMENDED = Route 2 Windows-Ghidra render-thread
-    DISPLAY-submit trace (names the gate, no blind crashes).** Boot infra now works (`hold_er.py` + socket
+    DISPLAY-submit trace (names the gate, no blind crashes).** **★ STRATEGY PIVOT (user, 2026-07-06): REDIRECT the map, don't cull the render.** Since the vmap projection
+  is resident/off-VM (native map need never open), let the map key open the vmap and FORCE-CLOSE the native
+  WorldMapDialog → native closed = no Scaleform draw = render-cull for free, no gate hunt. **Fully Linux-doable,
+  NO Windows prompt** (`docs/re/native_map_redirect_linux_re_plan.md`): map-open anchor `CSMenuMan[0xCD]==7`,
+  `mem_fwa` hw-breakpoint find-what-writes → the open/close calls → hook to force-close on the map-open edge +
+  decouple the vmap auto-close (`panel_virtual_map` Slice D `s_from_map`) + live-test the freeze. This SUPERSEDES
+  the render-cull hunt (A/B negative, §7). Needs a live game for the mem_fwa recon.
+- Boot infra now works (`hold_er.py` + socket
     release; the earlier flakiness was my `MFG_PROFILE=err` override — the real me3 profile is `err_offline.me3`).
 - **★ NEXT (remaining input authority):** (1) **gamepad/right-stick pan still drives the native map** — the
   game reads XInput directly (not via wndproc), so the stick isn't gated; the vmap already has its own pad
