@@ -9,6 +9,52 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
+## ⇒ SESSION WRAP 2026-07-06c (Linux/Opus) — DX/UX sweep, freeze detection, live enemy-name capture (routed to Windows), font + gamepad + OSK
+
+Long session on top of 06/06b. Local master well ahead of origin; USER pushes. All committed.
+
+**Shipped (all render-side/hot-reloadable unless noted):**
+- **Font accents** — `d23b779` fixed é/è rendering blank (ProggyClean shadowed DejaVu at 0xA0-0xFF → restricted
+  ProggyClean to ASCII). `7971908` aligned the merged DejaVu baseline (was ~1px RAISED: cfg.GlyphOffset.y=1.0)
+  + OversampleH=2. **★ QUEUED: DejaVu-ONLY font refactor** (drop ProggyClean, one TTF for everything → kills the
+  bitmap-vs-TTF raised/blurry mismatch) — scoping subagent writing `docs/plans/dejavu_only_font_refactor_plan.md`.
+- **vmap/minimap player bugs** — `be57cdd` player cursor now draws AFTER region labels (was covered); minimap
+  halo fades with zoom like the vmap. `75b2b99` re-curved the minimap halo (was too weak: gone by default zoom
+  2.0 now, full only when zoomed OUT). Host font init needs restart; the rest hot-reloads.
+- **M1 heightfield (Track A)** — `52c9fa4` cast-window widen ±2000→+3000/-10000 + sea-tag plumbing (dormant
+  `kSeaLevelY` sentinel until a live shoreline `hf_probe` calibrates it). Gamepad nav already wired (verify-only).
+- **vmap gamepad canvas control (M4)** — `4933ea2` LEFT stick pan, L2/R2 zoom about a RIGHT-stick virtual-cursor
+  reticle; latch exits on mouse move. **`7805e60` on-screen Kbd button** on the vmap grace + item search — REUSED
+  the existing `panel::draw_gamepad_keyboard_button` (no new OSK logic; user caught the dup). Live-tuning + wiring
+  the reticle into hover/click/place still open.
+- **★ FREEZE DETECTION (host, `be57cdd`)** — `status` now carries `frame=<N>` (present-thread heartbeat): poll
+  twice, unchanged-while-alive = the render/main thread is frozen (RPC listener is a separate thread → `ping`
+  lies). The existing `freeze_watchdog` (default 20s) already dumps on a present stall; this makes it RPC-visible.
+- **`exit` RPC verb (host, `432b112`)** — `exit`/`quit`/`kill_game` → TerminateProcess(self). Kills a SOFT freeze
+  (listener alive, main thread futex-stuck); does NOT reap a D-state kernel wedge (same rule as SIGKILL).
+- **FWA disarm (`70d8ff3`)** — `mem_fwa off` + WRITE/READ log label (unblocked the enemy-name capture).
+
+**Enemy-name write-site capture — live progress, then ROUTED TO WINDOWS:**
+- Confirmed live (headless, `39bb073`): the movie loads from the active install; the name is
+  `<FONT LETTERSPACING='0'>Tree Sentinel</FONT>` (SetTextHTML). Full loop proven (boot, engage the Gatefront
+  Tree Sentinel with `key w`, `pause` to survive, scoped scan, `mem_fwa … w`). NOT captured: the write is
+  one-shot on bar-show + the buffer is freed on death/reload → needs a no-reload de-aggro.
+- **★ D-STATE FREEZE INCIDENT + lesson:** a full-address-space `/proc/mem` scan (`scan.py`) swap-thrashed the
+  Proton game into UNKILLABLE D-state (SIGKILL/Alt-F4/internal exit all pended; cleared only when the GPU/IO
+  aborted). **RULE (`d7431e9`): scan-heavy RE → the WINDOWS box** (native RPM). On Linux, scan rw-p heap ONLY,
+  capped (`scan2.py`, survived twice); in-DLL probes are always safe. The enemy-name write-site capture is now
+  the Windows agent's job; Linux's part (buffer shape + tooling) is done.
+
+**RE plans written:** `game_timestep_freeze_re_prompt.md` (fix the pause resume-latency by zeroing the
+`FUN_140623410` dt — Windows agent already answered dt=xmm1 arg, no scale global; path B = hook & scale).
+
+### ⇒ NEXT SESSION
+- **★ WAITING ON THE WINDOWS AGENT: GFX enemy-name write-site RE** (`windows_enemy_name_hud_feed_re_findings.md`
+  finish recipe) + the mod-agnostic GATE Q1. Don't delete the ImGui enemy-name path until Q1 = "vanilla shows
+  the tag when fed".
+- Review + maybe implement the **DejaVu-only font plan** (subagent-scoped this session).
+- Track A continues: M3 cover-opaque vmap; wire the gamepad reticle into hover/click/place; live-tune stick speeds.
+
 ## ⇒ SESSION WRAP 2026-07-06b (Windows/Opus) — native-name plan: LIVE recon done, GATE still open, handed to Linux
 
 Continued the native-enemy-name plan with **live external-RPM recon** on the running game (Windows box,
