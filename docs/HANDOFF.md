@@ -57,9 +57,13 @@ Implements + validates the "Remaining" step of the resident-converter-affine RE 
   byte-identical** when not in pad-mode (`vptr=io.MousePos`, `hovered_eff=hovered`, pad buttons false) —
   smoke-verified no regression (vmap renders, mouse right-click place + `vmap group` read OK). The OSK (item
   #1) was already done (`draw_gamepad_keyboard_button` = a real A–Z popup + Space/Bksp/Clear/Done, nav'able).
-  **⚠ CANNOT live-test the pad from Linux RPC (no XInput injection) → USER must pad-test.** **STILL OPEN:**
-  (a) pile/fan CLUSTER pad-hover (piles/spiderfy still read `io.MousePos` — reticle only hovers SINGLE
-  markers so far; matters zoomed-out); (b) live-tune stick pan/zoom speeds + signs.
+  **⚠ CANNOT live-test the pad from Linux RPC (no XInput injection) → USER must pad-test.**
+- **✅ CLUSTER pad-hover LANDED too (2026-07-06f2).** The pile expand-hint, spiderfy fan OPEN/keep-open,
+  and fanned-icon hover now all use `vptr`/`hovered_eff` — so the reticle hovers PILES + expands/hovers the
+  spiderfy fan (a fanned grace → FaceUp warps it via the shared accumulator). In pad-mode the fan opens on
+  reticle hover WITHOUT Ctrl (`mod_ok || s_pad_mode`; right-stick reticle is separate from left-stick pan,
+  and no-steal/keep-open prevents thrash). Fan draw path smoke-verified (`vmap spiderfy 1` renders the radial
+  fan, no crash); mouse path byte-identical. **STILL OPEN:** live-tune stick pan/zoom speeds + signs (pad).
 - **✅ PLAYER-DIMENSION AUTO-FOLLOW VERIFIED LIVE (2026-07-06f2).** The vmap auto-switches PAGE to the
   player's dimension on a crossing (`s_follow_player_dim`, edge-detect on `get_player_map_pos` group). Drove
   it live via grace warps with the vmap open: OW(0) → Nokstella base-UG → page auto-followed to group 1

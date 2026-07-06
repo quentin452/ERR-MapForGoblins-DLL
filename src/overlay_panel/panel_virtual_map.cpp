@@ -1828,9 +1828,9 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             ImVec2 ts = ImGui::CalcTextSize(cbuf);
             dl->AddText(ImVec2(ps.x - ts.x * 0.5f, ps.y - ts.y * 0.5f), IM_COL32(240, 235, 220, 255), cbuf);
             ++drawn;
-            if (hovered)
+            if (hovered_eff)
             {
-                float dx = ps.x - io.MousePos.x, dy = ps.y - io.MousePos.y;
+                float dx = ps.x - vptr.x, dy = ps.y - vptr.y;
                 // Suppress the expand hint whenever ANY spiderfy fan is open (not just THIS pile's): a fan
                 // is already showing, so "Ctrl+hover to expand" is wrong (with no-steal, hovering another
                 // pile won't open it) and it leaks over the open fan's icons.
@@ -1864,7 +1864,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         // hover/warp-able via the shared accumulator. Covers BOTH the quadtree piles (zoom-out clusters) and
         // exact/near-coincident SINGLES (the case zoom can't separate). Sticky on a world-quantized key so
         // it survives the per-frame rebuild; closes when the cursor leaves the fan extent. Gate: config flag.
-        if (goblin::config::clusterSpiderfy && (hovered || s_force_spiderfy))
+        if (goblin::config::clusterSpiderfy && (hovered_eff || s_force_spiderfy))
         {
             struct FanCluster { ImVec2 anchor; uint64_t key; int pileIdx; };  // pileIdx>=0 → gather from QT
             std::vector<FanCluster> clusters;
@@ -1904,11 +1904,13 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             // Hit-test the cursor against a cluster anchor → (re)latch the sticky key.
             for (const FanCluster &fc : clusters)
             {
-                float dx = fc.anchor.x - io.MousePos.x, dy = fc.anchor.y - io.MousePos.y;
+                float dx = fc.anchor.x - vptr.x, dy = fc.anchor.y - vptr.y;
                 const float hitR = 22.0f * uiScale;
                 // Gate the OPEN on Ctrl (default) so panning/hovering the map doesn't pop fans as the
-                // cursor sweeps clusters; once open the keep-open logic holds it without Ctrl.
-                const bool mod_ok = !goblin::config::spiderfyHoldCtrl || io.KeyCtrl;
+                // cursor sweeps clusters; once open the keep-open logic holds it without Ctrl. In pad-mode
+                // the reticle (right stick) is separate from panning (left stick), so a deliberate reticle
+                // hover opens the fan — no Ctrl on a pad (the no-steal + keep-open logic prevents thrash).
+                const bool mod_ok = !goblin::config::spiderfyHoldCtrl || io.KeyCtrl || s_pad_mode;
                 // DON'T steal an already-open fan: only latch a NEW cluster when none is open. Otherwise
                 // moving the cursor toward a fanned icon could re-latch to a neighbouring islet the path
                 // passes over (fan A stops → fan B draws). The open fan closes via keep-open (cursor left
@@ -1981,7 +1983,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     }
                     // Keep-open: close once the cursor leaves the fan's reach (glyph→leg→icon travel allowed).
                     const float keepR = max_r + icoHalf + 24.0f * uiScale;
-                    float mdx = c.x - io.MousePos.x, mdy = c.y - io.MousePos.y;
+                    float mdx = c.x - vptr.x, mdy = c.y - vptr.y;
                     if (!s_force_spiderfy && mdx * mdx + mdy * mdy > keepR * keepR) s_fan_open = false;
                     // MODAL absorb: the fan is drawn on top, so inside its backdrop it must OWN the hover —
                     // clear whatever base marker/pile UNDER it set in the accumulator, so their tooltip/warp
@@ -2003,7 +2005,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                           dl->AddText(ImVec2(pos[k].x + icoHalf * 0.4f, pos[k].y - icoHalf), IM_COL32(255, 230, 150, 255), b); }
                         // Hover a fanned icon → feed the shared accumulator (prio 2 wins) so the existing
                         // tooltip + grace double-click-warp path (below) fires for it.
-                        float fdx = pos[k].x - io.MousePos.x, fdy = pos[k].y - io.MousePos.y;
+                        float fdx = pos[k].x - vptr.x, fdy = pos[k].y - vptr.y;
                         if (fdx * fdx + fdy * fdy < icoHalf * icoHalf * 2.0f)
                         {
                             hoverBestD = 0.f; hoverPrio = 2; hoverName = m->name_id; hoverCat = m->category;
