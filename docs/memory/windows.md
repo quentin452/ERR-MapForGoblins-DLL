@@ -12,10 +12,32 @@ tooling. Prefer Windows for anything that needs a running `eldenring.exe`.
    redeploy → **restart** the game. (Observed 2026-07-06: exe up + in-world, but DLL was `Jul 5`.)
 2. **On Windows, runtime RE = EXTERNAL RPM (`ReadProcessMemory`), not the in-DLL boot flow.** The
    `mfg.py --boot` / `GameSession` automation is **Linux/Proton-hardcoded** (me3 CLI paths, wine prefix,
-   `pkill -x`) and does NOT boot/kill the game on Windows — the user launches ER here. Drive live inspection
-   with the external RPM scanner path (`tooling/rpm-live-memory-tooling.md`; RTTI→heap→match, e.g.
-   `scratchpad/GfxScan.cs`), attaching to the user-launched `eldenring.exe`. RPC still works read-only for
-   attach-mode verbs, but new/live-poke RE goes through external RPM.
+   `pkill -x`) and does NOT boot/kill the game on Windows — the user launches ER here. Drive raw memory
+   RE with the external RPM scanner path (`tooling/rpm-live-memory-tooling.md`; RTTI→heap→match, e.g.
+   `scratchpad/GfxScan.cs`), attaching to the user-launched `eldenring.exe`.
+
+## Live-verify on Windows (attach-mode RPC — the full loop works, incl. WRITE verbs)
+
+The `--boot` automation is Linux-only, but the DLL's RPC listener is **TCP loopback → cross-platform**
+(`tools/mfg_rpc.py` docstring: "from Windows alike"). So the attach path drives the LIVE game here for
+ANY verb — `warp_local`/`param_set`/`give_item`/`move_asset`, not just read-only ones (the "read-only"
+caveat was about not being able to auto-boot, NOT about verb capability). The only real Windows gaps:
+auto-boot/kill (me3) and the cold-boot `mfg test` suite (each test reboots). Everything else verifies.
+
+The loop (game must be CLOSED to swap the DLL — the loaded one is file-locked + a restart is needed to
+load a new build anyway):
+1. **Set `ERR_ROOT`** once in `.env.local` (gitignored) = the ERR install the user launches (the folder
+   with `dll/offline/`, `internals/modengine/`, `ReforgedLauncher.exe`). `DLL_OFFLINE` resolves from it.
+2. **Build**: `build.bat` (or `ninja -C build-err MapForGoblins`).
+3. **Deploy**: `python tools/deploy.py` (picks `build-err` on Windows; refuses while ER is running).
+4. **User launches ER** (ReforgedLauncher → in-world, load a save). The ini already has
+   `[Debug] debug_rpc_port = 38700`.
+5. **Freshness + drive**: `python tools/mfg.py rpc mfg_build` (confirm YOUR build stamp), `status`
+   (in-world, not menu), then the verb under test, e.g. `mfg.py rpc coords` / `mfg.py rpc warp_local <x> <y> <z>`.
+   `mfg.py repl` (NO `--boot`) gives an interactive shell against the running game.
+
+Raw memory / find-what-accesses RE still prefers external RPM; but for verifying a shipped verb's
+behavior (does the teleport move the player? does the param edit show?) attach-RPC is the tool.
 
 ## Windows-only / Windows-preferred
 

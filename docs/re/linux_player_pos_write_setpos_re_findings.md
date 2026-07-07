@@ -95,7 +95,11 @@ RPC `warp_local`/`warp_xyz` verbs and the render-API `warp_to_world_xz` (vmap cl
 previously did the broken raw `write_player_local_pos` store. Frame is unchanged (the +0x6C0 tile-local
 Havok frame the read probe already uses), so the existing verb arithmetic is untouched.
 
-## Live-verify (Linux/Proton — the one remaining step; a bad call = ~3-min reboot, so gate carefully)
+## Live-verify (Linux/Proton OR Windows — the one remaining step; a bad call = ~3-min reboot, so gate carefully)
+
+**Now runnable on Windows too** (2026-07-07): the fresh DLL is deployed to the Windows ERR install
+(`python tools/deploy.py`) and the attach-RPC path is cross-platform — the user launches ER in-world, then
+`python tools/mfg.py rpc warp_local …` drives it. See `docs/memory/windows.md` "Live-verify on Windows".
 
 1. Deploy the fresh DLL; boot in-world; `mfg_build`+`status` to confirm the new DLL loaded (the `[WARP]`
    boot line must show `SetPos=<nonzero>`; a null there = AOB drift → re-find `SETPOS`).

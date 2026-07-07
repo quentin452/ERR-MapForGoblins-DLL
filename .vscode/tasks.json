@@ -25,9 +25,9 @@
     },
     {
       "label": "MFG: Deploy DLL (to ERR offline)",
-      "detail": "Copy the built DLL + PDB into <ERR_ROOT>/dll/offline (resolved via .env.local; game must be CLOSED; restart to load).",
+      "detail": "Copy the built DLL + PDB into <ERR_ROOT>/dll/offline (resolved via .env.local; game must be CLOSED; restart to load). Cross-platform: picks build-linux on Linux, build-err on Windows.",
       "type": "shell",
-      "command": "python -c \"import sys,shutil; sys.path.insert(0,'tools'); from mfg_session import DLL_OFFLINE as D; shutil.copy('build-linux/MapForGoblins.dll', D+'/MapForGoblins.dll'); shutil.copy('build-linux/MapForGoblins.pdb', D+'/MapForGoblins.pdb'); print('deployed to', D)\"",
+      "command": "python tools/deploy.py",
       "options": { "cwd": "${workspaceFolder}" },
       "problemMatcher": []
     },

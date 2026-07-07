@@ -26,11 +26,24 @@ confirm it moves the player without a fault. Findings: `docs/re/linux_player_pos
   Wired into `warp_local`/`warp_xyz` RPC + the vmap click-to-warp (`warp_to_world_xz`), all of which
   previously did the broken raw store. `SETPOS` pinned in `re_signatures.hpp` (health-registered). **Default
   build green.** All edits host→host (no split-boundary change).
-- **★ NEXT (Linux, the only open step): deploy + boot in-world → `[WARP]` log must show `SetPos=<nonzero>`
-  → `warp_local x y+2 z` should MOVE + STAY (no snap-back), facing kept → `warp_xyz` a short hop. If it
-  FAULTS (log `FAULTED`, no move) the RPC-thread context is unsafe for SetPos → drain on the main-update
-  thread via the geom-spawn per-frame hook. Co-op: same local-sim caveat as the vmap freeze (guard on
-  `coop::others_present()`). On a clean run: mark the finding SOLVED + add a changelog `[Unreleased]` fix.**
+- **★ NEXT (the only open step — now runnable on WINDOWS too, not just Linux): boot in-world → `[WARP]` log
+  must show `SetPos=<nonzero>` → `warp_local x y+2 z` should MOVE + STAY (no snap-back), facing kept →
+  `warp_xyz` a short hop. If it FAULTS (log `FAULTED`, no move) the RPC-thread context is unsafe for SetPos
+  → drain on the main-update thread via the geom-spawn per-frame hook. Co-op: same local-sim caveat as the
+  vmap freeze (guard on `coop::others_present()`). On a clean run: mark the finding SOLVED + changelog it.**
+  The fresh DLL is ALREADY DEPLOYED to the Windows ERR install (`tools/deploy.py`, new); the user just
+  launches ER in-world, then `python tools/mfg.py rpc coords` / `warp_local …` drives the check.
+
+## ⇒ 2026-07-07 (Windows) — live-verify now works on Windows (attach-RPC), not just Linux
+
+Added `tools/deploy.py` (cross-platform: copies `build-err/` on Windows, `build-linux/` on Linux, to
+`$ERR_ROOT/dll/offline`, refuses while ER runs) + a `.env.local` `ERR_ROOT` for this box, and repointed the
+VSCode "MFG: Deploy" task to it. The RPC listener is TCP-loopback → the `mfg.py rpc`/`repl` ATTACH path
+already worked from Windows; the only Windows gap is auto-boot/kill (me3 Linux-only) + the cold-boot test
+suite. So the full runtime-verify loop (build → `deploy.py` → user launches ER → `mfg.py rpc <verb>`) now
+runs on Windows for ANY verb incl. writes (`warp_local`, `param_set`, …). Doc: `docs/memory/windows.md`
+"Live-verify on Windows". Corrects the old "RPC works read-only on Windows" understatement (that was about
+not auto-booting, not verb capability).
 
 ## ⇒ 2026-07-07 — coop RPC diag verb + `vmap graces` discovered-bug fix; NPC-phantom coop test PENDING (manual)
 
