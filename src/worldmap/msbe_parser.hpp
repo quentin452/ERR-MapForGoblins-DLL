@@ -79,6 +79,11 @@ struct Enemy
 {
     std::string name;            // e.g. "c3670_9000" (the ChrIns placement)
     uint32_t    npcParamId = 0;  // = *(u32)( *(u64)(part+0x68) + 0x0c )  (NpcParam row id)
+    // TalkID (typeData +0x10, right after NPCParamID — SoulsFormats MSBE.Enemy field order
+    // ThinkParamID@+0x08 / NPCParamID@+0x0c / TalkID@+0x10). 0 when unset. The merchant-pin
+    // join keys on it: talk ESD t<TalkID>.esd's OpenRegularShop(1:22) range → this placement's
+    // position (docs/plans/merchant_item_search_plan.md Slice 3 option A).
+    uint32_t    talkId = 0;
     float       pos[3] = {0, 0, 0};  // BLOCK-LOCAL position (part+0x20)
     // EntityID (entity sub-struct @ part+0x60, EntityID@+0x00 — same offset as the
     // treasure path). 0 when unset. This is the anchor the EMEVD pass joins on: an

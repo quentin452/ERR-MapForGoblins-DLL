@@ -9,6 +9,33 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
+## ⇒ 2026-07-07 (Windows) — ★ merchant pins SHIPPED: runtime C++ ESD parser (option A) built + offline-verified
+
+The merchant-pin plan's option A is implemented end-to-end and oracle-verified WITHOUT booting the game;
+one in-game look remains. `docs/plans/merchant_item_search_plan.md` has the full status block.
+
+- **New `src/worldmap/esd_parser.{hpp,cpp}`** — C++ port of SoulsFormats ESD.cs (fsSL/fSSL, structured
+  state/condition walk → every CommandCall; literal `82<i32>A1` arg decode). **Oracle-exact: 161/161
+  literal 1:22 ranges == `tools/esd_shop`** over all 17 ERR talk bnds.
+- **`load_merchant_shop_ranges()`** (loot_disk): loose `script/talk` enumeration + packed-dvdbnd probing
+  by MSB-derived candidate names (no hardcoded vanilla list). `msbe::Enemy.talkId` (typeData+0x10) →
+  `DiskEnemy.talkId`. **`build_disk_merchant_markers`** → new **WorldMerchant** category ("World -
+  Merchants", `show_merchants`, default ON), name = NpcParam.nameId→NpcName (+700M), NAMED-only (drops
+  ERR's hidden talk-1300 c0000 at 0,0,0 ×649 + the talkId-1000 DLC dummy). Search rows gain
+  "· sold by <merchant>" (`MerchantItem.seller_name_id`, fr.txt updated).
+- **Offline verify harness committed: `tools/esd_cpp_test/`** (standalone clang++; compile cmd in the
+  header). Join vs `merchants.json`: **38/39 matched**; the miss is ERR replacing Kalé's talk
+  (437006001, same pos, bigger shop) + ERR-added merchants (608001120/609001110 Roundtable, 225006000)
+  — i.e. the runtime path correctly reads the ACTIVE mod where the baked option B could not.
+- **Both builds green on this box** — `build-err` AND a Windows-configured hot-reload split
+  (`build-err-hotreload`, both DLLs link; the render→host `load_merchant_shop_ranges` call is
+  GOBLIN_RENDER_API). Deployed to `ERR/dll/offline/`.
+- **★ NEXT (needs the user to boot ER):** in-world check — `[MERCHANTPINS]` log line (expect ~40+ pins,
+  0 nameless leaks), merchants visible on vmap/worldmap with names (Kalé at Elleh, Twin Maidens at
+  Roundtable), F1 search "telescope" shows "· sold by …". If ERR names any of its hidden system NPCs
+  the name-gate would leak pins at tile origin — the log's dup/nameless counters + a `vmap dump_markers`
+  on WorldMerchant would show it.
+
 ## ⇒ 2026-07-07 (Windows) — coordinate teleport SOLVED + LIVE-VERIFIED (havok body write, er_console_mod's method)
 
 The `warp_local`/`warp_xyz` "does nothing" bug is FIXED and verified in-game. The working teleport writes the

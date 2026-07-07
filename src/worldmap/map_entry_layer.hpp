@@ -72,7 +72,10 @@ bool entity_world_pos(uint32_t entity_id, float &worldX, float &worldZ, int &gro
 // alias resolve it for free. `infinite` = at least one shop sells it unlimited (sellQuantity
 // == -1). `gated` = EVERY shop row for it is behind an eventFlag_forStock unlock (bell
 // bearing / progression) — i.e. not freely buyable yet.
-struct MerchantItem { int32_t name_id; bool infinite; bool gated; };
+// `seller_name_id` = the NpcName key (+700M offset-encoded) of ONE merchant that sells it,
+// resolved via the merchant-pin shop-range join (Slice 3) — 0 when the seller is unknown
+// (worldFeaturesFromDisk off, or the shop row is outside every OpenRegularShop range).
+struct MerchantItem { int32_t name_id; bool infinite; bool gated; int32_t seller_name_id; };
 
 // Deduped list of merchant-sold items, rebuilt each bucket build (build_buckets_impl).
 // Empty if ShopLineupParam is absent. Read by the F1 item search on the present thread.

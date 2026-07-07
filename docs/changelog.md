@@ -23,6 +23,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Added
 
+- Merchant map pins ("World - Merchants" category, on by default): every shop NPC of the ACTIVE
+  install is pinned on the world map, joined at runtime from the talk ESDs (new in-DLL C++ ESD
+  parser reads each `t<TalkID>.esd`'s `OpenRegularShop` range) × the MSB Enemy TalkID — fully
+  mod-agnostic, no baked data (picks up ERR's own replaced/added merchants, verified offline
+  38/39 + ERR extras vs the vanilla join). The F1 item search's "Sold by merchants" rows now also
+  name the seller ("· sold by Twin Maiden Husks"), who is a searchable, locatable pin.
+
 - Debug-RPC `coop` verb: co-op session diagnostics (PlayerIns count, vmap freeze-skip state, each
   partner's ChrIns + projected map position/group — the exact chain the co-op partner markers use).
 

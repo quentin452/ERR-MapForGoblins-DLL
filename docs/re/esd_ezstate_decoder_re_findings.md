@@ -90,6 +90,11 @@ With the literal decoder, the shelved merchant-pin join is fully solved offline:
   RE. (A) runtime C++ ESD parse = mod-agnostic but big; (B) bake `merchants.json` = fast, ERR-frozen
   (positions are vanilla map data, fairly mod-stable; a mod ADDING merchants wouldn't appear); (C) runtime
   shop-open hook = visited-only. The join is proven; pick A/B/C before wiring.
+- **RESOLVED 2026-07-07: (A) SHIPPED.** `src/worldmap/esd_parser.cpp` is the C++ port of the SoulsFormats
+  reader (oracle-exact vs `esd_shop`: 161/161 literal 1:22); `tools/esd_cpp_test/` re-runs both oracle
+  compares offline. The runtime join found ERR's OWN merchant edits the vanilla-MSB `merchants.json`
+  can't see (Kalé replaced by talk 437006001, +3 ERR-added merchants) — validating the mod-agnostic
+  choice. See `docs/plans/merchant_item_search_plan.md` for the shipped wiring.
 
 Related: `[[grace-menu-esd-spike]]` (menu mechanism: AddTalkListData 1:19, open 1:20, show 1:10),
 `docs/plans/merchant_item_search_plan.md` Slice 3 (the merchant-pin join, now RE-complete).

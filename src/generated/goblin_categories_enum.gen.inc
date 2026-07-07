@@ -107,6 +107,11 @@
     // drops the notable-loot pass currently skips. Live, no bake. (WorldFarmableEnemy was dropped —
     // marking every respawning mob floods the map with no clean boss filter.)
     WorldFarmableCollectible,
+    // Merchant / shop NPC: a disk MSB Enemy whose TalkID runs OpenRegularShop (talk command 1:22)
+    // in the active install's talk ESDs (runtime C++ ESD parse, load_merchant_shop_ranges). Name =
+    // live NpcParam.nameId -> NpcName. Mod-agnostic, no bake. See
+    // docs/plans/merchant_item_search_plan.md Slice 3 option A.
+    WorldMerchant,
     // TERMINAL catch-all — MUST stay LAST (every 'Category::…) + 1' count idiom points here).
     // Any pickup MFG's live taxonomy can't classify (cat < 0) is routed here instead of being
     // draw-skipped, so no marker silently vanishes — critical for mod-agnostic support (a non-ERR

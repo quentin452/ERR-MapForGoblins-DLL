@@ -362,7 +362,7 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
             // GameEditionDisable (int @ +0x44; same pin as assets) — drop disabled placements
             // the engine never spawns, so the no-bake enemy/hostile-NPC passes match the bake.
             if (inb(pe, 0x48, len) && rd32(buf, pe + 0x44) == 1) continue;
-            uint32_t npc = 0;
+            uint32_t npc = 0, talk = 0;
             uint64_t tdOff = rd64(buf, pe + 0x68);
             if (tdOff)
             {
@@ -371,6 +371,12 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
                 {
                     uint32_t v = rd32(buf, tdp + 0x0c);
                     if (v != 0xffffffffu) npc = v;
+                }
+                // TalkID @ typeData+0x10 (the field right after NPCParamID) — merchant join key.
+                if (inb(tdp, 0x14, len))
+                {
+                    uint32_t t = rd32(buf, tdp + 0x10);
+                    if (t != 0xffffffffu) talk = t;
                 }
             }
             // EntityID: entity sub-struct ptr @ part+0x60, EntityID@+0x00 (same as the
@@ -391,6 +397,7 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
             Enemy en;
             en.name = rd_utf16(buf, nm, len);
             en.npcParamId = npc;
+            en.talkId = talk;
             en.entityId = entityId;
             en.pos[0] = rdf(buf, pe + 0x20);
             en.pos[1] = rdf(buf, pe + 0x24);

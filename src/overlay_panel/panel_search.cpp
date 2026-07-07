@@ -55,7 +55,7 @@ void draw_item_search(const OverlayFrameCtx &ctx, Filter &f)
     // Merchant-sold items (ShopLineupParam) — info-only rows: no world placement, so no ring
     // and no locate. Just tells the player the item is buyable (and whether it's still behind
     // an unlock). merchant_item_search_plan.md Slice 1.
-    struct ShopHit { std::string label; bool gated; };
+    struct ShopHit { std::string label; bool gated; std::string seller; };
     static char item_q[64] = "";
     static std::string s_last_q;
     static std::unordered_set<int32_t> s_match;   // name_ids whose name matches (rendered ring)
@@ -211,7 +211,12 @@ void draw_item_search(const OverlayFrameCtx &ctx, Filter &f)
                 if (label.empty()) continue;
                 if (!matches_all_tokens(loc + " " + en, item_q)) continue;
                 if (!en.empty() && en != label) label += " (" + en + ")";
-                s_shop_hits.push_back({std::move(label), mi.gated});
+                // Seller from the merchant-pin join (Slice 3): shows WHO sells it, and since
+                // the seller is a pinned marker, searching that name locates them on the map.
+                std::string seller;
+                if (mi.seller_name_id > 0)
+                    seller = goblin::overlay_api::lookup_text_utf8(mi.seller_name_id);
+                s_shop_hits.push_back({std::move(label), mi.gated, std::move(seller)});
             }
             std::sort(s_shop_hits.begin(), s_shop_hits.end(),
                       [](const ShopHit &a, const ShopHit &b) { return a.label < b.label; });
@@ -355,8 +360,17 @@ void draw_item_search(const OverlayFrameCtx &ctx, Filter &f)
             {
                 ImGui::SeparatorText(tr("Sold by merchants"));
                 for (const ShopHit &sh : s_shop_hits)
+                {
                     ImGui::BulletText("%s  %s%s", sh.label.c_str(), tr("· buyable"),
                                       sh.gated ? tr(" (unlock required)") : "");
+                    // Seller known (merchant-pin join) → name them; the merchant is a pinned
+                    // marker, so searching that name pans the map onto them.
+                    if (!sh.seller.empty())
+                    {
+                        ImGui::SameLine();
+                        ImGui::TextDisabled(tr("· sold by %s"), sh.seller.c_str());
+                    }
+                }
             }
             if (s_hits.empty() && s_shop_hits.empty())
                 ImGui::TextDisabled("%s", tr("no marker matches"));

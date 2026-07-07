@@ -96,6 +96,7 @@ inline constexpr CategoryMetaRow CATEGORY_META[] = {
     {"World - Elevators"            , "World"},  // WorldElevator
     {"World - Smithing Tables"      , "World"},  // WorldSmithingTable
     {"Loot - Farmable Drops"        , "Loot"},  // WorldFarmableCollectible
+    {"World - Merchants"            , "World"},  // WorldMerchant
     {"Loot - Other"                 , "Loot"},  // Uncategorised
 };
 

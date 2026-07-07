@@ -496,6 +496,7 @@ namespace
                 B("show_portals", showCategory[static_cast<int>(Cat::WorldPortal)], "false", "Sending Gate / waygate portals (AEG099_510 bound to EMEVD warp template 90005605)"),
                 B("show_elevators", showCategory[static_cast<int>(Cat::WorldElevator)], "false", "Elevator / lever-lift locations (MSB ObjAct events whose ObjActParam prompt is a lever)"),
                 B("show_smithing_tables", showCategory[static_cast<int>(Cat::WorldSmithingTable)], "false", "Smithing Table locations (AEG099_308 assets; 3 in the base game)"),
+                B("show_merchants", showCategory[static_cast<int>(Cat::WorldMerchant)], "true", "Merchant / shop NPC locations (MSB enemies whose TalkID opens a shop in the talk ESDs)"),
                 B("hide_killed_bosses", hideKilledBosses, "false", "Hide boss/invader/hawk markers after defeat (false = show green checkmark instead)"),
             }},
 

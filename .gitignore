@@ -1,6 +1,7 @@
 # Build artifacts
 build/
 build-err/
+build-err-hotreload/
 build-clang/
 build-erte/
 build-convergence/

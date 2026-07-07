@@ -15,6 +15,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "esd_parser.hpp"   // esd::TalkShopRange (merchant-pin talk-ESD join)
 #include "msbe_parser.hpp"  // msbe::GestureRef (World-feature gesture refs from the EMEVD scan)
 #include "../goblin_dll_export.hpp"  // GOBLIN_RENDER_API (no-op unless GOBLIN_OVERLAY_HOTRELOAD_BUILD)
                                      // — loot_disk.cpp is host-side but several of its functions
@@ -68,6 +69,7 @@ struct DiskObjAct
 struct DiskEnemy
 {
     uint32_t npcParamId = 0;            // MSB Enemy part's NPCParamID (NpcParam row id)
+    uint32_t talkId = 0;               // MSB Enemy TalkID (the merchant-pin ESD join key; 0 if unset)
     uint32_t entityId = 0;             // MSB EntityID (the EMEVD-award join key; 0 if unset)
     uint8_t  area = 0, gx = 0, gz = 0;  // from the tile filename
     float    posX = 0.0f, posY = 0.0f, posZ = 0.0f;  // Part+0x20 (block-local; Y for the altitude badge)
@@ -286,6 +288,18 @@ std::vector<uint8_t> read_loose_file_decompressed(const std::string &rel_path);
 // C# collision reader (tools/collision_offline) slices the raw KRAK blob and hands it to the
 // `dcx_file` debug-RPC verb, since native-Linux dotnet can't load oo2core. `isKrak` optional.
 std::vector<uint8_t> dcx_decompress_bytes(const uint8_t *data, size_t len, bool *isKrak = nullptr);
+
+// Merchant-pin join, ESD side (merchant_item_search_plan.md Slice 3 option A — the runtime
+// C++ ESD parse): every OpenRegularShop (talk command 1:22) across the ACTIVE install's talk
+// ESDs, as (TalkID, shopBegin, shopEnd) rows. Two sources, mod overlay first:
+//   1. the loose script/talk dir (ME3/ModEngine mod or UXM-unpacked install), fully enumerated;
+//   2. the packed dvdbnd, probed with candidate bnd names derived from the MSB tile listing
+//      (talk bnds are named like maps — per-area m60_00_00_00, per-block m11_10_00_00 — so the
+//      candidates cover any install without a hardcoded vanilla list; misses are cheap).
+// A stem the mod ships loose SHADOWS its packed twin (same override rule the engine uses).
+// The caller joins TalkID against DiskEnemy::talkId for the merchant's position/name. Does
+// disk I/O — call on the disk worker. Empty when neither source yields anything.
+GOBLIN_RENDER_API std::vector<esd::TalkShopRange> load_merchant_shop_ranges();
 
 // Extract one or more item-icon ATLAS SHEET DDS images from the menu texture pack
 // menu/hi/01_common.tpf.dcx (read via read_game_file_decompressed, so loose mod overlay

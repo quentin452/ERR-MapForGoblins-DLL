@@ -656,6 +656,17 @@
     ]
   },
   {
+    "enum": "WorldMerchant",
+    "name": "World - Merchants",
+    "section": "World",
+    "enum_pre_comment": [
+      "Merchant / shop NPC: a disk MSB Enemy whose TalkID runs OpenRegularShop (talk command 1:22)",
+      "in the active install's talk ESDs (runtime C++ ESD parse, load_merchant_shop_ranges). Name =",
+      "live NpcParam.nameId -> NpcName. Mod-agnostic, no bake. See",
+      "docs/plans/merchant_item_search_plan.md Slice 3 option A."
+    ]
+  },
+  {
     "enum": "Uncategorised",
     "name": "Loot - Other",
     "section": "Loot",

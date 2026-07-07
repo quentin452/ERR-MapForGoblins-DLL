@@ -64,6 +64,9 @@ tr=· achetable
 en= (unlock required)
 tr= (déblocage requis)
 
+en=· sold by %s
+tr=· vendu par %s
+
 en=> Locating "%s" on the %s map...
 tr=> Localisation de « %s » sur la carte %s...
 
@@ -707,6 +710,9 @@ tr=Monde - Donjons majeurs
 
 en=World - Maps
 tr=Monde - Cartes
+
+en=World - Merchants
+tr=Monde - Marchands
 
 en=World - Minor Erdtrees
 tr=Monde - Arbres-Monde mineurs

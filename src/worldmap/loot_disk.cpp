@@ -466,6 +466,7 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
             {
                 DiskEnemy e;
                 e.npcParamId = en.npcParamId;
+                e.talkId = en.talkId;
                 e.entityId = en.entityId;
                 e.area = (uint8_t)area;
                 e.gx = (uint8_t)gx;
@@ -1075,6 +1076,86 @@ std::vector<QuestNpcRuntime> load_quest_npcs()
     }
     spdlog::info("[LOOTDISK] quest NPCs: {} grouped (from {} 90005702 calls over {} EMEVD files, {} KRAK skipped)",
                  (int)out.size(), calls, parsed, kraks);
+    return out;
+}
+
+std::vector<esd::TalkShopRange> load_merchant_shop_ranges()
+{
+    std::vector<esd::TalkShopRange> out;
+    int skippedExpr = 0, looseBnds = 0, packedBnds = 0;
+    std::unordered_set<std::string> done;  // stems parsed loose — shadow their packed twin
+    msbe::OodleDecompressFn oodle = resolve_oodle();
+
+    auto parse_bnd = [&](const std::vector<uint8_t> &bnd)
+    {
+        if (bnd.empty()) return false;
+        auto r = esd::parse_talkbnd_shop_ranges(bnd.data(), bnd.size(), &skippedExpr);
+        out.insert(out.end(), r.begin(), r.end());
+        return true;
+    };
+
+    // 1) Loose script/talk dir (mod overlay / UXM install) — everything the mod ships.
+    std::error_code ec;
+    if (fs::path talkDir = resolve_root_file(fs::path("script") / "talk"); !talkDir.empty())
+    {
+        for (auto &de : fs::directory_iterator(talkDir, ec))
+        {
+            if (!de.is_regular_file(ec)) continue;
+            std::string name = de.path().filename().string();
+            constexpr const char *kExt = ".talkesdbnd.dcx";
+            constexpr size_t kExtLen = 15;
+            if (name.size() <= kExtLen ||
+                name.compare(name.size() - kExtLen, kExtLen, kExt) != 0)
+                continue;
+            std::vector<uint8_t> dcx = slurp(de.path());
+            if (dcx.empty()) continue;
+            bool krak = false;
+            if (parse_bnd(msbe::dcx_decompress(dcx.data(), dcx.size(), &krak, oodle)))
+            {
+                done.insert(name.substr(0, name.size() - kExtLen));
+                ++looseBnds;
+            }
+        }
+    }
+
+    // 2) Packed dvdbnd probe for stems the mod does NOT ship loose. Candidate names come
+    //    from the MSB tile listing — vanilla talk bnds are named like maps at three
+    //    granularities (per-area m60_00_00_00, per-block m11_10_00_00, per-tile) — plus the
+    //    common m00_00_00_00. A miss is a cheap in-memory BHD hash lookup (no log spam).
+    std::unordered_set<std::string> candidates = {"m00_00_00_00"};
+    ensure_map_dir_resolved();
+    if (fs::path dir = disk_loot_dir(); !dir.empty())
+        for (auto &de : fs::directory_iterator(dir, ec))
+        {
+            if (!de.is_regular_file(ec)) continue;
+            std::string name = de.path().filename().string();
+            int a = 0, x = 0, z = 0, lod = -1;
+            if (std::sscanf(name.c_str(), "m%d_%d_%d_%d.msb.dcx", &a, &x, &z, &lod) != 4)
+                continue;
+            char stem[32];
+            std::snprintf(stem, sizeof(stem), "m%02d_00_00_00", a);
+            candidates.insert(stem);
+            std::snprintf(stem, sizeof(stem), "m%02d_%02d_00_00", a, x);
+            candidates.insert(stem);
+            std::snprintf(stem, sizeof(stem), "m%02d_%02d_%02d_00", a, x, z);
+            candidates.insert(stem);
+        }
+    const fs::path gd = game_dir();
+    if (!gd.empty())
+        for (const std::string &stem : candidates)
+        {
+            if (done.count(stem)) continue;
+            std::vector<uint8_t> raw =
+                dvdbnd::read_packed_file(gd, "script/talk/" + stem + ".talkesdbnd.dcx");
+            if (raw.size() < 4) continue;  // not in any archive (most probes)
+            bool krak = false;
+            if (parse_bnd(msbe::dcx_decompress(raw.data(), raw.size(), &krak, oodle)))
+                ++packedBnds;
+        }
+
+    spdlog::info("[MERCHANTPINS] talk-ESD scan: {} OpenRegularShop(1:22) ranges from {} loose + {} "
+                 "packed talkesdbnd ({} non-literal args skipped)",
+                 (int)out.size(), looseBnds, packedBnds, skippedExpr);
     return out;
 }
 } // namespace goblin::worldmap

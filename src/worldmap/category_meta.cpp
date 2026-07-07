@@ -129,6 +129,7 @@ const CatMeta CAT[] = {
     {"show_elevators", G_WORLD},          // WorldElevator (Group 2 — lever-lifts)
     {"show_smithing_tables", G_WORLD},    // WorldSmithingTable (Group 2 — AEG099_308 assets)
     {"show_farmable_drops", G_LOOT},      // WorldFarmableCollectible (MFG-original — respawning notable drops)
+    {"show_merchants", G_WORLD},          // WorldMerchant (talk-ESD shop join — no atlas art yet → circle fallback)
     {"show_other", G_LOOT},               // Uncategorised (TERMINAL catch-all — no atlas key; item-icon/circle)
 };
 constexpr int CAT_COUNT = static_cast<int>(sizeof(CAT) / sizeof(CAT[0]));

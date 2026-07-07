@@ -1390,10 +1390,33 @@ static std::unordered_set<int32_t> build_shop_infinite_keys()
 // the phantom-drop set skips.
 static std::vector<MerchantItem> g_merchant_items;
 
+// Merchant sellers from the pin pass (build_disk_merchant_markers): the NpcName key of each
+// pinned merchant + its OpenRegularShop ranges. Lets the search index stamp a "sold by"
+// seller onto shop rows (MerchantItem::seller_name_id). Empty when worldFeaturesFromDisk
+// is off or the ESD scan yielded nothing — the seller tag then simply stays absent.
+struct MerchantSeller
+{
+    int32_t name_id = 0;  // NpcName key (+700M), 0 = nameless
+    std::vector<std::pair<int32_t, int32_t>> ranges;  // ShopLineupParam [begin,end] runs
+};
+static std::vector<MerchantSeller> g_merchant_sellers;
+
 static void build_merchant_search_index()
 {
     g_merchant_items.clear();
+    // The seller registry is (re)built by build_disk_merchant_markers earlier in the same
+    // bucket build; when that pass is toggled off it never runs, so drop any stale entries.
+    if (!goblin::config::worldFeaturesFromDisk) g_merchant_sellers.clear();
     std::unordered_map<int32_t, size_t> seen;  // name_id → index in g_merchant_items
+    // Seller lookup: a shop ROW id inside a pinned merchant's OpenRegularShop range names the
+    // seller. Linear scan (≤ dozens of sellers × few ranges) per row is fine at build time.
+    auto seller_of = [](int64_t rowId) -> int32_t
+    {
+        for (const MerchantSeller &s : g_merchant_sellers)
+            for (const auto &[b, e] : s.ranges)
+                if (rowId >= b && rowId <= e) return s.name_id;
+        return 0;
+    };
     try
     {
         auto shop = from::params::get_param<RawShopRow>(L"ShopLineupParam");
@@ -1422,13 +1445,16 @@ static void build_merchant_search_index()
             if (it == seen.end())
             {
                 seen.emplace(name_id, g_merchant_items.size());
-                g_merchant_items.push_back(MerchantItem{name_id, infinite, gated});
+                g_merchant_items.push_back(
+                    MerchantItem{name_id, infinite, gated, seller_of((int64_t)entry.first)});
             }
             else
             {
                 MerchantItem &mi = g_merchant_items[it->second];
                 mi.infinite = mi.infinite || infinite;
                 mi.gated    = mi.gated && gated;  // any ungated shop row → freely buyable
+                if (mi.seller_name_id == 0)
+                    mi.seller_name_id = seller_of((int64_t)entry.first);
             }
         }
     }
@@ -1617,6 +1643,74 @@ static int build_disk_hostile_npc_markers(
     spdlog::info("[LOOTDISK] world features: {} Hostile NPC invaders from disk enemies + live NpcParam "
                  "({} dup-cell, {} not-named-invader, {} no-entity, {} no-defeat-flag)",
                  emitted, dup, not_invader, no_entity, no_flag);
+    return emitted;
+}
+
+// World feature: Merchants (merchant_item_search_plan.md Slice 3, option A — the runtime C++
+// ESD parse). A merchant is a disk MSB Enemy whose TalkID runs OpenRegularShop (talk command
+// 1:22) in the ACTIVE install's talk ESDs (load_merchant_shop_ranges — loose script/talk +
+// packed dvdbnd, mod-agnostic). Name = live NpcParam.nameId → NpcName, the same chain as the
+// hostile-NPC pass; position = the enemy part. Offline ground truth: tools/esd_shop/
+// merchant_join.py (39 vanilla merchants). talkId 1000 is the DLC-scaling dummy — a fake
+// multi-shop bound to invisible props on many tiles — and is dropped like the offline join
+// does. Dedup by (talkId + tile + 0.1u-rounded raw pos): the _00-only enemy scan already
+// avoids the _00/_10 LOD twin; this collapses stacked phase variants of one merchant while
+// keeping genuinely multi-placed NPCs (Patches ×4). No flags (a shop never "completes").
+// Also fills g_merchant_sellers so the item search can tag rows "sold by <merchant>".
+static int build_disk_merchant_markers(const std::vector<DiskEnemy> &enemies,
+                                       std::unordered_set<Cell, CellHash> &out_cells)
+{
+    namespace gen = goblin::generated;
+    GOBLIN_BENCH("build.disk_merchants");
+    const int cat = static_cast<int>(gen::Category::WorldMerchant);
+    g_merchant_sellers.clear();
+    std::unordered_map<uint32_t, std::vector<std::pair<int32_t, int32_t>>> by_talk;
+    {
+        std::vector<goblin::esd::TalkShopRange> all = load_merchant_shop_ranges();
+        if (all.empty()) return 0;  // no talk ESDs reachable (or none open a shop)
+        for (const auto &r : all)
+            if (r.talkId != 1000)
+                by_talk[r.talkId].emplace_back(r.begin, r.end);
+    }
+    int emitted = 0, dup = 0, no_name = 0;
+    std::unordered_set<std::string> seen_pos;
+    std::unordered_set<uint32_t> seller_talk;  // one seller entry per talkId
+    for (const DiskEnemy &e : enemies)
+    {
+        if (e.talkId == 0) continue;
+        auto it = by_talk.find(e.talkId);
+        if (it == by_talk.end()) continue;
+        uint8_t team = 0;
+        int32_t name = 0;
+        goblin::overlay_api::npc_team_and_name(e.npcParamId, &team, &name);
+        // NAMED merchants only. The join also hits system talk scripts bound to nameless
+        // utility NPCs — e.g. ERR places a hidden multi-shop c0000 (talk 1300, pos 0,0,0)
+        // in EVERY map (649 placements, offline join 2026-07-07); every real merchant has
+        // an NpcName (39/39 in merchant_join.py). Nameless → no pin, same as hostile NPCs.
+        if (name <= 0) { ++no_name; continue; }
+        std::string pk = std::to_string(e.talkId) + "_" + std::to_string(e.area) + "_" +
+                         std::to_string(e.gx) + "_" + std::to_string(e.gz) + "_" +
+                         std::to_string((long)std::lround(e.posX * 10.0f)) + "_" +
+                         std::to_string((long)std::lround(e.posZ * 10.0f));
+        if (!seen_pos.insert(pk).second) { ++dup; continue; }
+
+        from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
+        d.areaNo = e.area;
+        d.gridXNo = e.gx;
+        d.gridZNo = e.gz;
+        d.posX = e.posX;
+        d.posZ = e.posZ;
+        d.posY = e.posY;                                    // altitude badge
+        d.textId1 = name + 700000000;                       // NpcName FMG (runtime-localized)
+        push_marker(/*row_id=*/e.talkId, d, cat, /*lotId=*/0u, /*lotType=*/0u, Source::DiskMSB);
+        out_cells.insert(cell_of(g_buckets[cat].back()));   // finalize "pass ran" signal
+        ++emitted;
+        if (seller_talk.insert(e.talkId).second)
+            g_merchant_sellers.push_back(MerchantSeller{name + 700000000, it->second});
+    }
+    spdlog::info("[MERCHANTPINS] {} merchant pins from disk enemies × talk-ESD shop ranges "
+                 "({} shop TalkIDs, {} dup-pos, {} nameless-skipped)",
+                 emitted, (int)by_talk.size(), dup, no_name);
     return emitted;
 }
 
@@ -2566,6 +2660,11 @@ void build_buckets_impl()
             build_disk_hostile_npc_markers(
                 disk_enemies, world_feature_flags,
                 world_feature_cells[static_cast<int>(gen::Category::WorldHostileNPC)]);
+            // Merchants: disk enemy placements whose TalkID opens a shop in the active
+            // install's talk ESDs (runtime C++ ESD parse — OpenRegularShop 1:22 ranges).
+            build_disk_merchant_markers(
+                disk_enemies,
+                world_feature_cells[static_cast<int>(gen::Category::WorldMerchant)]);
             // Portals / sending gates (Group 2): AEG099_510 assets bound to EMEVD warp template 90005605.
             build_disk_portal_markers(
                 disk_collectibles, portal_entities,

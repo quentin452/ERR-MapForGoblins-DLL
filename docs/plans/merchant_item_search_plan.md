@@ -1,7 +1,7 @@
 # Merchant / shop item search — plan
 
-Status: **Slice 1 SHIPPED. Slice 3 join is now RE-COMPLETE + PROVEN (2026-07-07) — only an
-architecture choice + marker wiring remain, NOT more RE.** The 2026-07-03 "needs an EzState EVALUATOR,
+Status: **Slice 1 SHIPPED. Slice 3 (A, runtime C++ ESD parse) IMPLEMENTED + offline-verified
+(2026-07-07) — merchant pins + "sold by" search tags; pending one in-game look.** The 2026-07-03 "needs an EzState EVALUATOR,
 disproportionate" verdict is superseded: `docs/re/esd_ezstate_decoder_re_findings.md` shows 78% of ESD
 args are the literal `82 <i32> A1` form, and the full join is proven end-to-end:
 - **`OpenRegularShop` = talk command `1:22`** (args `[shopBegin, shopEnd]`), RE'd by cross-referencing
@@ -12,30 +12,36 @@ args are the literal `82 <i32> A1` form, and the full join is proven end-to-end:
 - **NEXT = the A/B/C fork below (needs a user call), then wire a marker layer.** Positions are MSB-local →
   reuse the existing marker projection; shop ranges → reuse the shipped ShopLineupParam→items index.
 
-**★ USER CHOSE (A) runtime C++ ESD parser (2026-07-07). IN PROGRESS — binary-format RE partial:**
-- **Reusable C++ infra confirmed:** DCX decompress + BND4 parse (`worldmap/maptile`, `loot_disk`), MSB
-  parse (`worldmap/msbe_parser` — but its `Enemy` struct reads name/npcParamId/pos/entityId, **NOT TalkID**;
-  needs a TalkID field added), the ShopLineupParam→items index (Slice 1, `worldmap/map_entry_layer.cpp`),
-  and the marker layer. The ONE genuinely-new component = a **C++ ESD binary parser**.
-- **ESD binary format — RE'd so far** (sample `t316006000.esd`, 98 KB, magic `fsSL`): header at 0x00
-  (`version=1`, `headerSize=0x54`, then section (count,size,offset) groups: stateGroups=6, states=506
-  @size 0x38, commands @size 0x10, …). **Arg descriptors** live in a shared pool (sample pool @0x12d90):
-  each descriptor = 16 B `{pad, size(i32), pad, dataOffset(i32)}` → EzState bytecode `82<i32>A1`. Verified
-  the shop args: descriptors @0x14100/0x14110 (size 6, offsets 0x17907/0x1790d) → `82<100050>A1` /
-  `82<100074>A1` = the `[100050,100074]` esd_shop reports for Sellen.
-- **The WALL for a byte-search parse:** the **command→args linkage is NOT a simple absolute/relative/index
-  field** I could byte-search (the `1:22` literal at 0x119d4 is a DIFFERENT command; the shop command's
-  entry references the 0x14100 descriptors via the structured state/command section walk, not a flat
-  pointer). ⇒ don't hand-reverse it further — **port SoulsFormats' `ESD.cs` (soulsmods/SoulsFormats) to
-  C++** (the correct, complete state-group→state→command→condition→arg reader; the Andre fork we use
-  already implements it — `tools/esd_shop` is the ground-truth oracle to test the C++ port against: every
-  `t<TalkID> 1:22` must match). This is bounded (~300 lines) but is the real remaining work for (A).
-- **Interim option if (A) stalls:** the offline `merchant_join.py --json` already emits a correct
-  `merchants.json` — shipping it as a baked layer (B) is a fast, working first version (positions are
-  vanilla map data, mod-stable) with (A) as the mod-agnostic follow-up. User picked A; flagging B-interim
-  as the low-risk fallback. Verified on ERR/Proton: `[MERCHANTSEARCH] 5485 items indexed` at boot; F1 search "telescope"
-(shop-only, Kalé — no world marker) lists **"Telescope · buyable (unlock required)"** under a new
-"Sold by merchants" heading, with the FR translations. Names resolve even at the title screen.
+**★ (A) runtime C++ ESD parser — IMPLEMENTED + OFFLINE-VERIFIED (2026-07-07, Windows). Pending
+one in-game look (pins on the map + `[MERCHANTPINS]` log) — deployed to the ERR install.**
+- **`src/worldmap/esd_parser.{hpp,cpp}`** — the C++ port of SoulsFormats' ESD.cs reader (fsSL/fSSL,
+  long+short varints; states + conditions are stored sequentially so the walk enumerates every
+  command list without the state-graph resolution): every bank1:id22 `OpenRegularShop` whose two args
+  are the literal `82<i32>A1` form → `(TalkID, shopBegin, shopEnd)`. **Oracle-exact: 161/161 literal
+  1:22 ranges byte-identical to `tools/esd_shop`** over all 17 ERR talk bnds; the 36 non-literal
+  (expr) args are skipped exactly like the offline join did.
+- **`loot_disk::load_merchant_shop_ranges()`** — mod-agnostic talk-bnd source: enumerate the loose
+  `script/talk` dir (mod overlay / UXM), then probe the packed dvdbnd with candidate names derived
+  from the MSB tile listing (per-area `m60_00_00_00`, per-block `m11_10_00_00`, per-tile) + `m00` —
+  no hardcoded vanilla file list; loose shadows packed.
+- **MSB TalkID** — `msbe::Enemy.talkId` (typeData+0x10, right after NPCParamID) → `DiskEnemy.talkId`.
+- **`build_disk_merchant_markers`** (map_entry_layer.cpp, worldFeaturesFromDisk block) — join
+  disk enemies × shop TalkIDs → new category **WorldMerchant** ("World - Merchants", on by default,
+  `show_merchants`), name = live `NpcParam.nameId → NpcName` (+700M, same chain as hostile NPCs).
+  NAMED merchants only (drops ERR's hidden nameless multi-shop c0000, talk 1300, 649 placements at
+  0,0,0) + talkId 1000 (DLC-scaling dummy) dropped like `merchant_join.py`.
+- **Search integration** — `MerchantItem.seller_name_id` from the pin pass's shop ranges; the F1
+  "Sold by merchants" rows now append "· sold by <name>" (fr.txt updated), and the seller is a real
+  searchable/locatable marker.
+- **Offline join verification (no game boot): `tools/esd_cpp_test/`** (standalone clang++ build,
+  compile cmd in its header): **38/39 `merchants.json` rows matched** on (talkId, tile, pos). The
+  miss IS the feature working: ERR replaces Kalé's talk with `437006001` at the same spot (bigger
+  shop incl. vanilla `100650-100674`), and adds merchants (Roundtable `608001120`/`609001110`,
+  field `225006000`) — the runtime join reports the ACTIVE mod's truth, which the baked
+  vanilla-MSB option (B) cannot.
+- Slice-1 recap (shipped earlier): `[MERCHANTSEARCH] 5485 items indexed` at boot; F1 search
+  "telescope" lists **"Telescope · buyable (unlock required)"** under "Sold by merchants", FR
+  translations, names resolve even at the title screen.
 
 ## Goal (user, 2026-07-02)
 

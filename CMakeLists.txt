@@ -263,6 +263,8 @@ set(GOBLIN_HOST_SOURCES
   src/stb_image_impl.cpp
   src/worldmap/msbe_parser.hpp
   src/worldmap/msbe_parser.cpp
+  src/worldmap/esd_parser.hpp
+  src/worldmap/esd_parser.cpp
   src/worldmap/loot_disk.hpp
   src/worldmap/loot_disk.cpp
   src/worldmap/name_fmg_en.hpp
