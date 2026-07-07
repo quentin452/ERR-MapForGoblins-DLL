@@ -1668,11 +1668,18 @@ static int build_disk_merchant_markers(const std::vector<DiskEnemy> &enemies,
     {
         std::vector<goblin::esd::TalkShopRange> all = load_merchant_shop_ranges();
         if (all.empty()) return 0;  // no talk ESDs reachable (or none open a shop)
+        // talkId >= 100000 only: real merchants use the 9-digit NPC-bound talk series
+        // (39/39 in merchants.json, ERR's own additions too). The low ids are the m00
+        // SYSTEM scripts — t1000/t1010/t4000 (DLC scaling / cosmetic-mirror dummies),
+        // t1200/t1300/t1400 (category-wide multi-shops; ERR binds t1300 to a NAMED
+        // hidden c0000 in ~650 maps, so the name gate alone let 715 pins through on the
+        // first live run, 2026-07-07). A range-width cut can't do this job: the real
+        // Clouded Mirror Stand sells the same 100k-wide cosmetic ranges as the dummies.
         for (const auto &r : all)
-            if (r.talkId != 1000)
+            if (r.talkId >= 100000)
                 by_talk[r.talkId].emplace_back(r.begin, r.end);
     }
-    int emitted = 0, dup = 0, no_name = 0;
+    int emitted = 0, dup = 0, no_name = 0, at_origin = 0;
     std::unordered_set<std::string> seen_pos;
     std::unordered_set<uint32_t> seller_talk;  // one seller entry per talkId
     for (const DiskEnemy &e : enemies)
@@ -1680,6 +1687,9 @@ static int build_disk_merchant_markers(const std::vector<DiskEnemy> &enemies,
         if (e.talkId == 0) continue;
         auto it = by_talk.find(e.talkId);
         if (it == by_talk.end()) continue;
+        // A part at EXACTLY the tile origin is a utility placement, not a standing NPC
+        // (ERR's hidden system c0000s sit at 0,0,0) — belt-and-braces under the talkId cut.
+        if (e.posX == 0.0f && e.posY == 0.0f && e.posZ == 0.0f) { ++at_origin; continue; }
         uint8_t team = 0;
         int32_t name = 0;
         goblin::overlay_api::npc_team_and_name(e.npcParamId, &team, &name);
@@ -1709,8 +1719,8 @@ static int build_disk_merchant_markers(const std::vector<DiskEnemy> &enemies,
             g_merchant_sellers.push_back(MerchantSeller{name + 700000000, it->second});
     }
     spdlog::info("[MERCHANTPINS] {} merchant pins from disk enemies × talk-ESD shop ranges "
-                 "({} shop TalkIDs, {} dup-pos, {} nameless-skipped)",
-                 emitted, (int)by_talk.size(), dup, no_name);
+                 "({} shop TalkIDs, {} dup-pos, {} nameless-skipped, {} origin-skipped)",
+                 emitted, (int)by_talk.size(), dup, no_name, at_origin);
     return emitted;
 }
 

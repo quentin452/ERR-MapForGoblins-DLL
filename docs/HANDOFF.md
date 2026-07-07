@@ -30,11 +30,22 @@ one in-game look remains. `docs/plans/merchant_item_search_plan.md` has the full
 - **Both builds green on this box** — `build-err` AND a Windows-configured hot-reload split
   (`build-err-hotreload`, both DLLs link; the render→host `load_merchant_shop_ranges` call is
   GOBLIN_RENDER_API). Deployed to `ERR/dll/offline/`.
-- **★ NEXT (needs the user to boot ER):** in-world check — `[MERCHANTPINS]` log line (expect ~40+ pins,
-  0 nameless leaks), merchants visible on vmap/worldmap with names (Kalé at Elleh, Twin Maidens at
-  Roundtable), F1 search "telescope" shows "· sold by …". If ERR names any of its hidden system NPCs
-  the name-gate would leak pins at tile origin — the log's dup/nameless counters + a `vmap dump_markers`
-  on WorldMerchant would show it.
+- **FIRST LIVE RUN (2026-07-07 14:29) — scan chain WORKED, filter was too weak, FIXED + redeployed:**
+  `[MERCHANTPINS] talk-ESD scan: 199 ranges from 17 loose + 21 packed talkesdbnd` (the dvdbnd probe
+  found the vanilla-only bnds — the mod-agnostic source works), but **715 pins**: the anticipated
+  name-gate leak happened — ERR's hidden system c0000 (talk **1300**, ~650 maps, pos 0,0,0) is NAMED,
+  so only 1 placement was filtered. Fix (offline-validated on the join data): (1) **talkId >= 100000**
+  — every real merchant (39/39 oracle + ERR's additions) uses the 9-digit NPC-bound talk series; the
+  m00 system scripts (t1000/1010/1200/1300/1400/1410/4000) are all < 10000. A range-WIDTH cut was
+  rejected: the real Clouded Mirror Stand sells the same 100k-wide cosmetic ranges as the dummies.
+  (2) belt-and-braces: skip parts at EXACTLY (0,0,0). Expected next run: ~50 pins. `build.disk_merchants`
+  = 2.9 s on the disk worker (one-time; fine, could cache later).
+- **The 14:30:07 crash that ended that session is PRE-EXISTING, not merchants:** identical signature
+  (`eldenring.exe+0x1EB9999`, 0xC0000005) to the 3 crashes earlier the same day (13:01/13:03/13:12)
+  BEFORE the merchant DLL was ever deployed. This box has a long crash history at that address.
+- **★ NEXT (user boots ER):** expect `[MERCHANTPINS] ~50 pins … origin-skipped≈650`; check Kalé at
+  Elleh (ERR's talk 437006001), Twin Maidens/Enia/Hewg at the Roundtable, F1 "telescope" → "· sold
+  by …". `vmap dump_markers` can list the WorldMerchant bucket if a stray pin shows.
 
 ## ⇒ 2026-07-07 (Windows) — coordinate teleport SOLVED + LIVE-VERIFIED (havok body write, er_console_mod's method)
 
