@@ -53,13 +53,20 @@ one in-game look remains. `docs/plans/merchant_item_search_plan.md` has the full
 - **The recurring "crash" at session end = the game's OWN exit-teardown crash, not a bug:** 392 of the
   406 historical crash triages on this box share the exact fault `eldenring.exe+0x1EB9999` — it fires
   every time the game is quit. Ignore it for merchant work.
-- **THIRD ROUND — user visual check: WORKS, 2 bugs found + FIXED (deployed, needs re-look):**
-  1. **Roundtable merchants at garbage positions** — m11_10 (and ERR's m31_90 copy) has NO
-     WorldMapLegacyConvParam row and no map page, so the unified projection left `gx*256` raw coords
-     (a PRE-EXISTING trait of every unmappable-area marker; merchants made it visible). Fix: the
-     merchant pass now projects first and SKIPS any pin not landing on the 60/61 surface
-     (`unmappable-skipped` counter). Roundtable merchants keep their search "sold by" tag (seller
-     registry still fed) — there is simply no map surface to pin them on.
+- **THIRD ROUND — user visual check: WORKS, 2 issues; #2 fixed, #1 was a MISDIAGNOSIS (mine):**
+  1. **Roundtable merchant pins are at the CORRECT vanilla spot — the Roundtable INSET.** My first
+     read ("m11_10 unmappable, no map page") was WRONG: `WorldMapLegacyConvParam` **row 5 folds
+     m11_10 → m60_40_35** — the Roundtable inset the vanilla map draws in the south-west corner
+     (bottom-left, in the sea; Twin Maidens fold to world ≈ (9883, 8906)). Items/treasures inside
+     the Roundtable and the native Table of Lost Grace icon fold to the SAME spot — the merchant
+     pins follow the item convention exactly (user confirmed the Roundtable lives on the overworld
+     page). The `unmappable-skipped` guard stays (0 hits live; protects genuinely unfoldable areas)
+     — note ERR's m31_90 Roundtable copy has NO conv row yet ALSO produced no skips (0 counted):
+     its placements never reach the pass in-game — unexplained, LOW prio (no visible symptom; audit
+     via `vmap dump_markers` when a session is up).
+     **Open UX question for the user: on the NATIVE map the pins land on the inset artwork; on the
+     VMAP there is no inset artwork/relief there (pins float in empty sea) — if that's what looked
+     "wrong", the gap is vmap ARTWORK (draw a Roundtable label/inset on the vmap), not projection.**
   2. **Merchant + quest-NPC double markers** — most merchants are also quest NPCs, so the
      QuestNpcLayer runtime-FALLBACK pin (name-only, "Auto-detected quest") twinned the new merchant
      pin. Fix per user: (a) WorldMerchant now draws the SAME engine glyph as quest NPCs (map-point
