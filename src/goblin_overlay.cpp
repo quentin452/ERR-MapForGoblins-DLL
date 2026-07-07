@@ -1929,6 +1929,9 @@ namespace
             // when the master toggle is OFF — otherwise it could never revert a name after you disable
             // it. Self-gates internally on CSFeMan/WCM resolve + settings; cheap when idle. Host-only.
             goblin::update_native_enemy_names();
+            // Immortal mode (dev, `immortal` RPC verb): per-frame HP top-up to max. Present-thread =
+            // frame-synced with damage application; self-gates on the flag + in-world HP resolve.
+            goblin::immortal_tick();
             // FREEZE while the vmap stands in for the native map: instead of detecting combat and force-closing
             // (the old combat_active gate — unreliable: the AI battle-state lives on a pooled CS::CSAiThink with
             // no fixed EnemyIns offset, so per-enemy detection never worked), we FREEZE all characters while the

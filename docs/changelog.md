@@ -26,6 +26,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 - Debug-RPC `coop` verb: co-op session diagnostics (PlayerIns count, vmap freeze-skip state, each
   partner's ChrIns + projected map position/group — the exact chain the co-op partner markers use).
 
+- Debug-RPC `hp` verb (read / `set <v>` / `fill`) and `immortal [0|1|toggle]` dev god-mode (per-frame HP
+  top-up to max). HP write reuses the `hp_probe` module chain.
+- Debug-RPC `mem_write` (raw absolute in-process write) and `mem_scan_f3` (scan private rw pages for a
+  live float-triplet / position copy) — runtime-RE A/B levers.
+
 ### Fixed
 
 - `vmap graces` counted EVERY grace as discovered (it tested the discovery-flag ID instead of reading

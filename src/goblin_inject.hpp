@@ -86,6 +86,16 @@ namespace goblin
     bool get_player_world_pos(float &x, float &y, float &z);
     // Player HP (cur, max) via the ChrDataModule chain. False = not resolvable / no plausible pair.
     bool get_player_hp(int &cur, int &max);
+
+    // Write the player's current HP (clamped to [1, max]; same module chain as get_player_hp).
+    // Feeds the `hp set` RPC verb + the immortal top-up. False when not in-world / chain unresolved.
+    bool set_player_hp(int hp);
+
+    // Immortal mode (dev): per-present-frame HP top-up to max while enabled ("practical immortality"
+    // — a same-frame overkill or a kill-plane death can still slip through; documented in rpc-commands).
+    void set_immortal(bool on);
+    bool immortal();
+    void immortal_tick();   // called once per present frame (goblin_overlay)
     // RAW physical-dimension area (mapId AA byte) the player is in — identifies their 3D world (PlayerDim).
     bool get_player_dimension_area(int &area);
     bool debug_player_hp_candidates(int &a_cur, int &a_max, int &b_cur, int &b_max);

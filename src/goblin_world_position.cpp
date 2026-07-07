@@ -14,6 +14,7 @@
 #include "goblin_region_anchors.hpp"
 #include "goblin_major_regions.hpp"
 
+#include <atomic>
 #include <cmath>
 #include <map>
 #include <string>
@@ -569,6 +570,63 @@ bool goblin::get_player_hp(int &cur, int &max)
     if (hp_plausible(pr.a_cur, pr.a_max)) { cur = pr.a_cur; max = pr.a_max; return true; }
     if (hp_plausible(pr.b_cur, pr.b_max)) { cur = pr.b_cur; max = pr.b_max; return true; }
     return false;
+}
+
+// HP WRITE — same chain as the read probe (module @ LP+0x190, cur @ +0x138). Writes whichever
+// candidate the read found plausible (A: module direct; B: module[+0] extra deref — CT's stray 0).
+// Same noinline+SEH shape as every other raw write here (clang-cl SEH-elision guard).
+__declspec(noinline) static void write_hp_body(void **wcm_static, int hp, bool *ok)
+{
+    auto *wcm = *reinterpret_cast<uint8_t **>(wcm_static);
+    if (!wcm) return;
+    auto *lp = *reinterpret_cast<uint8_t **>(wcm + 0x1E508);
+    if (!lp) return;
+    auto *m = *reinterpret_cast<uint8_t **>(lp + 0x190);
+    if (!m) return;
+    int a_max = *reinterpret_cast<int *>(m + 0x13C);
+    if (hp_plausible(*reinterpret_cast<int *>(m + 0x138), a_max))
+    {
+        *reinterpret_cast<int *>(m + 0x138) = hp < a_max ? hp : a_max;
+        *ok = true;
+        return;
+    }
+    auto *m0 = *reinterpret_cast<uint8_t **>(m + 0);
+    if (!m0) return;
+    int b_max = *reinterpret_cast<int *>(m0 + 0x13C);
+    if (hp_plausible(*reinterpret_cast<int *>(m0 + 0x138), b_max))
+    {
+        *reinterpret_cast<int *>(m0 + 0x138) = hp < b_max ? hp : b_max;
+        *ok = true;
+    }
+}
+
+static bool write_hp_seh(void **wcm_static, int hp)
+{
+    bool ok = false;
+    __try { write_hp_body(wcm_static, hp, &ok); }
+    __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
+    return ok;
+}
+
+bool goblin::set_player_hp(int hp)
+{
+    if (!g_wcm_tried) resolve_world_chr_man();
+    if (!g_wcm_static) return false;
+    if (hp < 1) hp = 1;
+    return write_hp_seh(g_wcm_static, hp);
+}
+
+// ─── Immortal mode (dev) — per-frame HP top-up ────────────────────────────────────────────
+static std::atomic<bool> g_immortal{false};
+
+void goblin::set_immortal(bool on) { g_immortal.store(on); }
+bool goblin::immortal() { return g_immortal.load(); }
+
+void goblin::immortal_tick()
+{
+    if (!g_immortal.load()) return;
+    int cur = 0, max = 0;
+    if (get_player_hp(cur, max) && cur < max) set_player_hp(max);
 }
 
 // Debug: expose both raw candidates for the offset-pinning probe (hp_probe RPC).

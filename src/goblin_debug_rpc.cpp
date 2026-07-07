@@ -45,9 +45,11 @@
 #include <windows.h>
 
 #include <atomic>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <deque>
+#include <vector>
 #include <fstream>
 #include <iterator>
 #include <memory>
@@ -450,7 +452,7 @@ namespace goblin::debug_rpc
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp coords warp_local warp_xyz we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
-                       " | exit mfg_build er_base er_version proj mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset spawn_cap4e80 spawn_capreg add_collision hf_probe hf_probe_present hf_sample hf_shape_probe far_relief_probe far_relief w2s_probe"
+                       " | hp immortal exit mfg_build er_base er_version proj mem_dump mem_write mem_scan_f3 mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset spawn_cap4e80 spawn_capreg add_collision hf_probe hf_probe_present hf_sample hf_shape_probe far_relief_probe far_relief w2s_probe"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
             if (cmd == "idlediag")
@@ -1657,6 +1659,139 @@ namespace goblin::debug_rpc
                 for (uint32_t i = 0; i < len && p < (int)sizeof(out) - 4; i++)
                     p += std::snprintf(out + p, sizeof(out) - p, " %02x", buf[i]);
                 return std::string(out);
+            }
+            // hp [set <v>|fill] — read/write the player's HP (module chain from the hp_probe RE).
+            // `hp` = report cur/max; `hp set <v>` = write (clamped 1..max); `hp fill` = set to max.
+            // The write-holds test for the immortal top-up: if a `hp set` sticks, the field is the live
+            // stat (not a display mirror).
+            if (cmd == "hp")
+            {
+                std::string sub = next_token(rest);
+                int cur = 0, max = 0;
+                if (!goblin::get_player_hp(cur, max)) return "err hp unresolved (not in-world?)";
+                if (sub == "set" || sub == "fill")
+                {
+                    int v = max;
+                    if (sub == "set")
+                    {
+                        std::string v_s = next_token(rest);
+                        if (v_s.empty()) return "err usage: hp set <value>";
+                        try { v = std::stoi(v_s); } catch (...) { return "err bad value"; }
+                    }
+                    if (!goblin::set_player_hp(v)) return "err hp write failed";
+                    int nc = 0, nm = 0; goblin::get_player_hp(nc, nm);
+                    char b[96];
+                    std::snprintf(b, sizeof(b), "ok hp set=%d readback=%d/%d", v, nc, nm);
+                    return std::string(b);
+                }
+                char b[64];
+                std::snprintf(b, sizeof(b), "ok hp %d/%d immortal=%d", cur, max, goblin::immortal() ? 1 : 0);
+                return std::string(b);
+            }
+            // immortal [0|1|toggle] — dev god-mode: per-present-frame HP top-up to max (immortal_tick in
+            // goblin_overlay). "Practical immortality": survives normal combat/falls; a same-frame
+            // overkill (damage >= max HP applied and death-checked within one frame) or a kill-plane can
+            // still kill. No arg = report.
+            if (cmd == "immortal")
+            {
+                std::string sub = next_token(rest);
+                if (sub == "1" || sub == "on") goblin::set_immortal(true);
+                else if (sub == "0" || sub == "off") goblin::set_immortal(false);
+                else if (sub == "toggle") goblin::set_immortal(!goblin::immortal());
+                else if (!sub.empty()) return "err usage: immortal [0|1|toggle]";
+                return std::string("ok immortal=") + (goblin::immortal() ? "1" : "0");
+            }
+            // mem_write <hexaddr> <u8|u16|u32|u64|f32|f64> <value> — raw write to an ABSOLUTE address
+            // (in-process WPM; flips page protection if needed). The A/B lever for runtime RE: e.g.
+            // poke each candidate copy of the player position (mem_scan_f3) to find the one the engine
+            // honours. Dev-only; a bad address can crash the game — pair with mem_dump first.
+            if (cmd == "mem_write")
+            {
+                std::string a_s = next_token(rest), ty = next_token(rest), v_s = next_token(rest);
+                if (a_s.empty() || ty.empty() || v_s.empty())
+                    return "err usage: mem_write <hexaddr> <u8|u16|u32|u64|f32|f64> <value>";
+                uint64_t addr = 0;
+                try { addr = std::stoull(a_s, nullptr, 0); } catch (...) { return "err bad addr"; }
+                unsigned char buf[8]; uint32_t len = 0;
+                try
+                {
+                    if (ty == "u8")  { uint8_t v = (uint8_t)std::stoul(v_s, nullptr, 0);  memcpy(buf, &v, len = 1); }
+                    else if (ty == "u16") { uint16_t v = (uint16_t)std::stoul(v_s, nullptr, 0); memcpy(buf, &v, len = 2); }
+                    else if (ty == "u32") { uint32_t v = (uint32_t)std::stoul(v_s, nullptr, 0); memcpy(buf, &v, len = 4); }
+                    else if (ty == "u64") { uint64_t v = std::stoull(v_s, nullptr, 0); memcpy(buf, &v, len = 8); }
+                    else if (ty == "f32") { float v = std::stof(v_s); memcpy(buf, &v, len = 4); }
+                    else if (ty == "f64") { double v = std::stod(v_s); memcpy(buf, &v, len = 8); }
+                    else return "err bad type (u8|u16|u32|u64|f32|f64)";
+                }
+                catch (...) { return "err bad value"; }
+                SIZE_T put = 0;
+                if (!WriteProcessMemory(GetCurrentProcess(), (void *)addr, buf, len, &put) || put != len)
+                    return "err write failed";
+                unsigned char rb[8] = {}; SIZE_T got = 0;
+                ReadProcessMemory(GetCurrentProcess(), (void *)addr, rb, len, &got);
+                char b[128];
+                int p = std::snprintf(b, sizeof(b), "ok mem_write %#llx %s readback:", (unsigned long long)addr, ty.c_str());
+                for (uint32_t i = 0; i < len; i++) p += std::snprintf(b + p, sizeof(b) - p, " %02x", rb[i]);
+                return std::string(b);
+            }
+            // mem_scan_f3 <x> <y> <z> [tol] [max] — in-process scan of committed PRIVATE rw pages for a
+            // CONSECUTIVE float triplet within tol (default 0.05) of (x,y,z) — finds every live copy of
+            // a position (player pos mirrors etc) without touching /proc (in-DLL probes are safe on this
+            // box; external full-space scans D-state Proton — linux.md). 4-byte stride, results capped.
+            if (cmd == "mem_scan_f3")
+            {
+                std::string xs = next_token(rest), ys = next_token(rest), zs = next_token(rest);
+                std::string ts = next_token(rest), ms = next_token(rest);
+                if (xs.empty() || ys.empty() || zs.empty())
+                    return "err usage: mem_scan_f3 <x> <y> <z> [tol] [max]";
+                float tx, tyf, tz, tol = 0.05f; int maxhits = 32;
+                try
+                {
+                    tx = std::stof(xs); tyf = std::stof(ys); tz = std::stof(zs);
+                    if (!ts.empty()) tol = std::stof(ts);
+                    if (!ms.empty()) maxhits = std::stoi(ms);
+                }
+                catch (...) { return "err bad args"; }
+                if (maxhits > 64) maxhits = 64;
+                std::string hits;
+                int nhits = 0;
+                uint64_t scanned = 0;
+                const uint64_t kMaxScan = 6ull << 30;               // 6 GB cumulative cap
+                std::vector<unsigned char> page;                     // region copy (RPM = fault-safe)
+                MEMORY_BASIC_INFORMATION mbi{};
+                for (uint8_t *p = nullptr;
+                     VirtualQuery(p, &mbi, sizeof(mbi)) == sizeof(mbi) && nhits < maxhits && scanned < kMaxScan;
+                     p = (uint8_t *)mbi.BaseAddress + mbi.RegionSize)
+                {
+                    const bool rw = mbi.State == MEM_COMMIT && mbi.Type == MEM_PRIVATE &&
+                                    (mbi.Protect == PAGE_READWRITE || mbi.Protect == PAGE_EXECUTE_READWRITE);
+                    if (!rw || mbi.RegionSize > (1ull << 30)) continue;   // skip giant reserves
+                    page.resize(mbi.RegionSize);
+                    SIZE_T got = 0;
+                    if (!ReadProcessMemory(GetCurrentProcess(), mbi.BaseAddress, page.data(), mbi.RegionSize, &got) || got < 12)
+                        continue;
+                    scanned += got;
+                    const float *f = reinterpret_cast<const float *>(page.data());
+                    const size_t n = got / 4;
+                    for (size_t i = 0; i + 2 < n && nhits < maxhits; ++i)
+                    {
+                        if (std::fabs(f[i] - tx) < tol && std::fabs(f[i + 1] - tyf) < tol &&
+                            std::fabs(f[i + 2] - tz) < tol)
+                        {
+                            char hb[32];
+                            std::snprintf(hb, sizeof(hb), " %#llx",
+                                          (unsigned long long)((uintptr_t)mbi.BaseAddress + i * 4));
+                            hits += hb;
+                            ++nhits;
+                        }
+                    }
+                }
+                spdlog::info("[SCAN3] ({},{},{}) tol={} scanned={}MB hits={}:{}", tx, tyf, tz, tol,
+                             scanned >> 20, nhits, hits);
+                char head[96];
+                std::snprintf(head, sizeof(head), "ok mem_scan_f3 hits=%d scanned=%lluMB |", nhits,
+                              (unsigned long long)(scanned >> 20));
+                return std::string(head) + (hits.empty() ? " none" : hits);
             }
             // mem_fwa <hexaddr> <len> [r|w] — arm a HW find-what-accesses breakpoint on an ABSOLUTE
             // address (e.g. PlayerGameData+0x9c = the char name, a COLD serialized field). Trigger a
