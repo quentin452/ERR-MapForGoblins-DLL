@@ -1,13 +1,16 @@
 # Merchant / shop item search — plan
 
-Status: **Slice 1 DONE + IN-GAME VERIFIED (2026-07-02, `feat/merchant-search` `0acbf8f`). Slice 2
-DEFERRED; Slice 3 SHELVED 2026-07-03 but the ESD blocker is now SMALLER than the spike concluded
-(2026-07-07).** Slice 1 search is the shipped merchant feature. Slice 3's blocker was "extracting the
-shop-id range needs an EzState bytecode EVALUATOR" — but `docs/re/esd_ezstate_decoder_re_findings.md`
-shows **78% of ESD command args are the literal `82 <i32> A1`** form (shop ranges, textIds, flag ids are
-literal ints), now decoded by `tools/esd_shop/` (`DecodeArg`). So the shop-id range for the merchant join
-is readable WITHOUT the full evaluator; only the 21% branching expressions need EzSemble. Slice 3 can be
-reopened cheaply if merchant pins are wanted — the join is shopRange→TalkID→NPC-entity→`entity_world_pos`. Verified on ERR/Proton: `[MERCHANTSEARCH] 5485 items indexed` at boot; F1 search "telescope"
+Status: **Slice 1 SHIPPED. Slice 3 join is now RE-COMPLETE + PROVEN (2026-07-07) — only an
+architecture choice + marker wiring remain, NOT more RE.** The 2026-07-03 "needs an EzState EVALUATOR,
+disproportionate" verdict is superseded: `docs/re/esd_ezstate_decoder_re_findings.md` shows 78% of ESD
+args are the literal `82 <i32> A1` form, and the full join is proven end-to-end:
+- **`OpenRegularShop` = talk command `1:22`** (args `[shopBegin, shopEnd]`), RE'd by cross-referencing
+  every `1:22` arg pair against real ShopLineupParam rows.
+- **`tools/esd_shop/merchant_join.py`** joins `t<TalkID>.esd 1:22` → shop range with the MSB
+  `Parts.Enemies` (TalkID→EntityID+Position+name) → **39 unique merchants** (Kalé, Twin Maidens, Enia,
+  Hewg, Sellen, Patches×4, …) with correct positions + shop ranges. `--json` emits `merchants.json`.
+- **NEXT = the A/B/C fork below (needs a user call), then wire a marker layer.** Positions are MSB-local →
+  reuse the existing marker projection; shop ranges → reuse the shipped ShopLineupParam→items index. Verified on ERR/Proton: `[MERCHANTSEARCH] 5485 items indexed` at boot; F1 search "telescope"
 (shop-only, Kalé — no world marker) lists **"Telescope · buyable (unlock required)"** under a new
 "Sold by merchants" heading, with the FR translations. Names resolve even at the title screen.
 

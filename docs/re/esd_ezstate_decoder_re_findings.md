@@ -68,5 +68,28 @@ missing operand — Slice 3). Any ESD command whose args are literal constants i
 hex. Talk ESD is DFLT/zlib (not Oodle) → reachable offline on Linux + Windows. `DecodeArg` in `Program.cs`
 handles the literal `82 <i32> A1` form; extend it with an EzSemble port for full coverage.
 
+## ★ Merchant-pin join — RE'd + PROVEN end-to-end (2026-07-07, the Slice-3 spike, now unblocked)
+
+With the literal decoder, the shelved merchant-pin join is fully solved offline:
+- **`OpenRegularShop` = talk command `1:22`**, args `[shopBegin, shopEnd]` (a ShopLineupParam id range).
+  RE'd by cross-referencing: over all ERR talk ESDs, `1:22` is the only command whose two literal args are
+  consistently real `ShopLineupParam` rows ≥100000 (every instance is a clean shop range: Kalé
+  `[100650-100674]…`, Corhyn `[100350-100399]`, etc.). Other bank-6/1 candidates carried event flags/menu
+  ids, not shop rows (e.g. m11_10's `701010`/`609000` are NOT ShopLineupParam rows).
+- **The join** (`tools/esd_shop/merchant_join.py`): `t<TalkID>.esd 1:22 → shop range`, then the vanilla
+  MSB `Parts.Enemies` (each has `TalkID`, `EntityID`, `Position`, `NPCParamID→NpcName`) joined on `TalkID`.
+  **487 placements → 39 unique merchants** (drop `talkId 1000` = the DLC scaling dummy; dedup the _00/_10
+  LOD tile pair): Merchant Kalé, Twin Maiden Husks (the bell-bearing multi-shop), Enia, Hewg, Sellen,
+  Patches (×4 locations), Corhyn, Bernahl, Miriel, Seluvis, Gowry, Thops, Rogier, Pidia, Iji, Thiollier,
+  Ymir… — all with correct per-tile MSB-local positions (feed the existing marker projection like any
+  marker) + shop ranges (feed the existing ShopLineupParam→items index for the stock).
+- **Tools:** `esd_shop` (ESD decode) + `merchant_join.py` (pythonnet: ERR `regulation.bin` NpcParam +
+  vanilla NpcName FMG + vanilla MSBs). `merchant_join.py --json` emits `merchants.json` (39 rows). This IS
+  the offline pipeline for a baked merchant layer (option B) and validates the data any runtime path needs.
+- **Remaining to SHIP pins = an architecture choice (plan Slice 3 A/B/C), then marker wiring** — NOT more
+  RE. (A) runtime C++ ESD parse = mod-agnostic but big; (B) bake `merchants.json` = fast, ERR-frozen
+  (positions are vanilla map data, fairly mod-stable; a mod ADDING merchants wouldn't appear); (C) runtime
+  shop-open hook = visited-only. The join is proven; pick A/B/C before wiring.
+
 Related: `[[grace-menu-esd-spike]]` (menu mechanism: AddTalkListData 1:19, open 1:20, show 1:10),
-`docs/plans/merchant_item_search_plan.md` Slice 3 (the shelved merchant-pin join this reopens).
+`docs/plans/merchant_item_search_plan.md` Slice 3 (the merchant-pin join, now RE-complete).

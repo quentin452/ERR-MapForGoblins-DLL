@@ -204,3 +204,5 @@ tools/collision_offline/obj/
 tools/esd_shop/bin/
 tools/esd_shop/bin_net9/
 tools/esd_shop/obj/
+tools/esd_shop/_shopids.txt
+tools/esd_shop/merchants.json
