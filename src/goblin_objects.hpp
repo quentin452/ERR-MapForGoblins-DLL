@@ -53,6 +53,10 @@ namespace goblin::objects
     int realize();
     void set_try_collision(bool on);   // arm the experimental walkable-collision pass (default OFF)
     bool try_collision();
+    // ImGui render on/off (default ON) — the overlay gates its object-box draw on this. `objects render
+    // off` for bisection (stop drawing without clearing the defs).
+    GOBLIN_RENDER_API void set_render_enabled(bool on);
+    GOBLIN_RENDER_API bool render_enabled();
     // Clear the rendered boxes (r3d). NB any Havok collision bodies are NOT removed (no remove path
     // yet) — they persist until the next area load.
     void clear_render();

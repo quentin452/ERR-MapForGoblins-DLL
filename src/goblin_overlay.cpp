@@ -1978,13 +1978,18 @@ namespace
 
             // Greybox objects (objects.toml realizer) — ImGui backend: project each realized box's 8
             // corners via the ER camera + draw its 12 edges as a draw-list line loop. The STABLE Windows
-            // render path (ImGui, like every overlay layer) while r3d's D3D12 backend is Linux/vkd3d-only.
-            // Gated to in-world gameplay (camera resolves only there).
+            // render path (ImGui) while r3d's D3D12 backend is Linux/vkd3d-only.
+            // ★ Gate on get_player_map_pos (FALSE during loading — unlike get_player_world_pos which returns
+            // true at the transient (0,0,0) load state); a bad camera mid-load projects degenerate coords →
+            // ImGui draws giant lines → the GPU stalls (23 FPS loading freeze, 2026-07-07). Belt-and-braces:
+            // reject NaN / off-screen-huge projected corners so a bad projection can never draw.
+            if (goblin::objects::render_enabled())
             {
                 goblin::objects::RenderBox rbs[256];
                 size_t nrb = goblin::objects::get_render_boxes(rbs, 256);
-                float vpx, vpy, vpz;
-                if (nrb && goblin::get_player_world_pos(vpx, vpy, vpz) && !goblin::world_map_open())
+                int mpArea = 0; float mpwx = 0.f, mpwz = 0.f;
+                if (nrb && goblin::get_player_map_pos(mpArea, mpwx, mpwz, nullptr, nullptr, nullptr) &&
+                    !goblin::world_map_open())
                 {
                     const ImVec2 ds = ImGui::GetIO().DisplaySize;
                     float view[16], origin[3], fovy;
@@ -1995,6 +2000,8 @@ namespace
                         // 12 cube edges as index pairs into the 8 corners (bit b = axis sign: x=1,y=2,z=4).
                         static const int E[12][2] = {{0,1},{0,2},{0,4},{1,3},{1,5},{2,3},
                                                      {2,6},{3,7},{4,5},{4,6},{5,7},{6,7}};
+                        const float kMaxPx = 20000.f;   // reject degenerate projections (never draw to infinity)
+                        int drawn = 0;
                         for (size_t i = 0; i < nrb; ++i)
                         {
                             const auto &b = rbs[i];
@@ -2004,14 +2011,20 @@ namespace
                                 float cx = b.pos[0] + ((c & 1) ? b.half[0] : -b.half[0]);
                                 float cy = b.pos[1] + ((c & 2) ? b.half[1] : -b.half[1]);
                                 float cz = b.pos[2] + ((c & 4) ? b.half[2] : -b.half[2]);
-                                float sx, sy;
-                                vis[c] = goblin::w2s::project_world(view, fovy, cx, cy, cz, ds.x, ds.y, sx, sy);
+                                float sx = 0.f, sy = 0.f;
+                                vis[c] = goblin::w2s::project_world(view, fovy, cx, cy, cz, ds.x, ds.y, sx, sy) &&
+                                         std::isfinite(sx) && std::isfinite(sy) &&
+                                         sx > -kMaxPx && sx < kMaxPx && sy > -kMaxPx && sy < kMaxPx;
                                 pc[c] = ImVec2(sx, sy);
                             }
                             for (auto &e : E)
-                                if (vis[e[0]] && vis[e[1]])
-                                    dl->AddLine(pc[e[0]], pc[e[1]], b.color, 2.0f);
+                                if (vis[e[0]] && vis[e[1]]) { dl->AddLine(pc[e[0]], pc[e[1]], b.color, 2.0f); ++drawn; }
                         }
+                        // One-shot confirmation the render ran cleanly in-world (not a per-frame flood).
+                        static bool s_logged = false;
+                        if (!s_logged) { s_logged = true;
+                            spdlog::info("[OBJECTS-RENDER] first draw: {} boxes, {} edges, cam ok, area={}",
+                                         (int)nrb, drawn, mpArea); }
                     }
                 }
             }

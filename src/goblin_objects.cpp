@@ -9,6 +9,7 @@
 #define TOML_EXCEPTIONS 0  // parse errors returned, not thrown — the ONLY config that parses under Proton
 #include <toml++/toml.hpp>
 
+#include <atomic>
 #include <mutex>
 
 namespace goblin::objects
@@ -19,6 +20,7 @@ std::vector<ObjectDef> g_defs;
 std::filesystem::path g_folder;
 std::mutex g_mtx;
 bool g_try_collision = false;   // experimental walkable-collision pass (frame + borrowed-shape caveats)
+std::atomic<bool> g_render_enabled{true};   // ImGui object-box draw on/off (overlay gate; bisection)
 std::vector<RenderBox> g_render_boxes;   // realized boxes (absolute world), drawn by the overlay via ImGui
 std::mutex g_render_mtx;
 
@@ -171,6 +173,8 @@ int realize()
 
 void set_try_collision(bool on) { std::lock_guard<std::mutex> lk(g_mtx); g_try_collision = on; }
 bool try_collision() { std::lock_guard<std::mutex> lk(g_mtx); return g_try_collision; }
+void set_render_enabled(bool on) { g_render_enabled.store(on); }
+bool render_enabled() { return g_render_enabled.load(); }
 
 void clear_render()
 {
@@ -227,6 +231,11 @@ std::string command(const std::string &rest)
     {
         set_try_collision(arg != "0" && arg != "off");
         return std::string("ok objects collision (experimental) ") + (try_collision() ? "ON" : "off");
+    }
+    if (sub == "render")
+    {
+        set_render_enabled(arg != "0" && arg != "off");
+        return std::string("ok objects render ") + (render_enabled() ? "ON" : "off");
     }
     // list (default)
     std::lock_guard<std::mutex> lk(g_mtx);
