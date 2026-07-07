@@ -65,8 +65,12 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
    the reqMgr update **`FUN_1406d31f0` (er+0x6d31f0, reqMgr=`DAT_143d69ba8`)**. Hook `FUN_1406d31f0`
    (set `STREAMER_STEP_RVA=0x6d31f0`) → drain the queue on the right thread, every frame in-world. Bonus: native
    by-id spawn helpers `FUN_1406d4e80`/`FUN_1406d0040` build `AEG###_###`+block+registrar for you. Registrar is
-   main-update-CONTEXT-bound (single-writer reqMgr RB-tree, not TLS) → any caller on that stack is safe. Pending
-   the live `hk_step` acceptance run.**
+   main-update-CONTEXT-bound (single-writer reqMgr RB-tree, not TLS) → any caller on that stack is safe.
+   **LIVE RUN DONE (2026-07-05): thread wall PASSED (`hk_step` fires on the registrar's own TID, no deadlock)
+   and the by-id helper `FUN_1406d4e80` ACCEPTS our request (ok=true, nonzero handle) — but the request never
+   becomes a rendered instance (`geom_stats` flat). LAST GAP = the request→instance servicing
+   (`FUN_1406c6050` state machine / gated proximity step). Live prompt:
+   `linux_geom_spawn_request_servicing_re_prompt.md`.**
 2. **ESD / talk scripts (EzState) — mostly unmapped.** Merchant shop↔NPC join, dialogue, talk-driven
    logic need an EzState bytecode evaluator (shelved after a spike — see
    `docs/plans/merchant_item_search_plan.md` Slice 3).
