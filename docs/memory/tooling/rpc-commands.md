@@ -51,6 +51,7 @@ change; keep this doc in sync when you add a command.
 | `screenshot` | `screenshot <path.bmp>` | Grab the swapchain to a BMP (client-pixel space — matches `mouse_*` coords). |
 | `dumpmenu` | `dumpmenu [tag]` | Dump menu/worldmap-probe state to the log (`[WMPROBE]`). |
 | `reload_overlay` | `reload_overlay` | Hot-reload the overlay render DLL (hotreload build only; poll `status` gen bump). |
+| `coop` | `coop` | Co-op session diag (`goblin_coop`): `count=` PlayerIns in the WorldChrMan session array, `others=`/`markers=`, `freeze_skip=` (vmap freeze skipped when >1), then `local area= w(x,z) g<group>` + per-buddy `b<i> chr= area= w(x,z) g<group>` via `get_chr_map_pos` — the exact partner-marker chain. Solo test: summon an NPC gold-sign phantom and see if it shows as a buddy. |
 
 ## Params (regulation-free live edit)
 

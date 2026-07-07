@@ -34,6 +34,7 @@
 #include "goblin_custom_markers.hpp" // death_mark cmd — the DropSoul death marker
 #include "goblin_add_collision.hpp"  // add_collision cmd — Route D walkable box (recon phase)
 #include "goblin_field_probe.hpp"  // arm_raw — serialize find-what-accesses (Phase 2)
+#include "goblin_coop.hpp"         // coop cmd — session player enumeration diag (partner markers)
 #include "goblin_build_id.hpp"     // er_exe_version — er_version verb (build fingerprint)
 
 #include <spdlog/spdlog.h>
@@ -445,7 +446,7 @@ namespace goblin::debug_rpc
             // help — one-line verb list (the client reads a single reply line, so no embedded \n).
             // Full usages + caveats: docs/memory/tooling/rpc-commands.md. Keep in sync when adding a cmd.
             if (cmd == "help" || cmd == "?")
-                return "ok commands: help ping status idlediag open_f1 f1_tab vmap vworld assets_probe maptile_probe pause set screenshot dumpmenu reload_overlay"
+                return "ok commands: help ping status idlediag open_f1 f1_tab vmap vworld assets_probe maptile_probe pause set screenshot dumpmenu reload_overlay coop"
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp coords warp_local warp_xyz we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
@@ -587,6 +588,42 @@ namespace goblin::debug_rpc
                 int n = goblin::combat_diag(db, (int)sizeof(db));
                 std::string d(db, n > 0 ? (size_t)n : 0);
                 return "ok combat_active=" + std::to_string(goblin::combat_active() ? 1 : 0) + " | " + d;
+            }
+            // coop — co-op session diag (goblin_coop): PlayerIns count in the WorldChrMan session
+            // array, freeze-skip state, and each OTHER player's ChrIns + projected map pos/group
+            // (the exact chain the partner markers use), with the local player as reference.
+            // Solo-validates the marker chain without a 2nd PC: summon an NPC gold-sign phantom
+            // (c0000 human-form) and check whether it appears here as a PlayerIns.
+            if (cmd == "coop")
+            {
+                const int n = goblin::coop::player_count();
+                auto others = goblin::coop::other_players();
+                auto mks = goblin::coop::markers();
+                std::string out = "ok coop count=" + std::to_string(n) +
+                                  " others=" + std::to_string(static_cast<int>(others.size())) +
+                                  " markers=" + std::to_string(static_cast<int>(mks.size())) +
+                                  " freeze_skip=" + std::to_string(goblin::coop::others_present() ? 1 : 0);
+                char b[128];
+                int area = 0, group = 0;
+                float wx = 0.f, wz = 0.f;
+                if (goblin::get_player_map_pos(area, wx, wz, nullptr, nullptr, &group))
+                {
+                    std::snprintf(b, sizeof(b), " | local area=%d w(%.1f,%.1f) g%d", area, wx, wz, group);
+                    out += b;
+                }
+                else
+                    out += " | local UNRESOLVED";
+                for (size_t i = 0; i < others.size(); ++i)
+                {
+                    area = 0; group = 0; wx = 0.f; wz = 0.f;
+                    if (goblin::get_chr_map_pos(others[i], area, wx, wz, &group))
+                        std::snprintf(b, sizeof(b), " | b%zu chr=%p area=%d w(%.1f,%.1f) g%d",
+                                      i, others[i], area, wx, wz, group);
+                    else
+                        std::snprintf(b, sizeof(b), " | b%zu chr=%p map_pos=UNRESOLVED", i, others[i]);
+                    out += b;
+                }
+                return out;
             }
             // dcx_file <in.dcx> <out> — decompress a raw DCX blob on disk with the game's in-process
             // Oodle (KRAK support) and write the plain bytes to <out>. Bridges the offline C# collision

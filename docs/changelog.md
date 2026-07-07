@@ -21,7 +21,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ## [Unreleased]
 
-_Nothing yet — the next cycle's entries go here._
+### Added
+
+- Debug-RPC `coop` verb: co-op session diagnostics (PlayerIns count, vmap freeze-skip state, each
+  partner's ChrIns + projected map position/group — the exact chain the co-op partner markers use).
 
 ## [v2.1.0] - 2026-07-06
 
