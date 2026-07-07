@@ -163,3 +163,22 @@ into `GameRend+0xF0` (the 4×4) `+0x110`/`+0x120` (params):
   the VIEW. ⇒ a scan-free VIEW is theoretically reachable as `WorldChrMan → [+0x1E508] → [+0x190] → [+0x68] →
   FUN_14045e540`, but it needs calling/replicating `FUN_14045e540` (own RE + present-thread crash-risk
   validation). Deferred — the time-boxed vtable scan is the low-risk path that keeps the proven +0xF0 read.
+
+### `FUN_14045e540` decoded (er+0x45e540) — and why the scan-free deref path is NOT a clean win
+`FUN_14045e540(poseObj, out[16])` (disasm confirmed) builds a **4×4 from the pose object's fields**, NOT a
+stored view it could just copy:
+- `poseObj+0x60..0x6c` = a **quaternion** (x,y,z,w); `poseObj+0x70/74/78` = a **position** vec3 (the SAME
+  `+0x70` the coord-teleport writes on `[[LocalPlayer+0x190]+0x68]`).
+- It expands the quat to a rotation matrix (the `q*(q+q)` / `ANDPS mask` SIMD idiom), scales by static
+  constants (`er+0x279230..`, `er+0x2792f0..`, `er+0x29e678`), and writes rows into `out[0..15]`; the
+  translation row (`out[12..15]`) mixes the `+0x70` position. Caller `FUN_140b019b0` then `MOVAPS`-copies
+  `out` → GameRend+0xF0/+0x100/+0x110/+0x120.
+- **Two reasons a blind deref path is risky:** (1) it's derived from the **player/freecam POSE**, yet the
+  mod's live-confirmed VIEW@+0xF0 had a TINY (render-rebased) translation, not the player's ~(-58,92,99) — so
+  either those constants encode the rebase, or `FUN_140b019b0` is NOT the writer the mod actually reads;
+  (2) `FUN_140b019b0` is one sub-update inside `FUN_140aff640` (the InGameStep tick) — there are **several
+  GameRend-like writers**, so which one owns the gameplay VIEW must be settled LIVE (A/B on a running game).
+- ⇒ Chosen path instead (2026-07-07): keep the proven vtable scan, just make it fast by restricting to
+  **MEM_PRIVATE** heap regions (the instance is an FD4-heap alloc). See
+  `windows_w2s_camera_finder_present_hang_findings.md`. Revisit the scan-free deref only if the narrowed scan
+  still can't resolve the camera (the `w2s_probe` coverage diagnostic will say which).

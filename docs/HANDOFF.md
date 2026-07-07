@@ -47,14 +47,22 @@ step 3.
   this box in practical time: the process is **~8.75 GB paged / 14.6 GB virtual**, the exhaustive probe hits
   its 2 s cap mid-sweep (measured 2.19 s wall, incomplete), and the per-frame 2 ms path didn't finish a sweep
   either. So render on Windows is **still blocked — but on scan SPEED/COMPLETION, not a hang.**
-- **★ NEXT (the real render unblocker) — use the SCAN-FREE VIEW path (documented, now clearly the right call).**
-  `WorldChrMan (er+0x3D65F88, already resolved) → [+0x1E508] LocalPlayer → [+0x190] → [+0x68] → FUN_14045e540
-  → VIEW` (windows_world_to_screen_camera_re_findings.md). Zero scanning. Needs: RE `FUN_14045e540`'s output
-  buffer layout (the 0x50-byte VIEW+params block copied into GameRend+0xF0 by `FUN_140b019b0`) + either call
-  it from the present thread or replicate it. Then `get_camera` reads the VIEW in a few derefs, no scan → boxes
-  draw AND r3d works. Interim scan optimizations if the scan-free path stalls: restrict to `MEM_PRIVATE`
-  committed regions (skip image/mapped — the camera is a heap alloc) to cut the ~8 GB sweep way down; and make
-  `w2s_probe` RESUME across calls (currently fresh-restarts, so it can never finish a >2 s sweep).
+- **✅ SCAN NARROWED to MEM_PRIVATE 2026-07-07 (shipped, needs a boot MEASUREMENT).** Kept the PROVEN VIEW
+  read (GameRendCameraSet vtable scan, live-confirmed on Linux) but restricted `find_cam_instance`'s sweep to
+  **MEM_PRIVATE RW committed** regions — the camera is an FD4-heap object, so this skips the loaded-module
+  IMAGES + file/texture MAPPINGS (most of the 8 GB) → a full sweep should now finish in budget. `w2s_probe`
+  now reports coverage: on a miss `sweep COMPLETED/timed out after N MB`; on a hit `found_after=N MB`.
+  **★ NEXT (needs a boot): `w2s_probe` — read the diagnostic.** COMPLETED + still no-match ⇒ genuine no-match
+  (the vtable/VIEW isn't where we scan → chase elsewhere); timed-out ⇒ still too slow (widen budget / narrow
+  further). If it now FINDS the camera → `objects render on` draws the greybox + r3d works, done.
+- **Scan-FREE path DEFERRED (murky — needs live iteration).** RE'd the VIEW-builder chain that fills
+  GameRend+0xF0 (`FUN_140b019b0`: `buf=FUN_1403f0f60(FUN_140507ff0(WCM),&local)` → copy buf→GameRend+0xF0;
+  `FUN_14045e540` builds the 4×4 from a pose object's **pos(+0x70)+quaternion(+0x60)**). Two problems for a
+  blind deref path: (1) it's built from the PLAYER/freecam POSE, but the mod's live VIEW had a TINY (rebased)
+  translation — so either constants apply the rebase or THIS isn't the writer the mod reads; (2) there are
+  SEVERAL GameRend-like writers (this one is one sub-update of `FUN_140aff640`). Picking the right one +
+  confirming the matrix needs a live game to A/B — not worth it while the MEM_PRIVATE scan (proven read) may
+  already suffice. Full chain in windows_world_to_screen_camera_re_findings.md.
 
 
 ## ⇒ 2026-07-07 (Windows) — ★ coord-teleport VOID bug (v2.2.0) FIXED + save-wedge RESCUE procedure; coop NPC-phantom test attempt 1 aborted
