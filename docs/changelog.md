@@ -21,6 +21,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ## [Unreleased]
 
+_Nothing yet — the next cycle's entries go here._
+
+## [v2.2.0] - 2026-07-07
+
 ### Added
 
 - Merchant map pins ("World - Merchants" category, on by default): every shop NPC of the ACTIVE
