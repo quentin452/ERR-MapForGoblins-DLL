@@ -130,13 +130,16 @@ verbs and the render-API `warp_to_world_xz` (vmap click-to-warp) — all three p
 `write_player_local_pos` (+0x6C0) store. The input frame is unchanged (tile-local, what the verbs already
 compute), so their arithmetic is untouched.
 
-## Live-verify — DONE (2026-07-07, Windows/ERRv2.2.9.6, attach-RPC)
+## Live-verify — DONE end-to-end (2026-07-07, Windows/ERRv2.2.9.6, attach-RPC)
 
 - Chain resolved live from `LocalPlayer=0x2684…9080`: `+0x190`→module `+0x68`→posObj, Vec3 `+0x70` =
   (-1.006, 3.547, -3.805); tile-local (`coords`) = (-1.01, 91.55, -75.80).
-- `mem_write` body X += 20 → `coords` world X 10750.99 → 10770.99, tile-local X -1.01 → 18.99, and it HELD
-  (no snap-back). Restored cleanly. This proved the write target + the 1:1 delta mapping.
-- After wiring `teleport_coords` to the body chain: `warp_xyz`/`warp_local` move the player and hold.
+- **Mechanism** (`mem_write`): body X += 20 → `coords` world X 10750.99 → 10770.99, tile-local X -1.01 →
+  18.99, HELD (no snap-back). Restored cleanly. Proved the write target + the 1:1 delta mapping.
+- **Wired verb** (fresh DLL, `teleport_coords` on the body chain): `warp_xyz 10773 9143` → player moved
+  +25 m east (world 10748.36 → 10773.00), HELD after 1.5 s (`[WARP] teleport_coords … -> moved`).
+  `warp_local 0 91 -60` → landed at tile-local (0, 87.5, -60) (X/Z exact; Y settled to ground by gravity),
+  HELD. Both paths confirmed in-game.
 
 Residual (low, not blocking): a far cross-map target may land in unstreamed void (use `warp <graceId>` for
 a full area-load); co-op is a local-sim change → guard on `coop::others_present()` if used in a session

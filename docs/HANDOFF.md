@@ -25,10 +25,11 @@ and NOT the engine `SetPos` (RE'd, but doesn't complete from the RPC thread). Fi
   noinline+SEH; RPC-thread safe (verified). Wired into `warp_local`/`warp_xyz` + the vmap click-to-warp
   (`warp_to_world_xz`). The SetPos machinery + `SETPOS` AOB were REMOVED (SetPos alone didn't teleport from
   the RPC thread — kept only as documented RE). Default build green; all edits host→host.
-- **★ Remaining (tiny): confirm the wired verb end-to-end** — the running game still had the OLD (SetPos) DLL
-  when tested; the body-write mechanism itself is proven (mem_write). Next ER restart: redeploy
-  (`python tools/deploy.py`) → `warp_xyz <x> <z>` moves+holds. Co-op: guard on `coop::others_present()`
-  (local-sim change). A target under terrain will fall/clip (absolute Y).
+- **✅ VERIFIED END-TO-END (2026-07-07, fresh DLL):** `warp_xyz 10773 9143` moved the player +25 m east
+  (world 10748.36 → 10773.00), HELD after 1.5 s; `warp_local 0 91 -60` landed at tile-local (0, 87.5, -60)
+  (X/Z exact, Y settled to ground), HELD. Both wired verbs confirmed in-game. DONE.
+- Caveats (not bugs): co-op is a local-sim change → guard on `coop::others_present()` if used in a session;
+  a target under terrain falls/clips (absolute Y); far cross-map → use grace `warp` (streaming gate).
 
 ## ⇒ 2026-07-07 (Windows) — live-verify now works on Windows (attach-RPC), not just Linux
 
