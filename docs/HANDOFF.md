@@ -1096,6 +1096,10 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   request→instance build-out is the streamer state machine (`FUN_1406c6050(req,4)` → proximity step
   `FUN_140699170`, flagged gated). Drive that transition (or check for an un-enumerated class / a world↔block
   `worldPos` frame mismatch) to make it render. That's what remains to fully close runtime ADD-AEG.
+  **★ LIVE PROMPT WRITTEN 2026-07-07: `docs/re/linux_geom_spawn_request_servicing_re_prompt.md`** — full
+  instrumentation spec for the next boot (request-state dump `spawn_reqdump`, `FUN_1406c6050` capture
+  `spawn_capstate` legit-vs-ours diff, offset spawn + `r3d box`, H1 stall / H2 enumeration / H3 worldPos-frame
+  hypotheses, gotchas + anchors). Findings target: `linux_geom_spawn_request_servicing_re_findings.md`.
 - **★ r3d DEBUG-RENDER TOOL — DONE + LIVE-VERIFIED 2026-07-05 (`a9dc674`).** r3d generalised from the test cube
   to **world-anchored debug boxes at arbitrary coords** (`r3d box <x> <y> <z> [size]` / `r3d clear`) via the ER
   camera — to SEE an invisible mesh / entity / loot at its real world pos (verified: 2 boxes beside+above the
