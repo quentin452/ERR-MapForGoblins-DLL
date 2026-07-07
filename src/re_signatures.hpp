@@ -117,15 +117,17 @@ namespace goblin::sig
     //  SetPos path (er+0xdc6380) was RE'd but does NOT complete the warp from the RPC thread; the
     //  direct body write is er_console_mod's proven method. See linux_player_pos_write_setpos.)
 
-    // ── Spawn/warp applier — the load-wedge rescue hook (SetPlayerMapAndPos) ──
-    // FUN_1406260e0(worldInfo, int* mapId, u32, u8, short* posData) — sets the current MAP (via the
-    // SetCurrentMap funnel FUN_140627fc0) AND the player POSITION (worldInfo+0x180) from a spawn/warp
-    // target. This is the funnel a poisoned save's area-0 spawn flows through at load; the rescue hook
-    // validates `*mapId` and, when the area byte is 0 (unloadable), substitutes a known-good spawn
-    // (First Step) so the load can't wedge. RE: docs/re/windows_load_wedge_mapid_writer_re_findings.md
-    // (getter er+0x6190c0, setter er+0x627fc0, this applier er+0x6260e0; exe 2.6.2.0). Entry prologue:
-    inline constexpr const char *SPAWN_APPLIER =
-        "44 89 44 24 18 55 56 57 41 56 41 57 48 8D 6C 24 D1 48 81 EC A0 00 00 00";
+    // ── Map-change SETTER — the load-wedge rescue hook (SetCurrentMap) ──
+    // FUN_140627fc0(worldInfo, int* mapId, u32 subId) — the UNIVERSAL map-change funnel: writes the
+    // current MapId mirror (worldInfo+0x2c) AND fires the change-notifications (FUN_14062a120 + 3
+    // subsystems) that propagate the map to streaming. EVERY map change goes through it — tile
+    // crossings (proven live via find-what-accesses) and the load-spawn. The rescue hook validates
+    // `*mapId` and, when the area byte is 0 (a poisoned save's unloadable spawn), substitutes a valid
+    // map (First Step 0x3C2A2300) so streaming can't chase a nonexistent map = no infinite load. The
+    // sibling applier FUN_1406260e0 was tried first but does NOT fire on load/grace-warp (wrong path).
+    // RE: docs/re/windows_load_wedge_mapid_writer_re_findings.md (er+0x627fc0; exe 2.6.2.0). Entry:
+    inline constexpr const char *MAP_SETTER =
+        "48 89 6C 24 10 56 57 41 56 48 83 EC 20 8B 41 2C 41 8B F0 8B 2A 4C 8B F2";
 
     // ── Live param + message repositories (SoloParamRepository / MsgRepositoryImp) ──
     // Param list address (get_param). relative_offsets {{3,7}}.
@@ -451,7 +453,7 @@ namespace goblin::sig
             {"SERIALIZE_FN", SERIALIZE_FN},
             {"LUA_WARP", LUA_WARP},
             {"CS_LUA_EVENT_MANAGER", CS_LUA_EVENT_MANAGER},
-            {"SPAWN_APPLIER", SPAWN_APPLIER},
+            {"MAP_SETTER", MAP_SETTER},
             {"SOLO_PARAM_LIST", SOLO_PARAM_LIST},
             {"MSG_REPOSITORY", MSG_REPOSITORY},
             {"GETMESSAGE", GETMESSAGE},
