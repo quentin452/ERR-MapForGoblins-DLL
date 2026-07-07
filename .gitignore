@@ -201,3 +201,6 @@ tools/rpc_tests/sweep.log
 tools/.env.local
 tools/collision_offline/bin/
 tools/collision_offline/obj/
+tools/esd_shop/bin/
+tools/esd_shop/bin_net9/
+tools/esd_shop/obj/

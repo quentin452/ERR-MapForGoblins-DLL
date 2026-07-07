@@ -71,9 +71,15 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
    becomes a rendered instance (`geom_stats` flat). LAST GAP = the request→instance servicing
    (`FUN_1406c6050` state machine / gated proximity step). Live prompt:
    `linux_geom_spawn_request_servicing_re_prompt.md`.**
-2. **ESD / talk scripts (EzState) — mostly unmapped.** Merchant shop↔NPC join, dialogue, talk-driven
-   logic need an EzState bytecode evaluator (shelved after a spike — see
-   `docs/plans/merchant_item_search_plan.md` Slice 3).
+2. **ESD / talk scripts (EzState) — READ blocker CRACKED for the literal case (2026-07-07,
+   `esd_ezstate_decoder_re_findings.md`); full evaluator + write side still open.** ESD command args are
+   EzState bytecode expressions, not int32 — the wall the merchant spike hit. Measured: **78% are the
+   literal `82 <i32> A1`** (push-int32/end) → a ~10-line decoder now reads them (shop-id ranges, textIds,
+   event-flag ids — live-proven in `tools/esd_shop/`). The remaining **21% are branching expressions**
+   (operators `0x40–0x50`, calls `0x6F`) → a bounded port of SoulsFormats' **EzSemble** disassembler (not
+   novel RE). Still hard/strategic: authoring NEW ESD (needs the assembler + ERR re-ships the 524 KB
+   talkesdbnd every version) and a runtime C++ evaluator. Reopens the merchant shop↔NPC join
+   (`docs/plans/merchant_item_search_plan.md` Slice 3).
 3. **regulation.bin / mod-VFS virtualization** — for the strong form of world-swap (vision #1). Only
    `windows_regulation_modroot_anchor_re_prompt.md` scratches it; the VFS-level swap isn't RE'd.
 4. **3D models / FLVER** — the CREATION options are now MAPPED (`custom_asset_creation_options_re_findings.md`,

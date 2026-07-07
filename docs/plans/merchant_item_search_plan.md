@@ -1,11 +1,13 @@
 # Merchant / shop item search — plan
 
 Status: **Slice 1 DONE + IN-GAME VERIFIED (2026-07-02, `feat/merchant-search` `0acbf8f`). Slice 2
-DEFERRED + Slice 3 SHELVED (user, 2026-07-03) — both need ESD RE that proved disproportionate. Slice 1
-search is the shipped merchant feature; no more work planned.** Slice 3 RE spike (2026-07-03) confirmed
-the shop↔NPC join is talk-ESD-only (no EMEVD shop instr) AND that extracting the shop-id range needs an
-EzState bytecode EVALUATOR on top of the ESD reader (`tools/esd_shop/`) — too much infra for one pin
-category (see Slice 3). Verified on ERR/Proton: `[MERCHANTSEARCH] 5485 items indexed` at boot; F1 search "telescope"
+DEFERRED; Slice 3 SHELVED 2026-07-03 but the ESD blocker is now SMALLER than the spike concluded
+(2026-07-07).** Slice 1 search is the shipped merchant feature. Slice 3's blocker was "extracting the
+shop-id range needs an EzState bytecode EVALUATOR" — but `docs/re/esd_ezstate_decoder_re_findings.md`
+shows **78% of ESD command args are the literal `82 <i32> A1`** form (shop ranges, textIds, flag ids are
+literal ints), now decoded by `tools/esd_shop/` (`DecodeArg`). So the shop-id range for the merchant join
+is readable WITHOUT the full evaluator; only the 21% branching expressions need EzSemble. Slice 3 can be
+reopened cheaply if merchant pins are wanted — the join is shopRange→TalkID→NPC-entity→`entity_world_pos`. Verified on ERR/Proton: `[MERCHANTSEARCH] 5485 items indexed` at boot; F1 search "telescope"
 (shop-only, Kalé — no world marker) lists **"Telescope · buyable (unlock required)"** under a new
 "Sold by merchants" heading, with the FR translations. Names resolve even at the title screen.
 

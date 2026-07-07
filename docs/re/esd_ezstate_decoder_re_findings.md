@@ -1,0 +1,72 @@
+# ESD / EzState blocker — the command-argument decoder (RE'd + the 78/21 split)
+
+**Status: the READ blocker is CRACKED for the common case (2026-07-07).** ESD command arguments are EzState
+bytecode expressions, not plain int32 — that was the wall the merchant-pin spike hit
+(`docs/plans/merchant_item_search_plan.md` Slice 3, `[[grace-menu-esd-spike]]`). This measures the wall and
+breaks the 78% literal case with a ~10-line decoder, so shop-id ranges / textIds / event-flag ids are now
+readable. The remaining 21% (branching expressions) need a full EzState disassembler (a bounded port of
+SoulsFormats' EzSemble), NOT novel RE. ERR/ERRv2.2.9.6 talk ESD; tool `tools/esd_shop/` (Andre.SoulsFormats).
+
+## What the blocker actually is
+
+The `tools/esd_shop/` reader (Andre.SoulsFormats.ESD) already exposes the ESD STRUCTURE — `StateGroups →
+State.{Entry,While,Exit}Commands + Conditions`, `CommandCall.{CommandBank, CommandID, Arguments}` (banks:
+1 = talk commands, 5 = text/FMG, 6 = ESD function calls, 7 = getters). The wall is that each argument in
+`CommandCall.Arguments` is a **byte[] of EzState bytecode** — a little stack-machine expression, not an
+int. Andre.SoulsFormats has NO EzState decoder (`EzSemble`/`EzInfo` absent — grep = 0). The old esd_shop
+"decode" read the first 4 bytes of the expression, which INCLUDES the `0x82` push opcode → garbage
+(`0x00004B82` instead of `75`).
+
+## The EzState bytecode (measured on `m00_00_00_00.talkesdbnd.dcx`, 50 445 command args)
+
+- **78% are a single literal:** `82 <int32 LE> A1` — `0x82` = push-int32, 4 LE bytes, `0xA1` = end. E.g.
+  `82 4B 00 00 00 A1` = `75`; `82 FF FF FF FF A1` = `-1`. Decoding = read `int32` at offset 1. **Done.**
+- **21% are stack-machine expressions** — still a small, documented opcode set: pushes (`82`, plus float
+  pushes), binary/compare/logic operators (`86 89 95 99 85 …`), and function calls (`6F …`). Example
+  (a condition-style expr): `6F 82 03 00 00 00 82 FB 00 00 00 … 89 … 95 … 99 A1`. These need a real
+  disassembler/evaluator.
+- First-opcode histogram over all args: `82`×43123, `40`×3804, `4F`×1130, `41`×858, `50`×218, `42`×187,
+  `4A`×84, `81`×73, `6F`×63, `43`×57 (the `0x40–0x50` band = operators; `0x6F`/`0x81` = calls/gets).
+
+## What the literal decoder already unblocks (live-proven)
+
+`esd_shop dump 1:19` (AddTalkListData = a selectable menu line) now reads correctly:
+```
+1:19  args=[75, 71000000, -1]      # index 75, textId 71000000 (menu FMG id), iconId -1
+1:19  args=[10, 50000051, -1]      # …
+6:2147483643  args=[15000560]      # an ESD function call carrying event-flag id 15000560
+```
+So menu/dialogue **textIds** and **event-flag ids** (the load-bearing "does this option set/read a flag"
+the spike couldn't trace) are now extractable, as are literal **shop-id ranges** (the merchant-pin join's
+missing operand — Slice 3). Any ESD command whose args are literal constants is now readable.
+
+## What it does NOT solve (the genuinely hard/strategic parts — unchanged)
+
+1. **The 21% branching expressions** (Condition.Evaluator logic, computed args) → port SoulsFormats'
+   **EzSemble** disassembler (~500 lines C#, well-documented opcode set; mainline SoulsFormats has it, the
+   Andre fork doesn't). Bounded work, not RE. Needed for full talk-flow understanding, not for literal reads.
+2. **Authoring / injecting NEW ESD** (the write side) → needs the EzSemble ASSEMBLER too, AND ERR re-ships
+   the 524 KB `talkesdbnd` every version, so any edit is a build-time patch that breaks each ERR update
+   (`[[grace-menu-esd-spike]]` "strategically POOR"). Prefer a DLL-side approach (read flags the ESD sets;
+   own overlay) over patching ERR's file.
+3. **A runtime EzState evaluator in the DLL (C++)** for mod-agnostic LIVE talk behavior → large; mostly
+   avoidable by reading offline + baking, or the runtime-capture route (merchant plan option C).
+
+## Recommendation
+
+- **Cheap + high-value, do first if pursuing merchant pins:** use the literal decoder to extract the
+  shop-open command's shop-id range (find the bank:id via `esd_shop hist` on a merchant map, `dump` it),
+  then the shopRange→TalkID→NPC-entity join → `entity_world_pos` (Slice 3's blocked step).
+- **Medium, unblocks all static ESD analysis:** port EzSemble's disassembler into `esd_shop` for the 21%
+  (condition logic, flag comparisons). One-time, mod-agnostic offline.
+- **Avoid** patching ERR's talkesdbnd (write side) — same verdict as the 2026-06-18 spike.
+
+## Tooling
+
+`tools/esd_shop/` (net10; build net9 works via a `TargetFramework` swap). `hist` = bank:id histogram;
+`dump [bank:id]` = EzState-decoded args (literal ints; `<expr:…>` for the 21%); `raw [bank:id]` = raw arg
+hex. Talk ESD is DFLT/zlib (not Oodle) → reachable offline on Linux + Windows. `DecodeArg` in `Program.cs`
+handles the literal `82 <i32> A1` form; extend it with an EzSemble port for full coverage.
+
+Related: `[[grace-menu-esd-spike]]` (menu mechanism: AddTalkListData 1:19, open 1:20, show 1:10),
+`docs/plans/merchant_item_search_plan.md` Slice 3 (the shelved merchant-pin join this reopens).
