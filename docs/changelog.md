@@ -23,13 +23,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Fixed
 
-- Coordinate teleport (`warp_local`/`warp_xyz`, vmap click-to-warp; v2.2.0) could jump the player
-  kilometres into unstreamed void when the player-MapId read was transiently invalid (area byte 0)
-  — free-fall to the kill plane, and the autosave then poisoned the slot so every subsequent load
-  wedged on the loading screen. Invalid MapId reads are now rejected (the warp errors instead of
-  moving) and the teleport itself refuses any jump past the ~1500 m streaming gate. An
-  already-poisoned save is repaired by restoring the newest healthy snapshot from the launcher's
-  `ERR Backups/` folder next to the save file.
+- Coordinate teleport (`warp_local`/`warp_xyz`, vmap click-to-warp; v2.2.0) could drop the player
+  where no ground exists — a transiently invalid player-MapId read mis-framed the delta into an
+  11 km jump outside the map, and even a legitimate 40 m hop could land in a floorless deep-water
+  column (mid-lake). Either way the player free-falls, and the autosave then poisons the slot so
+  every subsequent load wedges on the loading screen. Three guards now apply: invalid MapId reads
+  are rejected (the warp errors instead of mis-framing); the teleport LIVE-checks the target with
+  a physics raycast and refuses when the column has no walkable collision (void, deep water,
+  unstreamed — any distance); and when the live check can't run (loading, native map open) a
+  conservative 1500 m cap applies. New `ground_at <x> <z>` RPC exposes the check for scripting.
+  An already-poisoned save is repaired by restoring the newest healthy snapshot from the
+  launcher's `ERR Backups/` folder next to the save file.
 
 ## [v2.2.0] - 2026-07-07
 

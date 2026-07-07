@@ -7,6 +7,8 @@
 #include <spdlog/spdlog.h>
 
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <mutex>
 #include <set>
 
@@ -53,6 +55,15 @@ CastRayFn g_cast = nullptr;
 void **g_physworld_slot = nullptr;
 std::atomic<bool> g_ready{false};
 bool g_logged_ctx = false;
+
+// ── synchronous ground check (teleport guard) ── request slot serviced by tick_present; one
+// outstanding request at a time (teleports are serial). g_present_tid lets a caller ALREADY on
+// the present thread (vmap click-to-warp runs under hk_present) cast directly instead of
+// deadlocking waiting for itself.
+std::atomic<uint32_t> g_present_tid{0};
+std::mutex g_gc_mtx;
+std::condition_variable g_gc_cv;
+struct { float x, y, z, gy; int result; bool pending; } g_gc{};
 
 // ── one-shot validation probe ──
 std::atomic<bool> g_probe_pending{false};
@@ -351,12 +362,55 @@ void tick_game_thread()
 void request_present_probe() { g_present_probe_pending.store(true); }
 void request_shape_probe() { g_shape_probe_pending.store(true); }
 
+// The actual column check — MUST run on the present thread (the proven cast context). Availability
+// gates mirror the probe/sampler: cast resolved, in-world, native map CLOSED (map-open unloads world
+// collision → every cast would miss and read as "void").
+static int ground_check_do(float x, float y_hint, float z, float *gy_out)
+{
+    if (!g_ready.load()) resolve();
+    if (!g_cast || !g_physworld_slot) return -1;
+    if (goblin::world_map_open()) return -1;
+    float px = 0.f, py = 0.f, pz = 0.f;
+    if (!goblin::get_player_world_pos(px, py, pz)) return -1;
+    RayHit h{};
+    if (!cast_down(x, y_hint + kCastAbove, z, kCastDepth, FILTER_GROUND, h)) return 0;
+    if (gy_out) *gy_out = h.pt[1];
+    return 1;
+}
+
+int ground_check_sync(float x, float y_hint, float z, float *ground_y)
+{
+    if (GetCurrentThreadId() == g_present_tid.load())
+        return ground_check_do(x, y_hint, z, ground_y);
+    std::unique_lock<std::mutex> lk(g_gc_mtx);
+    g_gc.x = x; g_gc.y = y_hint; g_gc.z = z; g_gc.gy = 0.f; g_gc.result = -1; g_gc.pending = true;
+    if (!g_gc_cv.wait_for(lk, std::chrono::milliseconds(200), [] { return !g_gc.pending; }))
+    {
+        g_gc.pending = false;   // present thread stalled (loading/menu) — report unavailable
+        return -1;
+    }
+    if (ground_y) *ground_y = g_gc.gy;
+    return g_gc.result;
+}
+
 // Present thread, every frame (from hk_present via goblin_overlay). Drives the one-shot probe AND the
 // D2.2 grid sampler — both need world collision LOADED, i.e. in-world with the map CLOSED (map-open
 // unloads collision). The present-thread cast is proven (aligned-vector fix, d3ca993): a clean stable
 // idle ctx hits reproducibly; a torn ctx during movement just misses that cell and retries next sample.
 void tick_present()
 {
+    g_present_tid.store(GetCurrentThreadId());
+    // Service a pending synchronous ground check FIRST — a teleport (RPC thread) is blocked on it.
+    {
+        std::lock_guard<std::mutex> lk(g_gc_mtx);
+        if (g_gc.pending)
+        {
+            g_gc.result = ground_check_do(g_gc.x, g_gc.y, g_gc.z, &g_gc.gy);
+            g_gc.pending = false;
+            g_gc_cv.notify_all();
+        }
+    }
+
     const bool map_open = goblin::world_map_open();
 
     // D2.2 grid sampler: capture the frame on request, then cast kCellsPerTick per frame until drained.

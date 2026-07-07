@@ -71,4 +71,17 @@ void request_present_probe();
 // the ground is a heightfield GRID (readable direct) or a compressed mesh (raycast-only). See [HFSHAPE] log.
 void request_shape_probe();
 void tick_present();
+
+// Synchronous ground-existence check at an arbitrary tile-local (x, z) column — the teleport
+// guard's LIVE validity test (replaces trusting a fixed distance cap). Casts the wide relief
+// window (kCastAbove above y_hint, kCastDepth down) with the walkable-ground filter: a hit means
+// loaded collision exists in that column; a MISS means void / a deep-water kill column / not
+// streamed — teleporting there free-falls, and a mid-fall autosave poisons the save (both
+// observed 2026-07-07: the 11 km MapId-void jump AND a 40 m hop into Agheel Lake's floorless
+// middle). Runs the cast directly when called on the present thread (the proven cast context);
+// otherwise queues to tick_present and waits (~200 ms cap).
+// Returns 1 = ground found (*ground_y filled), 0 = no collision in the column (do NOT teleport),
+// -1 = unavailable (loading / native map open / cast unresolved / present thread stalled) —
+// callers fall back to a conservative distance cap.
+int ground_check_sync(float x, float y_hint, float z, float *ground_y);
 } // namespace goblin::heightfield

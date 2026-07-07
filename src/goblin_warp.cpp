@@ -1,5 +1,6 @@
 #include "goblin_warp.hpp"
 
+#include "goblin_heightfield.hpp"     // ground_check_sync — live teleport-target validity check
 #include "goblin_inject.hpp"          // get_player_world_pos — loading-state guard
 #include "goblin_load_watchdog.hpp"
 #include "modutils.hpp"
@@ -135,16 +136,15 @@ __declspec(noinline) static uint8_t *resolve_body_vec(uint8_t *lp)
     auto *pos = *reinterpret_cast<uint8_t **>(mod + 0x68);   // position holder
     return pos ? pos + 0x70 : nullptr;                        // &Vec3 (X @ +0x70, Y +0x74, Z +0x78)
 }
-// Max tile-local delta a coordinate teleport may apply, metres. Open-world streaming follows
-// ~1500 m of hop (goblin_inject.hpp, write_player_local_pos note); past that the target is
-// unstreamed VOID — the player free-falls, hits the kill plane, and the save gets poisoned at
-// the void position (2026-07-07 incident: a bad frame resolve asked for an ~11 km jump; the
-// resulting save wedged every subsequent load). Validate the warp here, at the LAST writer,
-// so no caller (RPC warp_local/warp_xyz, vmap click-to-warp) can void-jump.
+// FALLBACK cap only — used when the LIVE ground check below is unavailable (loading, native map
+// open, cast unresolved). ~1500 m is the proven open-world streaming-follow distance. When the
+// live check runs it is authoritative and distance is irrelevant: loaded collision at the target
+// column ⇒ safe; NO collision ⇒ refuse even 40 m away. Both save-poisoning shapes were hit on
+// 2026-07-07 — an ~11 km MapId-void jump AND a 40 m hop into Agheel Lake's floorless middle;
+// each free-fell, autosaved mid-fall, and wedged every subsequent load of the save.
 constexpr float kMaxTeleportDelta = 1500.0f;
 
-__declspec(noinline) static void teleport_body_body(uint8_t *lp, float tx, float ty, float tz,
-                                                    bool *ok, bool *refused)
+__declspec(noinline) static void teleport_body_body(uint8_t *lp, float tx, float ty, float tz, bool *ok)
 {
     uint8_t *vec = resolve_body_vec(lp);
     if (!vec) return;
@@ -156,24 +156,15 @@ __declspec(noinline) static void teleport_body_body(uint8_t *lp, float tx, float
     float lx = *reinterpret_cast<float *>(lp + 0x6C0);
     float ly = *reinterpret_cast<float *>(lp + 0x6C4);
     float lz = *reinterpret_cast<float *>(lp + 0x6C8);
-    float dx = tx - lx, dy = ty - ly, dz = tz - lz;
-    // NaN targets (x != x) and beyond-streaming-gate jumps are invalid — refuse, don't move.
-    if (!(dx == dx && dy == dy && dz == dz) ||
-        dx * dx + dz * dz > kMaxTeleportDelta * kMaxTeleportDelta ||
-        dy < -kMaxTeleportDelta || dy > kMaxTeleportDelta)
-    {
-        *refused = true;
-        return;
-    }
     reinterpret_cast<float *>(vec)[0] = tx - (lx - hx);
     reinterpret_cast<float *>(vec)[1] = ty - (ly - hy);
     reinterpret_cast<float *>(vec)[2] = tz - (lz - hz);
     *ok = true;
 }
-static bool teleport_body_seh(uint8_t *lp, float tx, float ty, float tz, bool *refused)
+static bool teleport_body_seh(uint8_t *lp, float tx, float ty, float tz)
 {
     bool ok = false;
-    __try { teleport_body_body(lp, tx, ty, tz, &ok, refused); }
+    __try { teleport_body_body(lp, tx, ty, tz, &ok); }
     __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
     return ok;
 }
@@ -187,18 +178,39 @@ bool teleport_coords(float x, float y, float z)
         spdlog::warn("[WARP] LocalPlayer null (loading / not in-world) — teleport_coords skipped");
         return false;
     }
-    bool refused = false;
-    bool ok = teleport_body_seh(lp, x, y, z, &refused);
-    if (refused)
+    float lx = 0.f, ly = 0.f, lz = 0.f;
+    if (!goblin::get_player_world_pos(lx, ly, lz))
     {
-        spdlog::warn("[WARP] teleport_coords REFUSED — target ({:.1f},{:.1f},{:.1f}) is more than "
-                     "{:.0f} m from the player (streaming gate; a farther jump lands in unstreamed "
-                     "void). Use the grace warp for cross-map travel.",
+        spdlog::warn("[WARP] player pos unreadable — teleport_coords skipped");
+        return false;
+    }
+    const float dx = x - lx, dy = y - ly, dz = z - lz;
+    if (!(dx == dx && dy == dy && dz == dz))   // NaN target
+    {
+        spdlog::warn("[WARP] teleport_coords REFUSED — NaN target");
+        return false;
+    }
+    // LIVE validity check (authoritative): does walkable collision exist in the target column?
+    float gy = 0.f;
+    const int gc = goblin::heightfield::ground_check_sync(x, y, z, &gy);
+    if (gc == 0)
+    {
+        spdlog::warn("[WARP] teleport_coords REFUSED — no loaded collision at target "
+                     "({:.1f},{:.1f},{:.1f}): void / deep-water kill column / unstreamed. "
+                     "Use the grace warp for cross-map travel.", x, y, z);
+        return false;
+    }
+    if (gc < 0 && (dx * dx + dz * dz > kMaxTeleportDelta * kMaxTeleportDelta ||
+                   dy < -kMaxTeleportDelta || dy > kMaxTeleportDelta))
+    {
+        spdlog::warn("[WARP] teleport_coords REFUSED — live ground check unavailable and target "
+                     "({:.1f},{:.1f},{:.1f}) is beyond the {:.0f} m fallback cap.",
                      x, y, z, kMaxTeleportDelta);
         return false;
     }
-    spdlog::info("[WARP] teleport_coords ({:.2f},{:.2f},{:.2f}) lp={} -> {}",
-                 x, y, z, (void *)lp, ok ? "moved" : "FAULTED");
+    bool ok = teleport_body_seh(lp, x, y, z);
+    spdlog::info("[WARP] teleport_coords ({:.2f},{:.2f},{:.2f}) ground_check={} gy={:.1f} lp={} -> {}",
+                 x, y, z, gc, gy, (void *)lp, ok ? "moved" : "FAULTED");
     return ok;
 }
 }  // namespace goblin::warp

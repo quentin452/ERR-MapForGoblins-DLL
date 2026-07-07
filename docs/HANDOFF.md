@@ -25,18 +25,38 @@ Committed code + `docs/changelog.md` are the record of DONE; this file tracks WH
   `teleport_coords` REFUSES NaN targets and any delta past **`kMaxTeleportDelta` = 1500 m** (the
   streaming gate) — enforced at the LAST writer, so no caller (RPC `warp_local`/`warp_xyz`, vmap
   click-to-warp) can void-jump regardless of upstream frame bugs. Changelog Fixed entry added.
+- **SECOND INCIDENT (same day, 17:53) — a 40 m hop into Agheel Lake's MIDDLE = the same wedge:**
+  the v2 driver's verified hops (X/Z err ≤0.3 m — the frame math was RIGHT) straight-lined across
+  the lake; its centre is a FLOORLESS deep-water kill column, so the character free-fell THROUGH
+  the water (y −25→−97→−213→−296), died, the mid-fall autosave poisoned the save again, and the
+  reload wedged identically. ⇒ the wedge isn't about the 11 km void specifically: ANY persisted
+  position without placeable ground hangs the load. Rescued the same way (launcher snapshot
+  `26-07-07--17-41-16`); second poisoned save preserved as `ER0000.err.POISONED-lakefall-…-repro`
+  (in-bounds X/Z + bad Y — the more interesting repro for the load-rescue RE below).
+- **✅ LIVE GROUND CHECK SHIPPED (user: "1500 m constant can be unreliable — do a live check").**
+  `goblin::heightfield::ground_check_sync(x, y_hint, z, *gy)` — synchronous walkable-ground cast
+  at an arbitrary tile-local column (wide relief window +3000/−10000), serviced on the PRESENT
+  thread (the proven cast context; direct call when already on it — vmap click-to-warp — else a
+  ~200 ms-capped request to `tick_present`). `teleport_coords` now refuses when the check says
+  the column has NO collision (void / deep-water / unstreamed — any distance, catches both
+  incident shapes); the 1500 m cap is demoted to the fallback when the check is unavailable
+  (loading / native map open, which unloads world collision). New RPC **`ground_at <x> <z>
+  [y_hint]`** exposes the check for drivers/pathing (rpc-commands.md updated). Both builds green,
+  deployed. ⚠ not yet live-verified (needs the next boot: `ground_at` at a known-ground spot =
+  hit, over the lake middle = miss, and a `warp_local` into the lake = refused).
 - **★ FOLLOW-UP (user-requested): load-time spawn rescue — "if the save's spawn is invalid,
   teleport to the First Step".** A save poisoned by OTHER means still wedges the load (the guard
   only stops OUR teleports from creating one). Needs RE: where the load-time pending spawn
   position lives (LocalPlayer is null during the wedge, so the body-write path can't rescue).
-  Recipe: restore the preserved POISONED save → boot to the wedge → `mem_scan_f3` for the void
+  Recipe: restore a preserved POISONED save → boot to the wedge → `mem_scan_f3` for the void
   position floats (the listener answers during the wedge; the streamer holds the target in memory)
   → `mem_write` a sane position → if the load completes, that struct = the hook point for an
   automatic invalid-spawn → First-Step rescue at load time.
-- **Coop NPC-phantom test:** attempt 1 aborted by the incident (before reaching the corridor).
-  v2 driver ready (session scratchpad `coop_test/drive_coop_test_v2.py`): `coords`+`warp_local`
-  self-computed deltas (never `warp_xyz`), ≤40 m hops, per-hop world-position verification, halts
-  on first anomaly. Retry pending a relaunch.
+- **Coop NPC-phantom test:** attempts 1+2 aborted by the incidents (v1 = the 11 km void; v2 =
+  the lake fall — never reached the corridor). v3 driver plan: `ground_at`-verified waypoints
+  (cast BEFORE each hop, detour on miss — bug-navigation around the lake via the east shore),
+  everything else as v2 (`coords`+`warp_local` deltas, per-hop verification). Retry pending a
+  relaunch with the ground-check DLL.
 
 **Housekeeping (2026-07-03, done):** file had grown to 1254 lines, mostly narrative for work already
 merged, changelog'd, and in-game verified. Compacted to genuinely live/in-progress work, open

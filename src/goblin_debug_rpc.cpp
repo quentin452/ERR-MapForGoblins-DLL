@@ -452,7 +452,7 @@ namespace goblin::debug_rpc
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp coords warp_local warp_xyz we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
-                       " | hp immortal exit mfg_build er_base er_version proj mem_dump mem_write mem_scan_f3 mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset spawn_cap4e80 spawn_capreg add_collision hf_probe hf_probe_present hf_sample hf_shape_probe far_relief_probe far_relief w2s_probe"
+                       " | hp immortal exit mfg_build er_base er_version proj mem_dump mem_write mem_scan_f3 mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset spawn_cap4e80 spawn_capreg add_collision hf_probe hf_probe_present hf_sample hf_shape_probe ground_at far_relief_probe far_relief w2s_probe"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
             if (cmd == "idlediag")
@@ -1224,6 +1224,35 @@ namespace goblin::debug_rpc
                     std::snprintf(b, sizeof(b), "ok add_collision ADDED bodyId=%#x (shape=%#llx pos %.1f %.1f %.1f) — verify hf_probe_present",
                                   r.bodyId, (unsigned long long)r.shape, pos[0], pos[1], pos[2]);
                 return std::string(b);
+            }
+            // ground_at <x> <z> [y_hint] — LIVE ground-existence check at a tile-local column (the
+            // teleport guard's primitive, exposed for warp drivers / pathing): synchronous cast on
+            // the present thread, wide relief window. `miss` = void / deep-water kill column /
+            // unstreamed — a teleport there free-falls (teleport_coords refuses those itself).
+            if (cmd == "ground_at")
+            {
+                std::string xs = next_token(rest), zs = next_token(rest), ys = next_token(rest);
+                if (xs.empty() || zs.empty()) return "err usage: ground_at <x> <z> [y_hint]";
+                float gax = 0.f, gaz = 0.f, gay = 0.f;
+                float plx = 0.f, ply = 0.f, plz = 0.f;
+                bool have_pl = goblin::get_player_world_pos(plx, ply, plz);
+                try
+                {
+                    gax = std::stof(xs); gaz = std::stof(zs);
+                    gay = ys.empty() ? (have_pl ? ply : 0.f) : std::stof(ys);
+                }
+                catch (...) { return "err bad coords"; }
+                float gy = 0.f;
+                int gc = goblin::heightfield::ground_check_sync(gax, gay, gaz, &gy);
+                if (gc == 1)
+                {
+                    char b[128];
+                    std::snprintf(b, sizeof(b), "ok ground y=%.2f (col %.1f,%.1f hint %.1f)",
+                                  gy, gax, gaz, gay);
+                    return std::string(b);
+                }
+                if (gc == 0) return "ok miss (no loaded collision in the column — void/deep-water/unstreamed)";
+                return "err unavailable (loading / native map open / cast unresolved)";
             }
             // hf_sample [extent] [res] — queue a heightfield GRID sample around the player (D2.2).
             // extent = world-units square side (default 4096), res = cells/side (default 48). Runs on the
