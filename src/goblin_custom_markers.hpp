@@ -54,7 +54,8 @@ namespace goblin::death_marker
 // (worldmap_probe::project) group-correctly on every page — like a grace. rawArea<0 = raw unavailable
 // (e.g. the manual death_mark test) → the native map falls back to the overworld affine.
 GOBLIN_RENDER_API void set(float wx, float wz, int group, int souls,
-                           int rawArea = -1, int rawGx = 0, int rawGz = 0, float rawPx = 0.f, float rawPz = 0.f);
+                           int rawArea = -1, int rawGx = 0, int rawGz = 0, float rawPx = 0.f, float rawPz = 0.f,
+                           bool manual = false);
 GOBLIN_RENDER_API bool get(float &wx, float &wz, int &group, int &souls);   // false = none active; souls = runes waiting
 // Raw (area, grid, local) of the active marker for the native-map converter projection. false = none
 // active OR no raw coords stored (rawArea<0) → caller should fall back to the world-frame path.

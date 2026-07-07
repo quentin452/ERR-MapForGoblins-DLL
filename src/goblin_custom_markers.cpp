@@ -105,12 +105,14 @@ float g_wx = 0.f, g_wz = 0.f;
 int g_group = 0, g_souls = 0;
 int g_area = -1, g_gx = 0, g_gz = 0;   // raw (pre-fold) for the native-map converter; area<0 = unavailable
 float g_px = 0.f, g_pz = 0.f;
+bool g_manual = false;                  // set by the death_mark RPC → tick() won't auto-clear/overwrite it
 }
-void set(float wx, float wz, int group, int souls, int rawArea, int rawGx, int rawGz, float rawPx, float rawPz)
+void set(float wx, float wz, int group, int souls, int rawArea, int rawGx, int rawGz, float rawPx, float rawPz, bool manual)
 {
     std::lock_guard<std::mutex> lk(g_dm_mtx);
     g_active = true; g_wx = wx; g_wz = wz; g_group = group; g_souls = souls;
     g_area = rawArea; g_gx = rawGx; g_gz = rawGz; g_px = rawPx; g_pz = rawPz;
+    g_manual = manual;
 }
 bool get(float &wx, float &wz, int &group, int &souls)
 {
@@ -129,10 +131,14 @@ bool get_raw(int &area, int &gx, int &gz, float &px, float &pz)
 void clear()
 {
     std::lock_guard<std::mutex> lk(g_dm_mtx);
-    g_active = false;
+    g_active = false; g_manual = false;
 }
 void tick()
 {
+    // A MANUAL marker (death_mark RPC) is sticky — don't let the auto-mirror below clear/overwrite it.
+    // Without this, death_mark is useless when there is no real bloodstain: read_bloodstain returns
+    // souls=0 → the clear() branch wipes the manual marker every frame before any surface draws it.
+    { std::lock_guard<std::mutex> lk(g_dm_mtx); if (g_manual) return; }
     // Mirror the game's OWN persistent bloodstain (GameDataMan+0x48) — save-backed, so it survives
     // restart + auto-clears when the runes are collected, EXACTLY like ER (no HP-edge guessing, no hook).
     float x = 0.f, y = 0.f, z = 0.f; uint32_t mapid = 0; int32_t souls = 0;

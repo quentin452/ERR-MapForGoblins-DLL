@@ -1297,7 +1297,10 @@ namespace goblin::debug_rpc
                 int area = 0, group = 0; float wx = 0, wz = 0;
                 if (!goblin::get_player_map_pos(area, wx, wz, nullptr, nullptr, &group))
                     return "err not in-world";
-                goblin::death_marker::set(wx, wz, group, 9999);   // manual test marker (dummy rune count)
+                // manual=true → STICKY: tick() won't clear it when there is no real bloodstain (souls=0),
+                // so this dev marker actually persists to be drawn. rawArea=-1 → the native map projects the
+                // exact world coords via the overworld affine (exact for an overworld test).
+                goblin::death_marker::set(wx, wz, group, 9999, -1, 0, 0, 0.f, 0.f, /*manual=*/true);
                 char b[96]; std::snprintf(b, sizeof(b), "ok death_mark world=(%.0f,%.0f) group=%d", wx, wz, group);
                 return std::string(b);
             }
