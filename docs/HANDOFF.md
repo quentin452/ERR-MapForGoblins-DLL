@@ -70,6 +70,15 @@ Committed code + `docs/changelog.md` are the record of DONE; this file tracks WH
      save records an unloadable location → every Continue wedges. Vanilla falls never do this
      (kill-plane respawn resolves before a save with a valid map). Our ground-check guard
      (d7ba8b3) prevents OUR warps from starting the chain.
+  8. **The sidecar save/serialize hook is CLEARED for the WRITE side too (user asked):**
+     `install_save_hook()` early-returns on `!config::sidecarSave` (goblin_sidecar.cpp:466) and
+     this box's ini has `sidecar_save = false` → NEITHER the SAVE_FN observer NOR the
+     SERIALIZE_FN strip/reinject bracket was installed in ANY session today (zero
+     "[SAVEFN]/[SERFN] observer hooked" lines across all 4 archived logs + current; the boot
+     "[SIG] PASS SERIALIZE_FN" lines are only the AOB health-check, not an install). The three
+     poisoned saves were written by the game's UNHOOKED serialize — the invalid location is
+     faithfully the game's own state, not our bracket's doing. ⚠ gotcha for future triage:
+     SIG PASS ≠ hook installed; grep "observer hooked" to know.
 - **★ NEXT (load-rescue, one boot cycle with a repro save):** restore a POISONED save
   (`ER0000.err.POISONED-void-…` / `…-lakefall-…` next to the save dir; launcher snapshots
   18:26:34/18:36/18:37 are ALSO poisoned lineage — do NOT restore those) → boot → **arm
