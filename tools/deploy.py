@@ -70,6 +70,21 @@ def main():
     if not a.no_pdb and os.path.isfile(pdb):
         shutil.copy2(pdb, os.path.join(DLL_OFFLINE, "MapForGoblins.pdb"))
         print(f"deployed MapForGoblins.pdb -> {DLL_OFFLINE}")
+
+    # Overlay translations: the DLL loads lang/<code>.txt from ITS OWN folder (goblin_i18n
+    # g_mod_folder), NOT from the repo — without this sync the overlay silently falls back to
+    # English (bit the Windows box 2026-07-07: dll/offline/lang/ never existed there, so the
+    # whole F1 panel showed English and "Sauver dans l'INI" seemingly vanished).
+    lang_src = os.path.join(repo, "assets", "lang")
+    if os.path.isdir(lang_src):
+        lang_dst = os.path.join(DLL_OFFLINE, "lang")
+        os.makedirs(lang_dst, exist_ok=True)
+        n = 0
+        for f in os.listdir(lang_src):
+            if f.endswith(".txt"):
+                shutil.copy2(os.path.join(lang_src, f), os.path.join(lang_dst, f))
+                n += 1
+        print(f"deployed {n} lang file(s) -> {lang_dst}")
     print("-> RESTART the game to load the new DLL, then verify with `python tools/mfg.py rpc mfg_build`.")
 
 
