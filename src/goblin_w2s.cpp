@@ -35,6 +35,12 @@ namespace
     bool  g_have_origin = false;
     long  g_origin_off = 0;          // offset of g_origin within GameRend where it was found (diagnostic)
 
+    // find_cam_instance scan diagnostics — surfaced by w2s_probe so the next boot MEASURES whether the
+    // MEM_PRIVATE-restricted sweep now completes in the budget (vs the old 8 GB all-committed walk that
+    // capped out mid-sweep). Reset when a fresh sweep starts; g_scan_done = a full sweep finished this call.
+    size_t g_scan_bytes = 0;
+    bool   g_scan_done = false;
+
     __declspec(noinline) bool safe_read(const void *src, void *dst, size_t n)
     {
         __try { std::memcpy(dst, src, n); return true; }
@@ -115,12 +121,12 @@ namespace
 
         if (exhaustive)
         {
-            s_sweeping = true; s_cursor = amin;   // manual probe: always a FRESH complete sweep
+            s_sweeping = true; s_cursor = amin; g_scan_bytes = 0; g_scan_done = false;   // fresh complete sweep
         }
         else if (!s_sweeping)
         {
             if ((int)(s_next_sweep_tick - t0) > 0) return 0;   // still cooling down
-            s_sweeping = true; s_cursor = amin;
+            s_sweeping = true; s_cursor = amin; g_scan_bytes = 0; g_scan_done = false;
         }
 
         MEMORY_BASIC_INFORMATION mbi;
@@ -128,8 +134,12 @@ namespace
         while (addr < aend && VirtualQuery((void *)addr, &mbi, sizeof(mbi)) == sizeof(mbi))
         {
             uintptr_t rbase = (uintptr_t)mbi.BaseAddress; size_t rsz = mbi.RegionSize; DWORD pr = mbi.Protect;
-            bool ok = mbi.State == MEM_COMMIT && rsz >= 16 &&
-                      (pr & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE)) &&
+            // The camera instance is a HEAP object (FD4 allocator) → MEM_PRIVATE, read/write, NON-exec.
+            // Restricting to that skips the loaded-module IMAGES and file/texture MAPPINGS — the bulk of ER's
+            // multi-GB footprint — so a full sweep covers far less and can finish in the budget (the old
+            // all-committed walk capped out mid-sweep on this ~8 GB process and never resolved the camera).
+            bool ok = mbi.State == MEM_COMMIT && mbi.Type == MEM_PRIVATE && rsz >= 16 &&
+                      (pr & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY)) &&
                       !(pr & (PAGE_GUARD | PAGE_NOACCESS));
             // Resume mid-region: skip windows already scanned this sweep (cursor landed inside rbase..+rsz).
             size_t start_off = (s_cursor > rbase && s_cursor < rbase + rsz) ? ((s_cursor - rbase) & ~(WIN - 1)) : 0;
@@ -139,13 +149,14 @@ namespace
                     size_t want = rsz - off; if (want > WIN + OVL) want = WIN + OVL;
                     if (safe_read((void *)(rbase + off), s_buf.data(), want))
                     {
+                        g_scan_bytes += want;
                         size_t scan_to = (want > WIN) ? WIN : (want >= 8 ? want - 8 : 0);
                         for (size_t i = 0; i < scan_to; i += 8)
                             if (*(const uint64_t *)(s_buf.data() + i) == vt)
                             {
                                 uintptr_t hit = rbase + off + i; float m[16];
                                 if (rd(hit + VIEW_FROM_HIT, m) && looks_like_view(m))
-                                { s_hit = hit; s_sweeping = false; s_cursor = 0; return hit; }
+                                { s_hit = hit; s_sweeping = false; s_cursor = 0; g_scan_done = true; return hit; }
                             }
                     }
                     if ((GetTickCount() - t0) >= budget_ms)
@@ -155,7 +166,7 @@ namespace
             if ((GetTickCount() - t0) >= budget_ms) { s_cursor = addr; return 0; }
         }
         // Full sweep completed with no valid hit — reset + back off before the next sweep.
-        s_sweeping = false; s_cursor = 0; s_next_sweep_tick = GetTickCount() + kCooldownMs;
+        s_sweeping = false; s_cursor = 0; g_scan_done = true; s_next_sweep_tick = GetTickCount() + kCooldownMs;
         return 0;
     }
 
@@ -245,8 +256,20 @@ namespace goblin::w2s
         uintptr_t base = (uintptr_t)GetModuleHandleA("eldenring.exe");
         if (!base) return "err: eldenring.exe base not found";
         uintptr_t hit = find_cam_instance(/*exhaustive=*/true);   // manual probe wants a full sweep, not a slice
-        if (!hit) return "err: no GameRendCameraSet instance with a valid VIEW matrix (in-world? camera active? "
-                         "run w2s_probe again if it timed out mid-sweep)";
+        if (!hit)
+        {
+            // Report the sweep coverage so we can tell a genuine no-match from a too-slow scan (next boot
+            // measurement of the MEM_PRIVATE narrowing).
+            char eb[256];
+            std::snprintf(eb, sizeof(eb),
+                          "err: no GameRendCameraSet with a valid VIEW (in-world? camera active?) — sweep %s "
+                          "after %.0f MB (MEM_PRIVATE only)%s",
+                          g_scan_done ? "COMPLETED" : "timed out mid-sweep",
+                          g_scan_bytes / (1024.0 * 1024.0),
+                          g_scan_done ? " => genuine no-match (not a speed problem)"
+                                      : " => still too slow; re-run or widen the budget");
+            return eb;
+        }
 
         float px, py, pz;
         if (!goblin::get_player_world_pos(px, py, pz)) return "err: no player world pos (in-world?)";
@@ -261,8 +284,9 @@ namespace goblin::w2s
 
         std::string out;
         char b[512];
-        std::snprintf(b, sizeof(b), "ok w2s cam GameRend=%#llx player=(%.2f,%.2f,%.2f) view=%.0fx%.0f conv=%d fovy=%.4f dot=%d\n",
-                      (unsigned long long)(hit - 0x10), px, py, pz, W, H, g_conv, g_fovy, (int)g_dot);
+        std::snprintf(b, sizeof(b), "ok w2s cam GameRend=%#llx player=(%.2f,%.2f,%.2f) view=%.0fx%.0f conv=%d fovy=%.4f dot=%d found_after=%.0fMB(MEM_PRIVATE)\n",
+                      (unsigned long long)(hit - 0x10), px, py, pz, W, H, g_conv, g_fovy, (int)g_dot,
+                      g_scan_bytes / (1024.0 * 1024.0));
         out += b;
         std::snprintf(b, sizeof(b), "VIEW@+0xF0:\n [%.4f %.4f %.4f %.4f]\n [%.4f %.4f %.4f %.4f]\n [%.4f %.4f %.4f %.4f]\n [%.4f %.4f %.4f %.4f]\n",
                       m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11], m[12], m[13], m[14], m[15]);
