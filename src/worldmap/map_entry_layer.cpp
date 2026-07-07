@@ -229,9 +229,16 @@ void push_marker(uint64_t row_id, const from::paramdef::WORLD_MAP_POINT_PARAM_ST
              row_id, (int)d.clearedEventFlagId, collected_flag};
     m.secondary_flag = secondary_story_flag(d.areaNo, d.gridXNo, d.gridZNo);
     m.hide_when_flag = hide_when_story_flag(d.areaNo, d.gridXNo, d.gridZNo);
-    // Raw param coords for the engine's live projection (config live_projection).
+    // Raw param coords for the engine's live projection (config live_projection). Remapped
+    // through the virtual-anchor inset too — the engine VM maps the VIRTUAL frame onto the
+    // inset artwork; raw interior coords would live-project ~2200 uv off it (same reason as
+    // the static path inside project_dungeon_row_to_overworld).
     m.raw_area = d.areaNo; m.raw_gx = d.gridXNo; m.raw_gz = d.gridZNo;
-    m.raw_px = d.posX; m.raw_pz = d.posZ;
+    {
+        float rpx = d.posX, rpz = d.posZ;
+        goblin::overlay_api::virtual_anchor_fix(d.areaNo, d.gridXNo, d.gridZNo, rpx, rpz);
+        m.raw_px = rpx; m.raw_pz = rpz;
+    }
     // Lot-backed loot (for anonymous_loot spoiler mode). Pieces/kindling are
     // geom/SFX-tracked, never a lot — exclude them (mirrors goblin_inject's is_lot).
     const auto cat = static_cast<gen::Category>(c);
@@ -2548,6 +2555,37 @@ void build_buckets_impl()
         std::vector<DiskCollectible> disk_collectibles = g_parsed.collectibles;
         std::vector<DiskEnemy> disk_enemies = g_parsed.enemies;
         dropped_dummy_lots = g_parsed.dropped_dummy_lots;
+        // Virtual-anchor insets (Roundtable-class): register per-tile BEFORE any marker push so
+        // every pass (treasures/collectibles/enemies/merchants) projects through the corrected
+        // frame. Anchor tile = a legacy tile whose live grace PARAM pos sits far (>500 m) from
+        // every Site-of-Grace ASSET (AEG099_060) in that tile's MSB — i.e. the param coords are
+        // the hand-placed VIRTUAL inset frame (m11_10 Roundtable: param (-2500,-650) vs the
+        // real interior assets at ~(-320,-300)). See goblin_inject.hpp virtual_anchor_*.
+        {
+            goblin::overlay_api::virtual_anchor_reset();
+            std::unordered_map<uint32_t, std::vector<std::pair<float, float>>> grace_assets;
+            for (const DiskCollectible &c : disk_collectibles)
+                if (c.aegRow == 99060)  // AEG099_060 = the Site-of-Grace asset model
+                    grace_assets[((uint32_t)c.area << 16) | ((uint32_t)c.gx << 8) | c.gz]
+                        .push_back({c.posX, c.posZ});
+            for (const goblin::LiveGrace &g : goblin::overlay_api::live_graces())
+            {
+                if (g.areaNo == 60 || g.areaNo == 61) continue;  // overworld graces: never insets
+                auto it = grace_assets.find(((uint32_t)g.areaNo << 16) |
+                                            ((uint32_t)g.gridXNo << 8) | g.gridZNo);
+                if (it == grace_assets.end()) continue;
+                float best = -1.f;
+                for (const auto &[ax, az] : it->second)
+                {
+                    const float dx = g.posX - ax, dz = g.posZ - az;
+                    const float d2 = dx * dx + dz * dz;
+                    if (best < 0.f || d2 < best) best = d2;
+                }
+                if (best > 500.0f * 500.0f)
+                    goblin::overlay_api::virtual_anchor_add(g.areaNo, g.gridXNo, g.gridZNo,
+                                                            g.posX, g.posZ, it->second);
+            }
+        }
         if (goblin::config::lootFromDiskMsb)
             build_disk_loot_markers(treasures, disk_lots, disk_lot_tile);
         // Cross-tile LOD treasures (non-_00 supertiles), indexed by lot for the baked-residual

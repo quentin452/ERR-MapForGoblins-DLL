@@ -191,6 +191,12 @@ namespace goblin::overlay_api
                           int &out_area, float &world_x, float &world_z,
                           bool conv_underground = false);
     GOBLIN_RENDER_API int marker_fragment_flag(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz);
+    // Virtual-anchor inset registry (Roundtable-class projection fix) — see goblin_inject.hpp.
+    GOBLIN_RENDER_API void virtual_anchor_reset();
+    GOBLIN_RENDER_API void virtual_anchor_add(uint8_t area, uint8_t gx, uint8_t gz, float paramX,
+                                              float paramZ,
+                                              const std::vector<std::pair<float, float>> &assetPos);
+    GOBLIN_RENDER_API void virtual_anchor_fix(uint8_t area, uint8_t gx, uint8_t gz, float &px, float &pz);
     // marker_group_from is `inline` in goblin_inject.hpp — compiles into both DLLs free, no wrapper.
     GOBLIN_RENDER_API int marker_cluster_key(uint8_t area, uint8_t gridX, uint8_t gridZ, float posX, float posZ,
                            int *out_pname = nullptr);

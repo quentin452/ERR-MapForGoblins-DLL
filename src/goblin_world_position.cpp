@@ -17,6 +17,7 @@
 #include <atomic>
 #include <cmath>
 #include <map>
+#include <mutex>
 #include <string>
 #include <vector>
 #include <spdlog/spdlog.h>
@@ -49,6 +50,63 @@
 // that conversion in-place to the injected row so its icon appears near the
 // dungeon entrance. Rows already on the overworld, or with no conv entry (legacy
 // dungeons that have their own page / unmappable), are untouched.
+// ── Virtual-anchor inset registry (see goblin_inject.hpp for the full rationale) ─────────
+// Tile → (grace param virtual pos, grace ASSET positions). Written once by the disk build
+// (map_entry_layer), read per-projection. A tiny mutex keeps the render-thread readers
+// (GraceLayer/quest pins) safe against the disk worker's registration; the lock is per
+// PROJECTION call (marker builds), not per frame.
+namespace
+{
+struct VirtualAnchorTile
+{
+    float paramX, paramZ;
+    std::vector<std::pair<float, float>> assets;
+};
+std::mutex g_va_mtx;
+std::map<uint32_t, VirtualAnchorTile> g_va;  // key = area<<16 | gx<<8 | gz
+} // namespace
+
+void goblin::virtual_anchor_reset()
+{
+    std::lock_guard<std::mutex> lk(g_va_mtx);
+    g_va.clear();
+}
+
+void goblin::virtual_anchor_add(uint8_t area, uint8_t gx, uint8_t gz, float paramX, float paramZ,
+                                const std::vector<std::pair<float, float>> &assetPos)
+{
+    if (assetPos.empty())
+        return;
+    std::lock_guard<std::mutex> lk(g_va_mtx);
+    g_va[((uint32_t)area << 16) | ((uint32_t)gx << 8) | gz] = VirtualAnchorTile{paramX, paramZ, assetPos};
+    spdlog::info("[VANCHOR] tile m{}_{}_{}: virtual grace ({:.0f},{:.0f}), {} anchor asset(s)",
+                 (int)area, (int)gx, (int)gz, paramX, paramZ, assetPos.size());
+}
+
+void goblin::virtual_anchor_fix(uint8_t area, uint8_t gx, uint8_t gz, float &px, float &pz)
+{
+    std::lock_guard<std::mutex> lk(g_va_mtx);
+    auto it = g_va.find(((uint32_t)area << 16) | ((uint32_t)gx << 8) | gz);
+    if (it == g_va.end())
+        return;
+    // Nearest grace asset — per-marker, so each stacked interior COPY anchors to ITS grace.
+    const VirtualAnchorTile &va = it->second;
+    float bestD2 = 0.0f, bestX = 0.0f, bestZ = 0.0f;
+    bool first = true;
+    for (const auto &[ax, az] : va.assets)
+    {
+        const float dx = px - ax, dz = pz - az;
+        const float d2 = dx * dx + dz * dz;
+        if (first || d2 < bestD2) { bestD2 = d2; bestX = ax; bestZ = az; first = false; }
+    }
+    // Far from every asset = already virtual-frame (the grace param itself) or an outlier
+    // parked outside the playable interior — leave untouched.
+    if (bestD2 > 500.0f * 500.0f)
+        return;
+    px = va.paramX + (px - bestX);
+    pz = va.paramZ + (pz - bestZ);
+}
+
 static bool project_dungeon_row_to_overworld(
     from::paramdef::WORLD_MAP_POINT_PARAM_ST *d,
     float *out_ent_x = nullptr, float *out_ent_z = nullptr,
@@ -56,6 +114,9 @@ static bool project_dungeon_row_to_overworld(
 {
     if (d->areaNo == 60 || d->areaNo == 61)
         return false;
+    // Virtual-anchor inset remap (Roundtable-class) BEFORE the fold: real interior coords →
+    // the hand-placed virtual frame the conv translation actually maps onto the inset artwork.
+    goblin::virtual_anchor_fix(d->areaNo, d->gridXNo, d->gridZNo, d->posX, d->posZ);
     // INJECTION (conv_underground=false): area 12 / 40-43 have their OWN native world-map
     // page, so keep them native (projecting them onto the overworld surface lands them "in
     // the sea"). OVERLAY (conv_underground=true): the agent's RE proved underground SHARES

@@ -191,6 +191,26 @@ namespace goblin
     // require_map_fragments gate — the raw tile misses dungeon-interior cells → leaks.
     int marker_fragment_flag(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz);
 
+    // ── Virtual-anchor insets (the Roundtable-class projection fix, 2026-07-07) ──────────
+    // Some legacy maps are drawn as a small INSET on the overworld page whose icon params
+    // carry hand-placed VIRTUAL coordinates: the Roundtable grace's BonfireWarpParam pos is
+    // (-2500,-650) — ~2200 m from the real interior (~(-320,-300)) — placed so the m11_10
+    // WorldMapLegacyConvParam translation lands it ON the inset artwork (engine proj u≈664).
+    // REAL MSB coordinates were never meant to fold (they land ~2200 uv off-artwork). The fix:
+    // remap a real-coordinate marker into the virtual frame relative to its NEAREST Site-of-
+    // Grace ASSET (AEG099_060):  virtual = grace_param_pos + (marker − nearest_grace_asset).
+    // Per-marker nearest-asset also collapses the map's stacked interior COPIES (normal +
+    // burning hold, each with its own grace asset) onto the one inset. Registered per tile by
+    // the disk build (needs MSB asset positions); applied inside the projection ONLY when the
+    // marker is within 500 m of an anchor asset — a position already in the virtual frame
+    // (the grace param itself) is far from every asset and passes through untouched.
+    void virtual_anchor_reset();
+    void virtual_anchor_add(uint8_t area, uint8_t gx, uint8_t gz, float paramX, float paramZ,
+                            const std::vector<std::pair<float, float>> &assetPos);
+    // Remap (px,pz) into the tile's virtual frame if an anchor applies. Idempotent-safe
+    // (virtual-frame inputs are >500 m from every asset → untouched). Cheap; thread-safe.
+    void virtual_anchor_fix(uint8_t area, uint8_t gx, uint8_t gz, float &px, float &pz);
+
     // (marker_fogged removed — the WorldMapPieceParam "fog" was the map-fragment region reveal,
     // redundant with require_map_fragments. A per-tile walk-fog gate was prototyped and dropped
     // (non-issue in normal play). RE kept in docs/re/windows_worldmap_tile_fog_re_findings.md.)

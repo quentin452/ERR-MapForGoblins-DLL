@@ -53,6 +53,13 @@ const ConvRow *lookup(uint8_t area, uint8_t gx, uint8_t gz) {
         int d = dgx + dgz;
         if (d < best_dist) { best_dist = d; best = &c; }
     }
+    // A same-area base point MANY blocks away is a DIFFERENT dungeon, not this one's off-base
+    // marker (multi-tile dungeons span 1-2 blocks). Unbounded, ERR's Roundtable copy m31_90
+    // matched the m31_22 catacomb 68 blocks away, snapped out-of-range, and dumped every
+    // m31_90 item/merchant marker at that catacomb's entrance (user-caught 2026-07-07).
+    // No match ⇒ the caller treats the map as unmappable (markers stay raw/off-map = hidden).
+    if (best && best_dist > 6)
+        return nullptr;
     return best;
 }
 

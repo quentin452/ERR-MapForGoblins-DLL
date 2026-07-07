@@ -233,6 +233,16 @@ namespace goblin::overlay_api
     {
         return goblin::marker_fragment_flag(areaNo, gx, gz, px, pz);
     }
+    void virtual_anchor_reset() { goblin::virtual_anchor_reset(); }
+    void virtual_anchor_add(uint8_t area, uint8_t gx, uint8_t gz, float paramX, float paramZ,
+                            const std::vector<std::pair<float, float>> &assetPos)
+    {
+        goblin::virtual_anchor_add(area, gx, gz, paramX, paramZ, assetPos);
+    }
+    void virtual_anchor_fix(uint8_t area, uint8_t gx, uint8_t gz, float &px, float &pz)
+    {
+        goblin::virtual_anchor_fix(area, gx, gz, px, pz);
+    }
     int marker_cluster_key(uint8_t area, uint8_t gridX, uint8_t gridZ, float posX, float posZ, int *out_pname)
     {
         return goblin::marker_cluster_key(area, gridX, gridZ, posX, posZ, out_pname);
