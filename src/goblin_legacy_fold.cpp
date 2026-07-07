@@ -150,7 +150,12 @@ Folded fold(uint8_t area, uint8_t gx, uint8_t gz, float posX, float posZ) {
             // Ashen/Elden Throne 19/34/35), lift it INTO its parent frame via that row's inverse, then
             // retry — the parent (area 11) does have a forward row to the overworld terminal (a60). This
             // is what fixes Elden Beast / Fractured Marika / all Ashen-Capital markers folding to (0,0).
-            const ConvRow *rev = reverse_lookup(a);
+            // ONLY for areas with ZERO forward rows (the true dead-ends): an area that HAS forward
+            // rows but no row for THIS block (ERR's Roundtable copy m31_90 in the catacomb area 31)
+            // must stay unmatched, not get lifted through an unrelated row — area 31 is a dst of
+            // m14→m31_6 (row 135, the Academy waygate exit), so m31_90 was lifted into the Academy
+            // frame, overflowed, and snapped every marker onto the Academy's map anchor (8848,11714).
+            const ConvRow *rev = g_by_area.count(a) ? nullptr : reverse_lookup(a);
             if (rev) {
                 wx += (rev->src_gx * 256.0 + rev->src_px) - (rev->dst_gx * 256.0 + rev->dst_px);
                 wz += (rev->src_gz * 256.0 + rev->src_pz) - (rev->dst_gz * 256.0 + rev->dst_pz);
