@@ -785,6 +785,12 @@ __declspec(noinline) static void probe_map_pos_body(uintptr_t mapid_slot, uintpt
     auto *mgr = *reinterpret_cast<uint8_t **>(mgr_slot);
     if (!singleton || !mgr) return;
     uint32_t mid = *reinterpret_cast<uint32_t *>(singleton + 0x2c);
+    // Area byte 0 = INVALID MapId: a transient mid-streaming write, or the player is outside
+    // any tile (void). Treating it as valid made get_player_raw_pos report grid(0,0)*256+local
+    // — i.e. the LOCAL coords as "world" — and warp_xyz's delta math then teleported the player
+    // ~11 km into unstreamed void, poisoning the save at the void position (2026-07-07). No real
+    // ER map has area 0, so reject and leave pr->ok false (callers report "unresolved").
+    if (((mid >> 24) & 0xff) == 0) return;
     pr->area = (mid >> 24) & 0xff;
     pr->gx   = (mid >> 16) & 0xff;
     pr->gz   = (mid >> 8)  & 0xff;
@@ -932,7 +938,8 @@ bool goblin::get_player_raw_pos(int &out_area, float &wx, float &wz)
 {
     if (!g_mappos_tried) resolve_player_map_pos_statics();
     if (!g_wcm_tried) resolve_world_chr_man();
-    if (!g_mapid_slot || !g_wcm_static) return false;
+    // Guard ALL three statics (parity with get_player_map_pos) — the probe derefs mgr_slot too.
+    if (!g_mapid_slot || !g_mappos_mgr_slot || !g_wcm_static) return false;
     MapPosProbe pr{};
     probe_map_pos_seh(g_mapid_slot, g_mappos_mgr_slot, &pr);
     PlayerProbe pp{};

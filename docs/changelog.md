@@ -21,7 +21,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ## [Unreleased]
 
-_Nothing yet — the next cycle's entries go here._
+### Fixed
+
+- Coordinate teleport (`warp_local`/`warp_xyz`, vmap click-to-warp; v2.2.0) could jump the player
+  kilometres into unstreamed void when the player-MapId read was transiently invalid (area byte 0)
+  — free-fall to the kill plane, and the autosave then poisoned the slot so every subsequent load
+  wedged on the loading screen. Invalid MapId reads are now rejected (the warp errors instead of
+  moving) and the teleport itself refuses any jump past the ~1500 m streaming gate. An
+  already-poisoned save is repaired by restoring the newest healthy snapshot from the launcher's
+  `ERR Backups/` folder next to the save file.
 
 ## [v2.2.0] - 2026-07-07
 

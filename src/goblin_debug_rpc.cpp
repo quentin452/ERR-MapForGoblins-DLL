@@ -1609,7 +1609,7 @@ namespace goblin::debug_rpc
                 try { x = std::stof(xs); y = std::stof(ys); z = std::stof(zs); }
                 catch (...) { return "err bad x/y/z"; }
                 if (!goblin::warp::teleport_coords(x, y, z))
-                    return "err teleport failed (unresolved / not in-world?)";
+                    return "err teleport failed (not in-world / target >1500m = streaming gate)";
                 float rx = 0, ry = 0, rz = 0; goblin::get_player_world_pos(rx, ry, rz);  // read-back
                 char b[160];
                 std::snprintf(b, sizeof(b),

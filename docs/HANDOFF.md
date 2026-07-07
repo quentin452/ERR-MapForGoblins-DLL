@@ -3,6 +3,41 @@
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
 
+## ⇒ 2026-07-07 (Windows) — ★ coord-teleport VOID bug (v2.2.0) FIXED + save-wedge RESCUE procedure; coop NPC-phantom test attempt 1 aborted
+
+- **INCIDENT (first headless coop run, 17:24):** `warp_xyz`'s internal `get_player_raw_pos` read the
+  player MapId as 0 (a TRANSIENT invalid read — 3 s earlier `coords`/`get_player_map_pos` resolved
+  grid 42,35 fine) → `probe_map_pos_body` decoded area=0 grid(0,0) with `ok=true` → raw "world" =
+  `0*256 + local` = the LOCAL coords → warp_xyz's delta math teleported the player **~11 km outside
+  the tile** (unstreamed void) → free-fall past the kill plane → **the autosave during the fall
+  poisoned `ER0000.err`** → every subsequent Continue wedged forever on the loading screen
+  (LocalPlayer null, present thread alive — the streamer chases an unreachable position).
+- **✅ SAVE-WEDGE RESCUE (durable procedure, used successfully):** the ERR launcher keeps per-session
+  save snapshots in `%APPDATA%/EldenRing/<steamid>/ERR Backups/` (`YY-MM-DD--HH-MM-SS--ER0000.err`).
+  A wedged load never writes saves, so the snapshots stay clean: copy the newest PRE-incident
+  snapshot over `ER0000.err` (+ `.err.bak` — the game's own bak was byte-identical-poisoned).
+  Poisoned copy preserved as `ER0000.err.POISONED-void-20260707-repro` (same dir) — deliberate
+  repro material for the load-rescue RE below.
+- **✅ FIX SHIPPED (both builds green, deployed 2026-07-07):** (1) `probe_map_pos_body` rejects a
+  MapId with area byte 0 (no real ER map; transient mid-streaming write or void) → `ok=false`, so
+  `get_player_raw_pos`/`get_player_map_pos` report unresolved and warp_xyz errs instead of computing
+  garbage; (2) `get_player_raw_pos` now guards `g_mappos_mgr_slot` (parity with map_pos); (3)
+  `teleport_coords` REFUSES NaN targets and any delta past **`kMaxTeleportDelta` = 1500 m** (the
+  streaming gate) — enforced at the LAST writer, so no caller (RPC `warp_local`/`warp_xyz`, vmap
+  click-to-warp) can void-jump regardless of upstream frame bugs. Changelog Fixed entry added.
+- **★ FOLLOW-UP (user-requested): load-time spawn rescue — "if the save's spawn is invalid,
+  teleport to the First Step".** A save poisoned by OTHER means still wedges the load (the guard
+  only stops OUR teleports from creating one). Needs RE: where the load-time pending spawn
+  position lives (LocalPlayer is null during the wedge, so the body-write path can't rescue).
+  Recipe: restore the preserved POISONED save → boot to the wedge → `mem_scan_f3` for the void
+  position floats (the listener answers during the wedge; the streamer holds the target in memory)
+  → `mem_write` a sane position → if the load completes, that struct = the hook point for an
+  automatic invalid-spawn → First-Step rescue at load time.
+- **Coop NPC-phantom test:** attempt 1 aborted by the incident (before reaching the corridor).
+  v2 driver ready (session scratchpad `coop_test/drive_coop_test_v2.py`): `coords`+`warp_local`
+  self-computed deltas (never `warp_xyz`), ≤40 m hops, per-hop world-position verification, halts
+  on first anomaly. Retry pending a relaunch.
+
 **Housekeeping (2026-07-03, done):** file had grown to 1254 lines, mostly narrative for work already
 merged, changelog'd, and in-game verified. Compacted to genuinely live/in-progress work, open
 questions, and standing knowledge (gotchas, deferred decisions, non-obvious facts) not captured

@@ -135,7 +135,16 @@ __declspec(noinline) static uint8_t *resolve_body_vec(uint8_t *lp)
     auto *pos = *reinterpret_cast<uint8_t **>(mod + 0x68);   // position holder
     return pos ? pos + 0x70 : nullptr;                        // &Vec3 (X @ +0x70, Y +0x74, Z +0x78)
 }
-__declspec(noinline) static void teleport_body_body(uint8_t *lp, float tx, float ty, float tz, bool *ok)
+// Max tile-local delta a coordinate teleport may apply, metres. Open-world streaming follows
+// ~1500 m of hop (goblin_inject.hpp, write_player_local_pos note); past that the target is
+// unstreamed VOID — the player free-falls, hits the kill plane, and the save gets poisoned at
+// the void position (2026-07-07 incident: a bad frame resolve asked for an ~11 km jump; the
+// resulting save wedged every subsequent load). Validate the warp here, at the LAST writer,
+// so no caller (RPC warp_local/warp_xyz, vmap click-to-warp) can void-jump.
+constexpr float kMaxTeleportDelta = 1500.0f;
+
+__declspec(noinline) static void teleport_body_body(uint8_t *lp, float tx, float ty, float tz,
+                                                    bool *ok, bool *refused)
 {
     uint8_t *vec = resolve_body_vec(lp);
     if (!vec) return;
@@ -147,15 +156,24 @@ __declspec(noinline) static void teleport_body_body(uint8_t *lp, float tx, float
     float lx = *reinterpret_cast<float *>(lp + 0x6C0);
     float ly = *reinterpret_cast<float *>(lp + 0x6C4);
     float lz = *reinterpret_cast<float *>(lp + 0x6C8);
+    float dx = tx - lx, dy = ty - ly, dz = tz - lz;
+    // NaN targets (x != x) and beyond-streaming-gate jumps are invalid — refuse, don't move.
+    if (!(dx == dx && dy == dy && dz == dz) ||
+        dx * dx + dz * dz > kMaxTeleportDelta * kMaxTeleportDelta ||
+        dy < -kMaxTeleportDelta || dy > kMaxTeleportDelta)
+    {
+        *refused = true;
+        return;
+    }
     reinterpret_cast<float *>(vec)[0] = tx - (lx - hx);
     reinterpret_cast<float *>(vec)[1] = ty - (ly - hy);
     reinterpret_cast<float *>(vec)[2] = tz - (lz - hz);
     *ok = true;
 }
-static bool teleport_body_seh(uint8_t *lp, float tx, float ty, float tz)
+static bool teleport_body_seh(uint8_t *lp, float tx, float ty, float tz, bool *refused)
 {
     bool ok = false;
-    __try { teleport_body_body(lp, tx, ty, tz, &ok); }
+    __try { teleport_body_body(lp, tx, ty, tz, &ok, refused); }
     __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
     return ok;
 }
@@ -169,7 +187,16 @@ bool teleport_coords(float x, float y, float z)
         spdlog::warn("[WARP] LocalPlayer null (loading / not in-world) — teleport_coords skipped");
         return false;
     }
-    bool ok = teleport_body_seh(lp, x, y, z);
+    bool refused = false;
+    bool ok = teleport_body_seh(lp, x, y, z, &refused);
+    if (refused)
+    {
+        spdlog::warn("[WARP] teleport_coords REFUSED — target ({:.1f},{:.1f},{:.1f}) is more than "
+                     "{:.0f} m from the player (streaming gate; a farther jump lands in unstreamed "
+                     "void). Use the grace warp for cross-map travel.",
+                     x, y, z, kMaxTeleportDelta);
+        return false;
+    }
     spdlog::info("[WARP] teleport_coords ({:.2f},{:.2f},{:.2f}) lp={} -> {}",
                  x, y, z, (void *)lp, ok ? "moved" : "FAULTED");
     return ok;
