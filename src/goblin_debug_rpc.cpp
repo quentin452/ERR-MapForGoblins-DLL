@@ -452,7 +452,7 @@ namespace goblin::debug_rpc
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp coords warp_local warp_xyz warp_far we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
-                       " | hp immortal exit mfg_build er_base er_version proj mem_dump mem_write mem_scan_f3 mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset spawn_cap4e80 spawn_capreg add_collision hf_probe hf_probe_present hf_sample hf_shape_probe ground_at far_relief_probe far_relief w2s_probe"
+                       " | hp immortal exit mfg_build er_base er_version proj mem_dump mem_write mem_scan_f3 mem_scan_u32 mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset spawn_cap4e80 spawn_capreg add_collision hf_probe hf_probe_present hf_sample hf_shape_probe ground_at far_relief_probe far_relief w2s_probe"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
             if (cmd == "idlediag")
@@ -1837,6 +1837,60 @@ namespace goblin::debug_rpc
                              scanned >> 20, nhits, hits);
                 char head[96];
                 std::snprintf(head, sizeof(head), "ok mem_scan_f3 hits=%d scanned=%lluMB |", nhits,
+                              (unsigned long long)(scanned >> 20));
+                return std::string(head) + (hits.empty() ? " none" : hits);
+            }
+            // mem_scan_u32 <hexval> [max] — scan committed PRIVATE rw pages for a 4-byte-aligned
+            // u32 (e.g. a MapId dword 0x3C2A2300 = m60_42_35). The load-wedge RE tool: during a
+            // wedged loading screen, find every struct holding the mapId the load is chasing,
+            // then mem_dump the neighborhoods for the position floats. Walk/caps = mem_scan_f3.
+            if (cmd == "mem_scan_u32")
+            {
+                std::string vs = next_token(rest), ms = next_token(rest);
+                if (vs.empty()) return "err usage: mem_scan_u32 <hexval> [max]";
+                uint32_t needle = 0; int maxhits = 32;
+                try
+                {
+                    needle = static_cast<uint32_t>(std::stoul(vs, nullptr, 0));
+                    if (!ms.empty()) maxhits = std::stoi(ms);
+                }
+                catch (...) { return "err bad args"; }
+                if (maxhits > 64) maxhits = 64;
+                std::string hits;
+                int nhits = 0;
+                uint64_t scanned = 0;
+                const uint64_t kMaxScan = 6ull << 30;
+                std::vector<unsigned char> page;
+                MEMORY_BASIC_INFORMATION mbi{};
+                for (uint8_t *p = nullptr;
+                     VirtualQuery(p, &mbi, sizeof(mbi)) == sizeof(mbi) && nhits < maxhits && scanned < kMaxScan;
+                     p = (uint8_t *)mbi.BaseAddress + mbi.RegionSize)
+                {
+                    const bool rw = mbi.State == MEM_COMMIT && mbi.Type == MEM_PRIVATE &&
+                                    (mbi.Protect == PAGE_READWRITE || mbi.Protect == PAGE_EXECUTE_READWRITE);
+                    if (!rw || mbi.RegionSize > (1ull << 30)) continue;
+                    page.resize(mbi.RegionSize);
+                    SIZE_T got = 0;
+                    if (!ReadProcessMemory(GetCurrentProcess(), mbi.BaseAddress, page.data(), mbi.RegionSize, &got) || got < 4)
+                        continue;
+                    scanned += got;
+                    const uint32_t *u = reinterpret_cast<const uint32_t *>(page.data());
+                    const size_t n = got / 4;
+                    for (size_t i = 0; i < n && nhits < maxhits; ++i)
+                    {
+                        if (u[i] == needle)
+                        {
+                            char hb[32];
+                            std::snprintf(hb, sizeof(hb), " %#llx",
+                                          (unsigned long long)((uintptr_t)mbi.BaseAddress + i * 4));
+                            hits += hb;
+                            ++nhits;
+                        }
+                    }
+                }
+                spdlog::info("[SCANU32] {:#x} scanned={}MB hits={}:{}", needle, scanned >> 20, nhits, hits);
+                char head[96];
+                std::snprintf(head, sizeof(head), "ok mem_scan_u32 hits=%d scanned=%lluMB |", nhits,
                               (unsigned long long)(scanned >> 20));
                 return std::string(head) + (hits.empty() ? " none" : hits);
             }

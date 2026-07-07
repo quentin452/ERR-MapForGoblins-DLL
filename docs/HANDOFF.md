@@ -44,14 +44,39 @@ Committed code + `docs/changelog.md` are the record of DONE; this file tracks WH
   [y_hint]`** exposes the check for drivers/pathing (rpc-commands.md updated). Both builds green,
   deployed. ⚠ not yet live-verified (needs the next boot: `ground_at` at a known-ground spot =
   hit, over the lake middle = miss, and a `warp_local` into the lake = refused).
-- **★ FOLLOW-UP (user-requested): load-time spawn rescue — "if the save's spawn is invalid,
-  teleport to the First Step".** A save poisoned by OTHER means still wedges the load (the guard
-  only stops OUR teleports from creating one). Needs RE: where the load-time pending spawn
-  position lives (LocalPlayer is null during the wedge, so the body-write path can't rescue).
-  Recipe: restore a preserved POISONED save → boot to the wedge → `mem_scan_f3` for the void
-  position floats (the listener answers during the wedge; the streamer holds the target in memory)
-  → `mem_write` a sane position → if the load completes, that struct = the hook point for an
-  automatic invalid-spawn → First-Step rescue at load time.
+- **★★ LOAD-WEDGE LIVE RE (2026-07-07 evening, wedge #3 as the lab) — "warp inconnu" CONFIRMED:**
+  1. **ISOLATION: the ENGINE ALONE wedges** — same infinite load with `MapForGoblins.dll` renamed
+     away (user-verified). Our DLL is cleared as the wedge cause; the save content is genuinely
+     unloadable. (Also cleared en route: the `[GRACE-FORCE]` CreateImage pump — runs ~2.5k/min
+     ALWAYS incl. healthy sessions, `dumpIconTextures` dev flag is ON in this box's ini — and a
+     leftover GEOMPROBE auto-arm FWA on `CSWorldGeomIns.alive` (12 hits total, no storm).)
+  2. **The engine's CURRENT-MAP during the wedge is INVALID: singleton+0x2c = `0x000B0000` (area
+     0, no such map), +0x28 = `0xFFFFFFFF`.** Read live via the boot-log slot addr
+     (`[PLAYER] map-pos statics: mapId-slot …` → \*slot → +0x2c). This is the user's "warp
+     inconnu", byte-exact: the load chases a map that does not exist.
+  3. **It is write-ONCE:** a `mem_fwa <singleton+0x2c> 4 w` armed DURING the wedge catches nothing
+     (the value was stored at load start; the loop only reads). **→ the writer catch needs the
+     watch armed BEFORE clicking Continue.**
+  4. **The singleton is a DERIVED mirror:** `mem_write`ing a valid `0x3C2A2300` into +0x2c sticks
+     (readback ok) but the load does NOT proceed — the authority is the save-side field upstream.
+  5. **PlayerGameData (EGD−0x2B0) 64KB dump has NO (mapId, position) pair** (analyzer: 36 mapId
+     candidates, 784 float triples, zero adjacency) — the "where am I" block lives elsewhere
+     (GameDataMan sub-struct / session side).
+  6. **Scan gotchas:** `mem_scan_u32` self-hits its own RPC/log buffers (the needle echoes —
+     filter hits near ASCII "mem_scan_u32"); `0x000B0000` as a needle is too common (64 hits in
+     54MB). The differential scan (before/after Continue) works but needs self-hit filtering.
+  7. **Root-cause chain (fits all 3 incidents):** body-teleport/fall OUTSIDE mapped volumes → the
+     engine's current-map tracker goes INVALID (area 0) → an autosave lands while invalid → the
+     save records an unloadable location → every Continue wedges. Vanilla falls never do this
+     (kill-plane respawn resolves before a save with a valid map). Our ground-check guard
+     (d7ba8b3) prevents OUR warps from starting the chain.
+- **★ NEXT (load-rescue, one boot cycle with a repro save):** restore a POISONED save
+  (`ER0000.err.POISONED-void-…` / `…-lakefall-…` next to the save dir; launcher snapshots
+  18:26:34/18:36/18:37 are ALSO poisoned lineage — do NOT restore those) → boot → **arm
+  `mem_fwa <mapId-singleton+0x2c> 4 w` BEFORE Continue** → click Continue → the [FWA] writer RIP
+  + callers = the copy from the save-side source → Ghidra (`D:\ghidra_proj2\ER`) the writer fn →
+  the authoritative field → `mem_write` THAT during a wedge to prove the rescue → then implement
+  the automatic invalid-spawn → First-Step rescue in the DLL (the user's original ask).
 - **✅ "MINIMAP TOUTE PETITE" = NOT a code regression (user suspected 052af9e/88cbbf1 — cleared):**
   both commits were already live during the 16:46 audit + the user's OK'd visual check, and
   neither touches minimap sizing (`R = cfg::minimapSize × screenH/1080`). Root cause = this
