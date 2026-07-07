@@ -112,19 +112,10 @@ namespace goblin::sig
     // pins it UNIQUE (offline exe scan confirmed 1 match). Was MULTI, now unique.
     inline constexpr const char *CS_LUA_EVENT_MANAGER =
         "48 8B 05 ?? ?? ?? ?? 48 85 C0 74 ?? 41 BE 01 00 00 00 44 89 75 ?? 48 8B";
-
-    // ChrIns SetPos — the engine's coordinate-teleport entry (er+0xdc6380, RE
-    // docs/re/linux_player_pos_write_setpos_re_findings.md). ABI (MSVC x64):
-    //   void SetPos(rcx=ChrIns, rdx=&PosStruct, r8=name-or-null, r9b=hardSet)
-    // Reads a 16-byte xmmword at [rdx+0x30] = {x,y,z,yaw} and stores it to ChrIns+0x6C0
-    // (so the 4th float overwrites +0x6CC = yaw — pass the current yaw to keep facing),
-    // ARMS the pending-teleport bit (ChrIns+0x160 |= 0x80), then calls the propagate fn
-    // FUN_140dc6e90 which registers the warp so the per-frame consumer (FUN_140dc6600)
-    // drives the physics body there. This is why a RAW +0x6C0 store snaps back — +0x6C0 is
-    // an output mirror; only SetPos arms 0x80 + propagates. r8=null is safe (the propagate
-    // fn substitutes a default name). Entry AOB is UNIQUE on ERRv2.2.9.6 (offline scan = 1).
-    inline constexpr const char *SETPOS =
-        "48 83 EC 38 80 89 60 01 00 00 80 0F 28 42 30 0F 11 81 C0 06 00 00";
+    // (No coordinate-teleport AOB needed: teleport_coords writes the player's HAVOK BODY Vec3 at
+    //  *(*(LocalPlayer+0x190)+0x68)+0x70 directly — struct offsets, no engine fn. The engine
+    //  SetPos path (er+0xdc6380) was RE'd but does NOT complete the warp from the RPC thread; the
+    //  direct body write is er_console_mod's proven method. See linux_player_pos_write_setpos.)
 
     // ── Live param + message repositories (SoloParamRepository / MsgRepositoryImp) ──
     // Param list address (get_param). relative_offsets {{3,7}}.
@@ -450,7 +441,6 @@ namespace goblin::sig
             {"SERIALIZE_FN", SERIALIZE_FN},
             {"LUA_WARP", LUA_WARP},
             {"CS_LUA_EVENT_MANAGER", CS_LUA_EVENT_MANAGER},
-            {"SETPOS", SETPOS},
             {"SOLO_PARAM_LIST", SOLO_PARAM_LIST},
             {"MSG_REPOSITORY", MSG_REPOSITORY},
             {"GETMESSAGE", GETMESSAGE},

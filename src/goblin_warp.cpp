@@ -21,13 +21,8 @@ namespace
 // r8d = graceId - 1000. Return value unused (the CT stub discards it).
 using LuaWarpFn = uint64_t(*)(void *a, void *b, uint32_t code);
 
-// ChrIns SetPos(rcx=ChrIns, rdx=&PosStruct, r8=name-or-null, r9b=hardSet). See the SETPOS
-// AOB comment in re_signatures.hpp for the full ABI + why it beats a raw +0x6C0 store.
-using SetPosFn = void(*)(void *chr, void *pos_struct, void *name, uint8_t hard_set);
-
 LuaWarpFn g_warp = nullptr;
 void **g_lem_slot = nullptr;   // *g_lem_slot == CSLuaEventManager (re-read each call)
-SetPosFn g_setpos = nullptr;
 std::atomic<bool> g_ready{false};
 }  // namespace
 
@@ -44,13 +39,9 @@ void initialize()
         int32_t disp = *reinterpret_cast<int32_t *>(m + 3);
         g_lem_slot = reinterpret_cast<void **>(m + 7 + disp);
     }
-    // ChrIns SetPos — the coordinate-teleport entry (SETPOS AOB anchors the fn ENTRY directly).
-    if (auto *m = reinterpret_cast<uint8_t *>(modutils::scan<void>({.aob = goblin::sig::SETPOS})))
-        g_setpos = reinterpret_cast<SetPosFn>(m);
     g_ready.store(true);
-    spdlog::info("[WARP] LuaWarp_01={} CSLuaEventManager_slot={} SetPos={} ({})", (void *)g_warp,
-                 (void *)g_lem_slot, (void *)g_setpos,
-                 (g_warp && g_lem_slot) ? "OK" : "MISS");
+    spdlog::info("[WARP] LuaWarp_01={} CSLuaEventManager_slot={} ({})", (void *)g_warp,
+                 (void *)g_lem_slot, (g_warp && g_lem_slot) ? "OK" : "MISS");
 }
 
 // The raw game call, isolated so the caller's __try wraps a lone opaque CALL (clang-cl keeps
@@ -125,49 +116,62 @@ bool to_grace(int32_t grace_id, int32_t offset)
     return ok;
 }
 
-// The raw engine SetPos call, isolated so the caller's __try wraps a lone opaque CALL
-// (clang-cl keeps that; a __try around inline loads/stores gets elided — clang-cl-seh-noinline).
-__declspec(noinline) static bool call_setpos(void *chr, void *pos_struct)
+// Coordinate teleport = write the player's HAVOK PHYSICS BODY position directly, the way
+// er_console_mod's `tp` does (RE'd from its DLL 2026-07-07, live-verified on ERRv2.2.9.6). The
+// authoritative body pos is a Vec3 at:
+//     posObj = *(*(LocalPlayer + 0x190 /*chr module*/) + 0x68);  Vec3 @ posObj + 0x70/0x74/0x78
+// Writing it MOVES the body and HOLDS (unlike LocalPlayer+0x6C0, an output mirror the physics
+// thread reclaims each frame — that snap-back was the old warp_local/warp_xyz bug). The body's
+// frame is havok/physics-block-local, offset from the LocalPlayer+0x6C0 tile-local frame by a
+// per-block origin — but the two differ only by a translation, so a DELTA maps 1:1 (verified live:
+// havok X += 20 → tile-local X += 20). So to reach a tile-local target we convert:
+//     havok_target = target - (tile_now - havok_now).
+// Same noinline-body + SEH shape as the other raw player writes (clang-cl SEH-elision guard).
+struct BodyPos { float x, y, z; };
+__declspec(noinline) static uint8_t *resolve_body_vec(uint8_t *lp)
 {
-    __try
-    {
-        // r8=null → the propagate fn substitutes a default name; r9b=1 = hard set (matches the
-        // engine's own legit caller at er+0xda797b).
-        g_setpos(chr, pos_struct, nullptr, 1);
-        return true;
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER)
-    {
-        return false;
-    }
+    auto *mod = *reinterpret_cast<uint8_t **>(lp + 0x190);   // ChrIns physics module (same +0x190 as HP)
+    if (!mod) return nullptr;
+    auto *pos = *reinterpret_cast<uint8_t **>(mod + 0x68);   // position holder
+    return pos ? pos + 0x70 : nullptr;                        // &Vec3 (X @ +0x70, Y +0x74, Z +0x78)
+}
+__declspec(noinline) static void teleport_body_body(uint8_t *lp, float tx, float ty, float tz, bool *ok)
+{
+    uint8_t *vec = resolve_body_vec(lp);
+    if (!vec) return;
+    // Current havok body pos + current tile-local pos → the per-block frame offset, then write the
+    // delta-converted target back into the body vec.
+    float hx = reinterpret_cast<float *>(vec)[0];
+    float hy = reinterpret_cast<float *>(vec)[1];
+    float hz = reinterpret_cast<float *>(vec)[2];
+    float lx = *reinterpret_cast<float *>(lp + 0x6C0);
+    float ly = *reinterpret_cast<float *>(lp + 0x6C4);
+    float lz = *reinterpret_cast<float *>(lp + 0x6C8);
+    reinterpret_cast<float *>(vec)[0] = tx - (lx - hx);
+    reinterpret_cast<float *>(vec)[1] = ty - (ly - hy);
+    reinterpret_cast<float *>(vec)[2] = tz - (lz - hz);
+    *ok = true;
+}
+static bool teleport_body_seh(uint8_t *lp, float tx, float ty, float tz)
+{
+    bool ok = false;
+    __try { teleport_body_body(lp, tx, ty, tz, &ok); }
+    __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
+    return ok;
 }
 
 bool teleport_coords(float x, float y, float z)
 {
-    if (!g_ready.load()) initialize();
-    if (!g_setpos) { spdlog::warn("[WARP] SetPos unresolved — teleport_coords skipped"); return false; }
-
-    // Re-entrancy / not-in-world guard (same rationale as to_grace): LocalPlayer is null during a
-    // load, and get_player_world_pos returns false exactly then. It also hands us the LIVE yaw so we
-    // preserve the player's facing (SetPos copies the 4th struct float over +0x6CC = yaw).
-    void *lp = goblin::get_local_player_ptr();
+    // LocalPlayer is null during a load / at the menu — the not-in-world + re-entrancy guard.
+    auto *lp = reinterpret_cast<uint8_t *>(goblin::get_local_player_ptr());
     if (!lp)
     {
         spdlog::warn("[WARP] LocalPlayer null (loading / not in-world) — teleport_coords skipped");
         return false;
     }
-    float yaw = 0.0f;
-    goblin::get_player_facing_yaw(yaw);   // best-effort; 0 if unresolved (harmless default facing)
-
-    // PosStruct: SetPos reads only the 16-byte xmmword at +0x30. Give it a zeroed 0x40 block with
-    // the target {x, y, z, yaw} at +0x30 (w=yaw so facing is kept). 16-byte aligned for the movaps.
-    alignas(16) uint8_t pos_struct[0x40] = {};
-    float *p = reinterpret_cast<float *>(pos_struct + 0x30);
-    p[0] = x; p[1] = y; p[2] = z; p[3] = yaw;
-
-    bool ok = call_setpos(lp, pos_struct);
-    spdlog::info("[WARP] teleport_coords ({:.2f},{:.2f},{:.2f}) yaw={:.3f} lp={} -> {}",
-                 x, y, z, yaw, lp, ok ? "called" : "FAULTED");
+    bool ok = teleport_body_seh(lp, x, y, z);
+    spdlog::info("[WARP] teleport_coords ({:.2f},{:.2f},{:.2f}) lp={} -> {}",
+                 x, y, z, (void *)lp, ok ? "moved" : "FAULTED");
     return ok;
 }
 }  // namespace goblin::warp

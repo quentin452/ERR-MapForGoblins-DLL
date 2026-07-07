@@ -27,13 +27,14 @@ namespace goblin::warp
     bool to_grace(int32_t grace_id, int32_t offset = 0);
 
     // Coordinate teleport — move the player to (x,y,z) in the LocalPlayer+0x6C0 tile-local frame
-    // (the same frame get_player_world_pos reads and warp_local/warp_xyz use). Unlike a raw +0x6C0
-    // store (an OUTPUT MIRROR the physics thread rewrites → snaps back), this calls the engine's
-    // ChrIns SetPos (er+0xdc6380, SETPOS AOB): it stages +0x6C0, arms the pending-teleport bit
-    // (+0x160|0x80), and propagates so the body actually moves. The player's current facing (yaw @
-    // +0x6CC) is preserved. Intra-region only — a far cross-map target may land in unstreamed void
-    // (use to_grace for a full area-load). SEH-guarded; called on the current thread (RPC/present),
-    // the same safe point to_grace uses. Returns false if unresolved, not in-world, or the call
-    // faulted. RE: docs/re/linux_player_pos_write_setpos_re_findings.md.
+    // (the same frame get_player_world_pos reads and warp_local/warp_xyz use). Writes the player's
+    // HAVOK PHYSICS BODY Vec3 directly (`*(*(LocalPlayer+0x190)+0x68)+0x70/74/78`), the way
+    // er_console_mod's `tp` does — this MOVES the body and HOLDS, unlike a raw +0x6C0 store (an
+    // OUTPUT MIRROR the physics thread reclaims each frame → snap-back, the old warp bug). The body
+    // frame is offset from the tile-local frame by a per-block origin, so we convert by delta
+    // (havok_target = target - (tile_now - havok_now)). Intra-region only — a far cross-map target
+    // may land in unstreamed void (use to_grace for a full area-load). SEH-guarded; safe on the
+    // current thread (RPC/present — live-verified). Returns false if not in-world / the chain is
+    // null / the write faulted. RE: docs/re/linux_player_pos_write_setpos_re_findings.md.
     bool teleport_coords(float x, float y, float z);
 }

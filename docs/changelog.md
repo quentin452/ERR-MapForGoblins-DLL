@@ -33,6 +33,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Fixed
 
+- Coordinate teleport (`warp_local`/`warp_xyz` RPC + the vmap click-to-warp) now actually moves the player.
+  The old path wrote `LocalPlayer+0x6C0`, an OUTPUT MIRROR the physics thread reclaims each frame (the write
+  landed but snapped back). The working teleport writes the player's HAVOK BODY Vec3 directly
+  (`*(*(LocalPlayer+0x190)+0x68)+0x70/74/78`, er_console_mod's method), converted from the tile-local target
+  by a frame-invariant delta. Live-verified (moved +20 m, held). Intra-region (use grace `warp` cross-map).
+
 - `vmap graces` counted EVERY grace as discovered (it tested the discovery-flag ID instead of reading
   the event flag live) — a fresh save reported 438/438 discovered. Now uses the same live
   `read_event_flag` check as the warp gate, and the log lists all discovered graces (60-line cap dropped).

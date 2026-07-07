@@ -1,10 +1,45 @@
-# Player-position WRITE (teleport) — why raw `LocalPlayer+0x6C0` writes don't move the player
+# Player-position WRITE (teleport) — the working coordinate teleport (havok body write)
 
-**Status: root cause SOLVED (2026-07-07, Linux/Proton live + capstone scan); SetPos ABI fully RE'd +
-implemented (2026-07-07, Windows/Ghidra). AWAITING LIVE VALIDATION on Linux/Proton — see "Live-verify".**
-The engine-`SetPos` call is coded (`goblin::warp::teleport_coords`, `SETPOS` AOB) and wired into
-`warp_local`/`warp_xyz` + the vmap click-to-warp; the last step is a deploy + boot to confirm it moves the
-player without a crash.
+**Status: SOLVED + LIVE-VERIFIED (2026-07-07, Windows/ERRv2.2.9.6). Coordinate teleport now works.**
+The working teleport writes the player's HAVOK PHYSICS BODY position directly (er_console_mod's method,
+RE'd from its DLL) — NOT the `LocalPlayer+0x6C0` mirror, and NOT the engine `SetPos` call (that alone
+does not complete the warp from the RPC thread; see §"SetPos — the dead end"). Implemented as
+`goblin::warp::teleport_coords` and wired into `warp_local`/`warp_xyz` + the vmap click-to-warp.
+**Live-verified**: `warp_xyz` moved the player +20 m and it HELD (no snap-back).
+
+## ★ THE WORKING TELEPORT — write the havok body Vec3 (er_console_mod's `tp`, RE'd + verified)
+
+The authoritative player position is a Vec3 on the ChrIns physics module, reached by:
+```
+module = *(LocalPlayer + 0x190);   // the ChrIns physics/anim module (same +0x190 as the HP chain)
+posObj = *(module     + 0x68);     // position holder
+Vec3   @ posObj + 0x70 (X) / +0x74 (Y=height) / +0x78 (Z)   // +0x7C = w = 1.0
+```
+**Writing this Vec3 MOVES the body and HOLDS** (verified live: wrote havok X += 20 → the player moved +20 m
+and stayed; a `coords` a beat later confirmed the new position, no snap-back). This is exactly what
+er_console_mod's `tp` command does — decompiled from `er_console_mod.dll` (imagebase 0x180000000): the
+handler at RVA `0x9700` reads `entity+0x190` then `+0x68` via a safe-deref helper (`FUN_1800084a0`) and
+writes the three parsed floats to `+0x70/+0x74/+0x78` via a safe-write-float helper (`FUN_180008500`).
+
+**Frame:** the body Vec3 is in a havok/physics-block-LOCAL frame, offset from the `LocalPlayer+0x6C0`
+tile-local frame by a per-block origin (live: body=(-1.006, 3.547, -3.805) vs tile-local=(-1.01, 91.55,
+-75.80) — same X, Y/Z offset by the block origin). The two differ ONLY by a translation, so a **delta maps
+1:1** (havok X += 20 → tile-local X += 20). To reach a tile-local target T from the current tile-local
+`L` and body `H`: `body_target = T - (L - H)`. `teleport_coords` reads both live and applies this.
+
+**Thread:** the write is safe from the RPC/present thread (live-verified via `mem_write`) — no main-update-
+thread marshalling needed (unlike SetPos). It's a plain struct write, SEH-guarded.
+
+## SetPos — the dead end (kept: it explains the mirror, but it does NOT teleport from the RPC thread)
+
+The `+0x6C0` mirror analysis below is correct and useful, but the engine `SetPos` call built on it did
+NOT actually move the player when driven from the mod (live: `teleport_coords` via SetPos logged "called",
+no fault, but a `coords` after still showed the OLD position — same snap-back). SetPos arms `+0x160|0x80`
+and stages `+0x6C0`, but the per-frame consumer's body-drive (`FUN_140dc6600`→`FUN_140dc8150`) never
+completed the move — the mode/registration in `FUN_140dc6e90` (branch on `ChrIns+0x30`) or the scene-apply
+in `dc8150` needs context the RPC-thread call doesn't provide. Rather than chase that state machine, we use
+the direct body write above (simpler, proven, and what a shipping teleport mod already does). The SetPos
+ABI is documented below for the record.
 
 ## Symptom
 
@@ -82,34 +117,29 @@ only then drives the physics body toward `+0x6C0`. A raw store sets neither the 
 warp, and the per-frame integrator (`er+0xdc761c`, `addss xmm0,[rcx+0x6c0]`) overwrites it next tick.
 
 **AOB (entry, UNIQUE — offline scan = 1 hit):**
-`48 83 EC 38 80 89 60 01 00 00 80 0F 28 42 30 0F 11 81 C0 06 00 00` → pinned as `SETPOS` in
-`src/re_signatures.hpp` (health-table registered).
+`48 83 EC 38 80 89 60 01 00 00 80 0F 28 42 30 0F 11 81 C0 06 00 00`. (Not pinned in the shipped code —
+`teleport_coords` uses the body-write chain, not SetPos. Kept here for the record.)
 
-## Implementation (2026-07-07) — `goblin::warp::teleport_coords`
+## Implementation (2026-07-07) — `goblin::warp::teleport_coords` (SHIPPED + VERIFIED)
 
-`src/goblin_warp.cpp`: resolves `SETPOS` at init, builds a zeroed 0x40 PosStruct with `{x,y,z,yaw}` at
-+0x30 (yaw read live from `get_player_facing_yaw` = `ChrIns+0x6CC`, preserving facing), and calls
-`SetPos(LocalPlayer, &struct, nullptr, 1)` behind the same noinline-CALL + SEH shape as `to_grace`. The
-LocalPlayer-null check doubles as the not-in-world / re-entrancy guard (like `to_grace`). Wired into the
-RPC `warp_local`/`warp_xyz` verbs and the render-API `warp_to_world_xz` (vmap click-to-warp) — all three
-previously did the broken raw `write_player_local_pos` store. Frame is unchanged (the +0x6C0 tile-local
-Havok frame the read probe already uses), so the existing verb arithmetic is untouched.
+`src/goblin_warp.cpp`: resolves `posObj = *(*(LocalPlayer+0x190)+0x68)`, reads the current body Vec3
+(`+0x70/74/78`) and tile-local pos (`LP+0x6C0/6C4/6C8`), computes `body_target = target - (tile - body)`,
+and writes the three floats back — all in a noinline body under SEH (clang-cl elision guard). The
+LocalPlayer-null check is the not-in-world / re-entrancy guard. Wired into the RPC `warp_local`/`warp_xyz`
+verbs and the render-API `warp_to_world_xz` (vmap click-to-warp) — all three previously did the broken raw
+`write_player_local_pos` (+0x6C0) store. The input frame is unchanged (tile-local, what the verbs already
+compute), so their arithmetic is untouched.
 
-## Live-verify (Linux/Proton OR Windows — the one remaining step; a bad call = ~3-min reboot, so gate carefully)
+## Live-verify — DONE (2026-07-07, Windows/ERRv2.2.9.6, attach-RPC)
 
-**Now runnable on Windows too** (2026-07-07): the fresh DLL is deployed to the Windows ERR install
-(`python tools/deploy.py`) and the attach-RPC path is cross-platform — the user launches ER in-world, then
-`python tools/mfg.py rpc warp_local …` drives it. See `docs/memory/windows.md` "Live-verify on Windows".
+- Chain resolved live from `LocalPlayer=0x2684…9080`: `+0x190`→module `+0x68`→posObj, Vec3 `+0x70` =
+  (-1.006, 3.547, -3.805); tile-local (`coords`) = (-1.01, 91.55, -75.80).
+- `mem_write` body X += 20 → `coords` world X 10750.99 → 10770.99, tile-local X -1.01 → 18.99, and it HELD
+  (no snap-back). Restored cleanly. This proved the write target + the 1:1 delta mapping.
+- After wiring `teleport_coords` to the body chain: `warp_xyz`/`warp_local` move the player and hold.
 
-1. Deploy the fresh DLL; boot in-world; `mfg_build`+`status` to confirm the new DLL loaded (the `[WARP]`
-   boot line must show `SetPos=<nonzero>`; a null there = AOB drift → re-find `SETPOS`).
-2. `coords` to read the current tile-local pos, then `warp_local <x> <y+2> <z>` (nudge up 2 m) → the player
-   should MOVE and STAY (no snap-back), facing preserved. `coords` again confirms the new pos holds.
-3. `warp_xyz <worldX> <worldZ>` for a short intra-region hop (a far target may land in unstreamed void —
-   that's the streaming gate, not a SetPos failure; use `warp <graceId>` for cross-map).
-4. Watch for: a fault (SEH → `FAULTED` in the log, no move — means the RPC-thread context is unsafe for
-   SetPos; fallback = drain it on the main-update thread via the geom-spawn per-frame hook, like ADD-AEG),
-   a physics desync/fall-through (target under terrain), or a co-op desync (same local-sim caveat as the
-   vmap freeze — skip/guard when `coop::others_present()`). If clean, mark this doc SOLVED + changelog it.
+Residual (low, not blocking): a far cross-map target may land in unstreamed void (use `warp <graceId>` for
+a full area-load); co-op is a local-sim change → guard on `coop::others_present()` if used in a session
+(same caveat as the vmap freeze). Y writes set absolute height — a target under terrain will fall/clip.
 
 Related: [[re_findings_playerpos]] (the READ chain, RESOLVED), `windows_grace_warppin_teleport_re_findings.md`.
