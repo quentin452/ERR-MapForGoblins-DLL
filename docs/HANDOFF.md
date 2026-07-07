@@ -89,8 +89,19 @@ one in-game look remains. `docs/plans/merchant_item_search_plan.md` has the full
      that catacomb entrance w(13568,14336) (both codex + merchant twins — visible strays!). **Fix:
      fallback capped at grid distance ≤6** → m31_90 unmappable → merchants skipped, items off-map.
      (m32_90 = ERR's utility map with a parked-NPC army + its own ERR conv row 6 → unaffected.)
-  - **★ NEXT: user closes ER → deploy → relaunch → re-audit `vmap find corhyn` / `vmap find codex`
-    (expect the w() values above) + visual check on the native map inset.**
+  - **✅ ALL LIVE-VERIFIED (2026-07-07 16:46, final audit):** `[MERCHANTPINS] 56 pins … 8
+    unmappable-skipped` (the m31_90 twins gone); Corhyn w(7701,8570) + codex w(7711,8585) = 15 m
+    apart ON the inset next to the grace — exactly the predicted values. A third fold bug was
+    found + fixed on the way (`052af9e`): the sub-map dead-end REVERSE-LIFT (Leyndell 19/34/35)
+    also fired for any area merely missing THIS block's row — m31_90 got lifted through row 135
+    (m14 Academy → m31_6, the waygate exit) and snapped onto the Academy's map anchor; now the
+    lift only applies to areas with ZERO forward rows. Residual (harmless): m31_90 ITEM markers
+    keep raw coords (w≈22726) far outside the drawn map extent — never visible.
+  - **Also this session:** `deploy.py` now syncs `assets/lang/` → `dll/offline/lang/` — the
+    Windows box never had `fr.txt` next to the DLL, so the whole F1 panel silently showed
+    English and « Sauver dans l'INI » "disappeared" (it lives on the Display tab, top row).
+    ⚠ `mfg_build`'s banner timestamp comes from ONE TU — an incremental rebuild that doesn't
+    touch it keeps the OLD stamp, so freshness-check by BEHAVIOR (a changed verb) when in doubt.
   2. **Merchant + quest-NPC double markers** — most merchants are also quest NPCs, so the
      QuestNpcLayer runtime-FALLBACK pin (name-only, "Auto-detected quest") twinned the new merchant
      pin. Fix per user: (a) WorldMerchant now draws the SAME engine glyph as quest NPCs (map-point

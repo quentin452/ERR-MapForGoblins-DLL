@@ -1,7 +1,10 @@
 # Merchant / shop item search — plan
 
-Status: **Slice 1 SHIPPED. Slice 3 (A, runtime C++ ESD parse) IMPLEMENTED + offline-verified
-(2026-07-07) — merchant pins + "sold by" search tags; pending one in-game look.** The 2026-07-03 "needs an EzState EVALUATOR,
+Status: **DONE — Slice 1 + Slice 3 (A, runtime C++ ESD parse) SHIPPED and live-verified
+(2026-07-07): 56 merchant pins (named-only, talkId>=100000, unmappable-skipped), "sold by"
+search tags, WorldMerchant category (quest-NPC glyph, fallback-pin dedup). The Roundtable
+rounds also fixed two GENERAL projection bugs (virtual-anchor insets + the reverse-lift
+guard) — see HANDOFF 2026-07-07 round 4 and docs/changelog.md [Unreleased] Fixed.** The 2026-07-03 "needs an EzState EVALUATOR,
 disproportionate" verdict is superseded: `docs/re/esd_ezstate_decoder_re_findings.md` shows 78% of ESD
 args are the literal `82 <i32> A1` form, and the full join is proven end-to-end:
 - **`OpenRegularShop` = talk command `1:22`** (args `[shopBegin, shopEnd]`), RE'd by cross-referencing

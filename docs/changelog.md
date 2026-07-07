@@ -40,6 +40,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Fixed
 
+- Roundtable Hold markers (items, merchants, quest pins) now display on the map's Roundtable
+  inset (bottom-left corner), next to the native grace icon. They used to project ~2200 map
+  units off the artwork: FROM's inset icon params use hand-placed VIRTUAL coordinates, so real
+  MSB positions were never meant to fold directly — markers are now remapped relative to the
+  tile's nearest Site-of-Grace asset (fully live-derived, mod-agnostic). Also fixes the stacked
+  interior copies drawing 100 m apart.
+- Markers from a legacy map with no map conversion of its own (e.g. ERR's Roundtable copy
+  m31_90) no longer pile up at an unrelated dungeon entrance (they hid the real markers there);
+  such maps are treated as unmappable and their markers are skipped/hidden.
+
 - Coordinate teleport (`warp_local`/`warp_xyz` RPC + the vmap click-to-warp) now actually moves the player.
   The old path wrote `LocalPlayer+0x6C0`, an OUTPUT MIRROR the physics thread reclaims each frame (the write
   landed but snapped back). The working teleport writes the player's HAVOK BODY Vec3 directly
