@@ -2044,9 +2044,17 @@ namespace
             // Mod-owned 3D backend (goblin_r3d): draw our real 3D into the swapchain BEFORE ImGui, so ImGui
             // overlays on top. Self-gates off by default (RPC `r3d 1`). ImGui re-binds all state after, so our
             // PSO/root-sig/topology changes here don't disturb it. RTV already bound above; no depth (step 1).
+            // ★ GATE to in-world GAMEPLAY (player present + map CLOSED): submitting our D3D12 geometry during
+            // a menu / the world map / loading (a different render pass, Scaleform full-screen) can HANG the
+            // GPU (TDR → CPU-100% freeze, seen 2026-07-07 when a realized object drew in the menu).
+            if (goblin::r3d::enabled())
             {
-                ImVec2 ds3 = ImGui::GetIO().DisplaySize;
-                goblin::r3d::draw_test_cube(g_device, g_command_list, ds3.x, ds3.y);
+                float r3dpx, r3dpy, r3dpz;
+                if (goblin::get_player_world_pos(r3dpx, r3dpy, r3dpz) && !goblin::world_map_open())
+                {
+                    ImVec2 ds3 = ImGui::GetIO().DisplaySize;
+                    goblin::r3d::draw_test_cube(g_device, g_command_list, ds3.x, ds3.y);
+                }
             }
             g_command_list->SetDescriptorHeaps(1, &g_srv_heap);
             ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), g_command_list);
