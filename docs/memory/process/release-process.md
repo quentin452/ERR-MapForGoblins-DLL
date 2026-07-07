@@ -4,6 +4,13 @@ Reusable steps to cut a tagged GitHub release of this fork. First applied for **
 the first tagged fork release). Claude PREPARES (roll + tag + notes); the **USER pushes + publishes** (repo
 rule — Claude never pushes/publishes without an explicit ask).
 
+v2.2.0 (2026-07-07, Windows box) refinements: the release NOTES file is now COMMITTED at the repo root
+(`RELEASE_NOTES_vX.Y.Z.md`, user preference) instead of a scratch path. `gh` + git-push auth work on the
+Windows box after a one-time `gh auth login` (browser flow) — with the user's explicit go-ahead Claude can
+run the push and `gh release create` directly. The DLL asset can come from `build-err/` (same clang-cl
+/Brepro toolchain as `build-linux/`); prefer attaching the exact binary that was live-verified. ⚠ cmd.exe
+does not understand `\` line continuations — give the user ONE-LINE commands.
+
 ## Remotes & versioning (know these first)
 - `origin` = **quentin452/ERR-MapForGoblins-DLL** — the fork; **releases go here**.
 - `upstream` = VirusAlex/ERR-MapForGoblins-DLL (original MapForGoblins); `gacsam` = Gacsam/Goblin-ERR (other fork).
