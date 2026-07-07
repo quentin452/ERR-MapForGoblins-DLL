@@ -32,6 +32,7 @@
 #include "goblin_worldmap_probe.hpp"   // get_live_view() for the marker prototype
 #include "goblin_heightfield.hpp"      // tick_present() — heightfield present-thread probe (D2.2)
 #include "goblin_w2s.hpp"              // draw_present() — 3D world-to-screen debug dot (present-thread)
+#include "goblin_objects.hpp"          // objects.toml greybox boxes — ImGui render (stable Windows path)
 #include "goblin_r3d.hpp"              // mod-owned D3D12 3D backend — test cube into the swapchain
 #include "goblin_postfx.hpp"           // greybox job #2b — full-screen restyle of ER's final frame
 #include "goblin_custom_markers.hpp"   // death_marker::tick() — mirror the native GameDataMan bloodstain
@@ -1975,6 +1976,46 @@ namespace
             // Reads the live camera VIEW + player pos on THIS frame → no read-tearing. See goblin_w2s.
             goblin::w2s::draw_present();
 
+            // Greybox objects (objects.toml realizer) — ImGui backend: project each realized box's 8
+            // corners via the ER camera + draw its 12 edges as a draw-list line loop. The STABLE Windows
+            // render path (ImGui, like every overlay layer) while r3d's D3D12 backend is Linux/vkd3d-only.
+            // Gated to in-world gameplay (camera resolves only there).
+            {
+                goblin::objects::RenderBox rbs[256];
+                size_t nrb = goblin::objects::get_render_boxes(rbs, 256);
+                float vpx, vpy, vpz;
+                if (nrb && goblin::get_player_world_pos(vpx, vpy, vpz) && !goblin::world_map_open())
+                {
+                    const ImVec2 ds = ImGui::GetIO().DisplaySize;
+                    float view[16], origin[3], fovy;
+                    if (ds.x > 0 && ds.y > 0 &&
+                        goblin::w2s::get_camera(view, origin, fovy, ds.x, ds.y))
+                    {
+                        ImDrawList *dl = ImGui::GetBackgroundDrawList();
+                        // 12 cube edges as index pairs into the 8 corners (bit b = axis sign: x=1,y=2,z=4).
+                        static const int E[12][2] = {{0,1},{0,2},{0,4},{1,3},{1,5},{2,3},
+                                                     {2,6},{3,7},{4,5},{4,6},{5,7},{6,7}};
+                        for (size_t i = 0; i < nrb; ++i)
+                        {
+                            const auto &b = rbs[i];
+                            ImVec2 pc[8]; bool vis[8];
+                            for (int c = 0; c < 8; ++c)
+                            {
+                                float cx = b.pos[0] + ((c & 1) ? b.half[0] : -b.half[0]);
+                                float cy = b.pos[1] + ((c & 2) ? b.half[1] : -b.half[1]);
+                                float cz = b.pos[2] + ((c & 4) ? b.half[2] : -b.half[2]);
+                                float sx, sy;
+                                vis[c] = goblin::w2s::project_world(view, fovy, cx, cy, cz, ds.x, ds.y, sx, sy);
+                                pc[c] = ImVec2(sx, sy);
+                            }
+                            for (auto &e : E)
+                                if (vis[e[0]] && vis[e[1]])
+                                    dl->AddLine(pc[e[0]], pc[e[1]], b.color, 2.0f);
+                        }
+                    }
+                }
+            }
+
             // Debug-RPC command HUD (bottom-right): live feed of what a driver script is doing —
             // each command + its result, entries fading after a few seconds. Draws nothing when
             // the RPC is off/idle (empty vector). HOST-drawn on purpose (host imgui, host code) —
@@ -2042,11 +2083,9 @@ namespace
 
             g_command_list->OMSetRenderTargets(1, &frame.rtv_handle, FALSE, nullptr);
             // Mod-owned 3D backend (goblin_r3d): draw our real 3D into the swapchain BEFORE ImGui, so ImGui
-            // overlays on top. Self-gates off by default (RPC `r3d 1`). ImGui re-binds all state after, so our
-            // PSO/root-sig/topology changes here don't disturb it. RTV already bound above; no depth (step 1).
-            // ★ GATE to in-world GAMEPLAY (player present + map CLOSED): submitting our D3D12 geometry during
-            // a menu / the world map / loading (a different render pass, Scaleform full-screen) can HANG the
-            // GPU (TDR → CPU-100% freeze, seen 2026-07-07 when a realized object drew in the menu).
+            // overlays on top. OFF by default (RPC `r3d 1`) — r3d STALLS the present on native Windows D3D12
+            // (Linux/vkd3d-only; docs/re/windows_r3d_d3d12_present_stall_findings.md). Gate to in-world
+            // gameplay regardless (a menu/map draw made it worse).
             if (goblin::r3d::enabled())
             {
                 float r3dpx, r3dpy, r3dpz;

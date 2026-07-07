@@ -19,6 +19,8 @@ std::vector<ObjectDef> g_defs;
 std::filesystem::path g_folder;
 std::mutex g_mtx;
 bool g_try_collision = false;   // experimental walkable-collision pass (frame + borrowed-shape caveats)
+std::vector<RenderBox> g_render_boxes;   // realized boxes (absolute world), drawn by the overlay via ImGui
+std::mutex g_render_mtx;
 
 // Read a 3-float array (pos/rot/size/half) from a toml node into out[3]; returns true if present+sized.
 bool read_vec3(const toml::node_view<const toml::node> &n, float out[3])
@@ -128,10 +130,20 @@ int realize()
         if (o.has_render && o.primitive != "box")
             spdlog::info("[OBJECTS] gap: '{}' render primitive '{}' not honored (only box)", o.id, o.primitive);
 
-        // Slice 1 deliverable: the mod-owned 3D greybox render, driven from the TOML.
+        // Slice 1 deliverable: the greybox render, driven from the TOML. TWO backends:
+        //  - ImGui (stable on Windows): store the box; the overlay projects + draws its edges each frame.
+        //  - r3d (real D3D12; Linux/vkd3d only — stalls the present on native Windows, so NOT auto-enabled).
         if (o.has_render && o.primitive == "box")
         {
-            goblin::r3d::add_box_ex(wpos, o.render_half);
+            {
+                std::lock_guard<std::mutex> lk(g_render_mtx);
+                RenderBox rb;
+                rb.pos[0] = wpos[0]; rb.pos[1] = wpos[1]; rb.pos[2] = wpos[2];
+                rb.half[0] = o.render_half[0]; rb.half[1] = o.render_half[1]; rb.half[2] = o.render_half[2];
+                rb.color = (o.kind == "beacon") ? 0xFF40FFC0u : (o.kind == "wall") ? 0xFFC0C0FFu : 0xFF40C0FFu;
+                g_render_boxes.push_back(rb);
+            }
+            goblin::r3d::add_box_ex(wpos, o.render_half);   // also queue for r3d (drawn only if `r3d 1`)
             ++made;
         }
 
@@ -163,10 +175,19 @@ bool try_collision() { std::lock_guard<std::mutex> lk(g_mtx); return g_try_colli
 void clear_render()
 {
     goblin::r3d::clear_boxes();
+    { std::lock_guard<std::mutex> lk(g_render_mtx); g_render_boxes.clear(); }
     spdlog::info("[OBJECTS] render cleared (Havok collision bodies persist until area reload — no remove path yet)");
 }
 
 const std::vector<ObjectDef> &defs() { return g_defs; }
+
+size_t get_render_boxes(RenderBox *out, size_t max)
+{
+    std::lock_guard<std::mutex> lk(g_render_mtx);
+    size_t n = g_render_boxes.size() < max ? g_render_boxes.size() : max;
+    for (size_t i = 0; i < n; ++i) out[i] = g_render_boxes[i];
+    return n;
+}
 
 std::string command(const std::string &rest)
 {

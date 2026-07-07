@@ -34,4 +34,11 @@ namespace goblin::w2s
     // WORLD point before the VIEW), and the vertical FOV. Lets r3d build a world->clip matrix aligned with
     // ER's own view. Re-finds the origin each call (the render re-centres per frame). Present-thread only.
     bool get_camera(float outView[16], float outOrigin[3], float &outFovy, float vpW, float vpH);
+
+    // Project a WORLD point to screen pixels using a VIEW matrix from get_camera (which also set the
+    // rebase origin this frame). Returns false when behind the camera. Present-thread only; call
+    // get_camera() first this frame so the rebase origin is current. Feeds the ImGui object-box render
+    // (goblin_overlay) — the stable Windows path while r3d's D3D12 backend is Linux/vkd3d-only.
+    bool project_world(const float view[16], float fovy, float x, float y, float z,
+                       float W, float H, float &sx, float &sy);
 }

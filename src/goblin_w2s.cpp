@@ -271,6 +271,13 @@ namespace goblin::w2s
     void set_conv(int c) { g_conv = c; }
     void set_fovy(float f) { g_fovy = f; }
 
+    // Public world->screen for the ImGui object-box render (uses g_origin set by the last get_camera).
+    bool project_world(const float view[16], float fovy, float x, float y, float z,
+                       float W, float H, float &sx, float &sy)
+    {
+        return project(view, x, y, z, 2 /*conv2 forward=-vz*/, fovy, W, H, sx, sy);
+    }
+
     // Live ER camera for the 3D backend (goblin_r3d): the render-local VIEW matrix (GameRend+0xF0, row-vector
     // v*M, conv2 forward=-vz) + the per-frame REBASE origin (subtract from a world point before the VIEW) +
     // the vertical FOV. Re-finds the origin each call (the render re-centres per frame). false if the camera/

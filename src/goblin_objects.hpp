@@ -1,4 +1,7 @@
 #pragma once
+#include "goblin_dll_export.hpp"   // GOBLIN_RENDER_API — the render overlay reads the realized boxes
+#include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -55,6 +58,12 @@ namespace goblin::objects
     void clear_render();
 
     const std::vector<ObjectDef> &defs();
+
+    // A realized box in ABSOLUTE world coords (the r3d/get_player_world_pos frame) for the render side.
+    struct RenderBox { float pos[3]; float half[3]; uint32_t color; };
+    // Copy the realized boxes into `out` (up to `max`); returns the count. The overlay draws these via
+    // ImGui (project 8 corners → 12 edges) every present frame — the stable Windows render path.
+    GOBLIN_RENDER_API size_t get_render_boxes(RenderBox *out, size_t max);
 
     // RPC `objects [list|reload|realize|clear|load <path>]` (default = list). See rpc-commands.md.
     std::string command(const std::string &rest);
