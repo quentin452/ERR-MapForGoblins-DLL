@@ -67,6 +67,30 @@ one in-game look remains. `docs/plans/merchant_item_search_plan.md` has the full
      **Open UX question for the user: on the NATIVE map the pins land on the inset artwork; on the
      VMAP there is no inset artwork/relief there (pins float in empty sea) — if that's what looked
      "wrong", the gap is vmap ARTWORK (draw a Roundtable label/inset on the vmap), not projection.**
+- **FOURTH ROUND — user re-report ("wrong vs the OTHER items at the Roundtable") → the REAL bug
+  found via live RPC audit + param dumps, FIXED (`88cbbf1`, both builds green, deploy pending game
+  close):** three stacked causes, all now understood:
+  1. **Virtual-anchor insets.** FROM's m11_10 icon params carry hand-placed VIRTUAL coords — the
+     grace's BonfireWarpParam pos is (-2500,-650), ~2200 m outside the real interior — so the row-5
+     translation lands THEM on the inset artwork (engine `proj 11 10 0 -2500 -650` → u=664, matches
+     the native grace icon). REAL MSB coords (items, merchants, quest pins) folded ~2200 uv off the
+     artwork (Corhyn u=2838 — our static fold == the engine VM exactly, verified per-point live; the
+     problem is the INPUT frame, not the transform). **Fix: per-tile virtual anchors** — registered
+     at disk build from live grace param pos + the tile's AEG099_060 grace-ASSET positions;
+     `project_dungeon_row_to_overworld` remaps a marker into the virtual frame relative to its
+     NEAREST grace asset (`virtual = param + (marker − asset)`); >500 m from every asset = already
+     virtual → untouched (protects the grace itself). Also applied to the live-projection raw coords.
+  2. **The codex-vs-Corhyn 102 m delta** = the m11_10 MSB's STACKED INTERIOR COPIES (the codex sits
+     in the second copy at Y≈-34 next to grace asset _9002; merchants in the main copy at Y≈-22 next
+     to _9000). Per-marker NEAREST-asset anchoring collapses both copies onto the one inset:
+     expected after fix — grace w(7704,8560), Corhyn w(7701,8570), codex w(7711,8585), all ≤25 m.
+  3. **m31_90 (ERR's Roundtable copy, NO conv row)**: legacy_fold's nearest-same-area fallback
+     matched the m31_22 catacomb 68 blocks away → out-of-range snap dumped every m31_90 marker at
+     that catacomb entrance w(13568,14336) (both codex + merchant twins — visible strays!). **Fix:
+     fallback capped at grid distance ≤6** → m31_90 unmappable → merchants skipped, items off-map.
+     (m32_90 = ERR's utility map with a parked-NPC army + its own ERR conv row 6 → unaffected.)
+  - **★ NEXT: user closes ER → deploy → relaunch → re-audit `vmap find corhyn` / `vmap find codex`
+    (expect the w() values above) + visual check on the native map inset.**
   2. **Merchant + quest-NPC double markers** — most merchants are also quest NPCs, so the
      QuestNpcLayer runtime-FALLBACK pin (name-only, "Auto-detected quest") twinned the new merchant
      pin. Fix per user: (a) WorldMerchant now draws the SAME engine glyph as quest NPCs (map-point
