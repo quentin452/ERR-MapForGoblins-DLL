@@ -109,6 +109,39 @@ wedging — the user's ask "si le warp est invalide, teleport to the First Step"
    is confirmed. First Step MapId = `m60_42_35` = `0x3C2A2300`; grace/pos from BonfireWarpParam (row for
    The First Step, `bonfireEntityId 1042362951`).
 
+## ✅/❌ Rescue attempt 1 — hook the map-SETTER: DEAD END for the LOAD (2026-07-07 live test)
+
+Built `goblin_load_rescue.cpp` (MAP_SETTER AOB → hook FUN_140627fc0; log every call; when armed,
+area==0 → rewrite `*mapId` to First Step 0x3C2A2300). RPC `load_rescue [status|on|off|verbose|set]`.
+
+- **Healthy load: the setter FIRES** — `[LOADRESCUE] setmap in=0x3c2a2400 area=60` (the save's map,
+  committed via this funnel). So the setter IS the live map-commit for tile crossings + valid loads.
+- **Poisoned load (void save, armed): the setter NEVER fires** — `load_rescue status: last 0`, yet the
+  singleton `+0x2c = 0x000B0000` (read live during the wedge). So on a poisoned load the invalid map is
+  written to `+0x2c` by the **load-restore path, NOT the setter**, and streaming HANGS on the area-0 map
+  **before** FUN_140627fc0 is ever called. The present thread keeps rendering the loading screen
+  (`frame=` advances) → it's an infinite LOAD, not a freeze.
+- ⇒ **the wedge is UPSTREAM of the map-commit setter.** Hooking the setter cannot rescue the load. The
+  `load_rescue` module stays as a live map-change DIAGNOSTIC (and would fix a runtime-induced area-0
+  live map-change), but it does NOT fix a poisoned SAVE's load. Disarmed by default.
+
+## ★ Rescue attempt 2 targets (next session) — intervene UPSTREAM of the setter
+
+1. **Offline save-repair (most promising, no runtime RE).** `ER0000.err` is **BND4 plaintext** (magic
+   `BND4`; not encrypted at the container level). The invalid `0x000B0000` appears 33× in the void save,
+   CLUSTERED at ~`0x299cf5/d35/d55/d75/d95/db5` (stride 0x20 = a TABLE of map entries all set to area 0 —
+   the map history/recent-maps got poisoned, not one field). A raw poisoned-vs-healthy byte diff is 10.7%
+   (no direct-parent healthy snapshot exists → too noisy to isolate the spawn field). NEXT: parse the
+   BND4 with SoulsFormats (`tools/lib/Andre.SoulsFormats.dll`) → the PlayerGameData/GameMan slot →
+   locate the spawn `mapId` field by the ER save layout, rewrite area-0 → First Step, repack. Ship as a
+   `tools/` save-repair script (user runs it on a wedged save; robust, offline).
+2. **Runtime: the load-restore map-request.** The function that reads the save's spawn map and REQUESTS
+   it from streaming (upstream of FUN_140627fc0). It writes `+0x2c` directly on load. Hard to FWA (the
+   singleton is null at menu; the write is once, during load, before we can arm). Approach: hook the
+   getter er+0x6190c0 (singleton allocator, runs during load) and from the detour auto-arm a DR0 write-
+   watch on the fresh `singleton+0x2c` to catch the load-restore writer next boot; or Ghidra-trace the
+   save-load/deserialize (the load counterpart of SERIALIZE_FN) to the spawn-map apply.
+
 ## Method notes (reusable)
 
 - `mem_fwa` is DR0-only + one-shot; `mem_fwa off` disarms so you can re-arm a new address same session.

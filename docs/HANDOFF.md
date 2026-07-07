@@ -87,14 +87,28 @@ Committed code + `docs/changelog.md` are the record of DONE; this file tracks WH
   **writer `er+0x627ffc`** = `mov [rdi+0x2c],eax` where `eax=[r14]` ⇒ **`r14` = the upstream AUTHORITY**
   the mirror copies from (the mirror `+0x2c` is why `mem_write`ing it never unwedged). exe fingerprint
   `2.6.2.0`. Both RIPs + byte decodes + call stacks in the findings doc.
-- **★ NEXT (rescue, Ghidra `D:\ghidra_proj2\ER` + one poisoned-load FWA):** (1) in the `er+0x627ffc`
-  function, identify what `r14` is (prologue walk) — the authority struct holding `0x000B0000` at load;
-  (2) restore a POISONED save (`ER0000.err.POISONED-void-…` / `…-lakefall-…` next to the save dir; the
-  launcher snapshots 18:26:34/18:36/18:37 + 17-24-39 are ALSO poisoned lineage — do NOT restore those,
-  only 17-58-18 / 16-55-08 / earlier are clean) → **arm `mem_fwa <authority-field> 4 w` BEFORE Continue**
-  → the writer that fills `r14` from the `.err` = the save-load restore; (3) hook it, validate `area==0`
-  → substitute First Step MapId+pos, `mem_write` the fix into the AUTHORITY (not the mirror) during a live
-  wedge to prove it, then ship the auto-rescue in the DLL.
+- **✅ Ghidra + rescue attempt 1 DONE (2026-07-07): the setter-hook is a DEAD END for the load.**
+  `FUN_140627fc0 = SetCurrentMap` (writes `+0x2c` + fires streaming notifications); `FUN_1406260e0 =
+  SetPlayerMapAndPos` (map+pos). Built `goblin_load_rescue.cpp` (hook + `load_rescue` RPC, disarmed
+  default). **Live-tested:** the setter FIRES on a healthy load (`setmap in=0x3c2a2400 area=60`) but
+  **NEVER on a poisoned load** (`last 0`, yet `+0x2c=0x000B0000`) → the invalid map is applied by the
+  load-restore path and streaming HANGS on the area-0 map **before** the setter runs. The wedge is
+  UPSTREAM of the map-commit. `load_rescue` stays a live-map-change diagnostic; it does NOT fix a
+  poisoned save's load. Full write-up: `docs/re/windows_load_wedge_mapid_writer_re_findings.md`
+  ("Rescue attempt 1 … DEAD END" + "attempt 2 targets").
+- **★ NEXT — rescue attempt 2 (two paths, pick one next session):**
+  1. **Offline save-repair (recommended, no runtime RE).** `.err` = BND4 PLAINTEXT (magic `BND4`).
+     Invalid `0x000B0000` clusters at ~`0x299cxx` (stride 0x20 = a poisoned map-history TABLE), 33 hits
+     total. Parse with SoulsFormats (`tools/lib/Andre.SoulsFormats.dll`) → PlayerGameData slot → the
+     spawn `mapId` field → rewrite area-0 → First Step → repack. Ship a `tools/` repair script. (A raw
+     byte-diff is 10.7% — no direct-parent healthy snapshot — so use the format, not a diff.)
+  2. **Runtime load-restore map-request** (upstream of the setter): hook the getter er+0x6190c0
+     (allocates the singleton during load) → auto-arm DR0 write-watch on the fresh `singleton+0x2c` to
+     catch the load-restore writer; or Ghidra-trace the save deserialize. Harder than (1).
+  - **Repro saves preserved** next to the save dir: `ER0000.err.POISONED-void-…` (the confirmed area-0
+    case) + `…-lakefall-…`. Clean healthy backups in the session scratchpad + launcher snapshots
+    17-58-18 / 16-55-08 / 17-41-16 (⚠ NOT 18:26/18:36/18:37/17-24-39 = poisoned lineage). Current disk
+    save = the user's healthy active progress (`0058002b`), restored.
 - **✅ "MINIMAP TOUTE PETITE" = NOT a code regression (user suspected 052af9e/88cbbf1 — cleared):**
   both commits were already live during the 16:46 audit + the user's OK'd visual check, and
   neither touches minimap sizing (`R = cfg::minimapSize × screenH/1080`). Root cause = this
