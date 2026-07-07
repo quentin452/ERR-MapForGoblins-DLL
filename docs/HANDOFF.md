@@ -3,6 +3,35 @@
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
 
+## ⇒ 2026-07-07 (Windows) — ★ objects.toml greybox realizer SHIPPED (slice 1); render blocked on w2s camera-finder Windows hang
+
+New feature-monde track (user-picked): data-driven greybox worlds. `objects.toml` `[[object]]` → walkable
+box + 3D render, sidestepping the MSB/FLVER/ESD RE walls. `docs/plans/virtual_world_3d_backend_plan.md`
+step 3.
+
+- **✅ Realizer + schema DONE + PROVEN:** `src/goblin_objects.{hpp,cpp}` parses `objects.toml` (Proton-safe
+  TOML) → `ObjectDef`s → `realize()` in-world. RPC `objects [list|reload|realize|clear|collision|render|
+  load]`; boot-load via mod.toml `[sections] objects`; template `assets/objects.toml.example` (pos =
+  player-relative offset by default). `r3d` extended with per-axis extents (`add_box_ex`). The data
+  pipeline is proven — a user screenshot showed a TOML box rendered in 3D in-world.
+- **★★ RENDER BLOCKED — root cause = `w2s::find_cam_instance` present-thread hang (NOT r3d D3D12).**
+  `docs/re/windows_w2s_camera_finder_present_hang_findings.md`. Both render backends froze the game the
+  same way; the shared cause is `get_camera()` → `find_cam_instance()` scanning the WHOLE address space on
+  the present thread every frame. `VT_CAMSET_RVA=0x2a7f2b8` is a STATIC UNVERIFIED guess (w2s RE =
+  "live-probe pending"), wrong on exe 2.6.2.0 → never caches → per-frame full rescan → hang. (My earlier
+  "r3d D3D12 stall" finding was WRONG — the ImGui backend with zero D3D12 froze identically. The user's
+  "it's probably not r3d" was right.) w2s + r3d were only ever LIVE-verified on Linux/Proton (different ER
+  build/RVA).
+- **Mitigation shipped:** `objects` render is **OFF by default** (`objects render on` to enable); r3d off
+  (`r3d 1`). Game is stable. `assets/objects.toml` staged in `dll/offline/` for the eventual test.
+- **★ NEXT — w2s Windows-hardening (two independent fixes, then the render works):** (1) make
+  `find_cam_instance` present-thread-SAFE — rate-limit the rescan (GetTickCount, ≥3 s between full scans
+  when uncached; return 0 in between so a bad RVA degrades to no-render, never a hang) or move the find
+  off-thread; (2) verify/fix `VT_CAMSET_RVA` (+ `VIEW_FROM_HIT=0xE0`) for exe 2.6.2.0 via a bounded
+  `w2s_probe` once (1) makes probing safe. Then `objects render on` draws the greybox via ImGui (stable
+  path); r3d real-3D stays a later Windows-D3D12 task.
+
+
 ## ⇒ 2026-07-07 (Windows) — ★ coord-teleport VOID bug (v2.2.0) FIXED + save-wedge RESCUE procedure; coop NPC-phantom test attempt 1 aborted
 
 - **INCIDENT (first headless coop run, 17:24):** `warp_xyz`'s internal `get_player_raw_pos` read the
