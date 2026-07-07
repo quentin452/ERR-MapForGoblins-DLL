@@ -43,9 +43,21 @@ one in-game look remains. `docs/plans/merchant_item_search_plan.md` has the full
 - **The 14:30:07 crash that ended that session is PRE-EXISTING, not merchants:** identical signature
   (`eldenring.exe+0x1EB9999`, 0xC0000005) to the 3 crashes earlier the same day (13:01/13:03/13:12)
   BEFORE the merchant DLL was ever deployed. This box has a long crash history at that address.
-- **★ NEXT (user boots ER):** expect `[MERCHANTPINS] ~50 pins … origin-skipped≈650`; check Kalé at
-  Elleh (ERR's talk 437006001), Twin Maidens/Enia/Hewg at the Roundtable, F1 "telescope" → "· sold
-  by …". `vmap dump_markers` can list the WorldMerchant bucket if a stray pin shows.
+- **SECOND LIVE RUN (14:37) — FILTER VERIFIED: `[MERCHANTPINS] 64 merchant pins (47 shop TalkIDs,
+  4 dup-pos, 0 nameless, 0 origin)`** (715 → 64). The 64 > the oracle's 39 is BETTER COVERAGE, not a
+  leak: the packed-dvdbnd probe read 21 vanilla talk bnds ERR doesn't override loose — exactly the
+  isolated-merchant maps (m10 Stormveil = Gostoc, m31_15 Murkwater = Patches, m30/31/32/34 cave/tunnel
+  merchants, m20/21/22/28/41/42 DLC) — merchants even `merchants.json` missed, since the offline spike
+  only read ERR's 17 loose bnds. (`origin-skipped=0` because the talkId cut already excludes t1300
+  before the position check runs — expected.)
+- **The recurring "crash" at session end = the game's OWN exit-teardown crash, not a bug:** 392 of the
+  406 historical crash triages on this box share the exact fault `eldenring.exe+0x1EB9999` — it fires
+  every time the game is quit. Ignore it for merchant work.
+- **★ NEXT (user, visual):** boot + actually open the worldmap/vmap: Kalé at Elleh (ERR's talk
+  437006001), Twin Maidens/Enia/Hewg/Twin-Husks cluster at the Roundtable, Gostoc inside Stormveil,
+  Patches in Murkwater Cave; toggle = "World - Merchants". F1 search "telescope" → "· sold by …" tag.
+  With the game left running, `vmap dump_markers` (RPC) can list the WorldMerchant bucket for an
+  exhaustive name/position audit.
 
 ## ⇒ 2026-07-07 (Windows) — coordinate teleport SOLVED + LIVE-VERIFIED (havok body write, er_console_mod's method)
 
