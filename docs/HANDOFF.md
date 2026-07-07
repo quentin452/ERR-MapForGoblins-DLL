@@ -37,10 +37,24 @@ step 3.
   render, never a hang. `w2s_probe` runs an exhaustive (2 s-capped) sweep. Both builds green (host-only
   change). RE: `windows_w2s_camera_finder_present_hang_findings.md` (premise correction + fix) +
   `windows_world_to_screen_camera_re_findings.md` (GameRend structure + the VIEW-writer chain
-  `FUN_140507ff0`→`FUN_1403f0f60`→GameRend+0xF0). **★ NEXT (needs a boot): flip `objects render on`, move
-  near a placed box → must draw a greybox with NO freeze; `w2s_probe` must report a live VIEW@+0xF0 + (dot on)
-  track the player.** If green, consider defaulting render ON. Scan-free VIEW (WorldChrMan→[+0x1E508]→
-  [+0x190]→[+0x68]→`FUN_14045e540`) is documented as a future option (needs its own RE — deferred).
+  `FUN_140507ff0`→`FUN_1403f0f60`→GameRend+0xF0).
+- **✅ LIVE-VERIFIED 2026-07-07 22:5x (user booted, DLL byte-confirmed loaded) — HANG FIXED; camera-resolve is
+  the remaining sub-task.** `w2s_probe` returned promptly (was a freeze on the old DLL) and `frame=` kept
+  advancing 6283→7345; `objects render on` + 3 boxes realized ran ~50 s at ~33 fps, fully playable, no freeze
+  (screenshot confirmed normal game). **So the present-thread hang is DEAD — primary goal done.** BUT the
+  camera never resolved: `w2s_probe` = "no GameRendCameraSet instance" and NO `[OBJECTS-RENDER]`/`[W2S]` draw
+  line ever logged → boxes don't draw (graceful no-render, as designed). Cause = the scan can't complete on
+  this box in practical time: the process is **~8.75 GB paged / 14.6 GB virtual**, the exhaustive probe hits
+  its 2 s cap mid-sweep (measured 2.19 s wall, incomplete), and the per-frame 2 ms path didn't finish a sweep
+  either. So render on Windows is **still blocked — but on scan SPEED/COMPLETION, not a hang.**
+- **★ NEXT (the real render unblocker) — use the SCAN-FREE VIEW path (documented, now clearly the right call).**
+  `WorldChrMan (er+0x3D65F88, already resolved) → [+0x1E508] LocalPlayer → [+0x190] → [+0x68] → FUN_14045e540
+  → VIEW` (windows_world_to_screen_camera_re_findings.md). Zero scanning. Needs: RE `FUN_14045e540`'s output
+  buffer layout (the 0x50-byte VIEW+params block copied into GameRend+0xF0 by `FUN_140b019b0`) + either call
+  it from the present thread or replicate it. Then `get_camera` reads the VIEW in a few derefs, no scan → boxes
+  draw AND r3d works. Interim scan optimizations if the scan-free path stalls: restrict to `MEM_PRIVATE`
+  committed regions (skip image/mapped — the camera is a heap alloc) to cut the ~8 GB sweep way down; and make
+  `w2s_probe` RESUME across calls (currently fresh-restarts, so it can never finish a >2 s sweep).
 
 
 ## ⇒ 2026-07-07 (Windows) — ★ coord-teleport VOID bug (v2.2.0) FIXED + save-wedge RESCUE procedure; coop NPC-phantom test attempt 1 aborted
@@ -82,8 +96,15 @@ step 3.
   incident shapes); the 1500 m cap is demoted to the fallback when the check is unavailable
   (loading / native map open, which unloads world collision). New RPC **`ground_at <x> <z>
   [y_hint]`** exposes the check for drivers/pathing (rpc-commands.md updated). Both builds green,
-  deployed. ⚠ not yet live-verified (needs the next boot: `ground_at` at a known-ground spot =
-  hit, over the lake middle = miss, and a `warp_local` into the lake = refused).
+  deployed. ⚠ PARTIALLY live-verified 2026-07-07 (Limgrave grid 42,36): `ground_at` RUNS and returns
+  `ok ground y=…` hits at the player column + offsets — no crash/hang. BUT at the player's OWN column
+  (player Y≈94 on an elevated stone platform) it returned `y=-53.65` (the terrain floor ~147 m BELOW),
+  and offsets returned -140/-105 — i.e. the cast reports the TERRAIN heightfield, not the placed-asset
+  surface the player stands on. Fine for void-vs-ground (all 3 = ground, none void), but a warp_far final
+  hop = "checked ground + 2" would then land ~147 m below an elevated target. ⚠ STILL UNTESTED: the MISS
+  path (no known void column coords) + the `warp_local`-into-void REFUSAL (deliberately NOT run — it moves
+  the player + risks poisoning the user's LIVE save; needs a throwaway save or explicit OK). Look closer at
+  the asset-vs-terrain cast layer before trusting the ground+2 hop.
 - **★★ LOAD-WEDGE LIVE RE (2026-07-07 evening, wedge #3 as the lab) — "warp inconnu" CONFIRMED:**
   1. **ISOLATION: the ENGINE ALONE wedges** — same infinite load with `MapForGoblins.dll` renamed
      away (user-verified). Our DLL is cleared as the wedge cause; the save content is genuinely
