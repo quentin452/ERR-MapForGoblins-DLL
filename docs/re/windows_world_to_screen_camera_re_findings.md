@@ -133,3 +133,33 @@ position elsewhere in the struct, or a WorldChrMan render-origin field. Cheap ne
 dump the qwords/floats around `GameRend+0x00..+0xF0` and near the camera and look for that ~(-56,88,96) vector.
 (Alternative reframing the user raised: don't ImGui-project at all — render the virtual 3D via a **separate 3D
 backend** sharing ER's swapchain/depth, which sidesteps needing this w2s matrix — see HANDOFF discussion.)
+
+## ★ 2026-07-07 (Ghidra RE) — GameRend has NO static slot; the VIEW-writer chain (how +0xF0 is filled)
+Ran the FD4Singleton assert-map + vtable-ref trace (`D:\ghidra_proj2`, pyghidra) to answer "what static
+pointer gets us to GameRend without a scan" (the greybox-render Windows-hardening task). Answer: **there is
+none — GameRend is not an FD4Singleton.** It is constructed inside the game's task-step tree and referenced
+by pointer from several owners, none static:
+- **`renderObj+0xE8`** — the per-frame render step `FUN_140b019b0` (er+0xb019b0), called from
+  `FUN_140aff640` (er+0xaff640), the InGameStep update. `param_1` (the render step) is passed in, not static.
+- **`InGameStep_megaobj+0xB3628`** — the InGameStep factory (`FUN_140aec120`→`FUN_140aed820`) allocates
+  GameRend (`FUN_1406800f0`, 0x180 bytes) and stores it there; the dtor `FUN_140aed380` reads it back.
+- The mega-object itself is `new`'d in `FUN_140aeaaa0` and stored in a parent `CSStepTask` member array
+  (`FUN_140b0b1c0` → member at another `new`'d parent, er+0xae786f). RTTI of the enclosing steps:
+  `EzChildStep` / `InGameStep` / `MoveMapStep` / `CSStepTask<TitleStep>` — heap task tree, no `mov [rip],inst`
+  store anywhere. Reaching it from a static = walking live task pointers with non-AOB-able slot indices.
+- **`GameRendCameraSet@GameRend@CS@@` vtable = er+0x2a7f2b8** (confirmed via `rtti_index.txt`, this 2.6.2.0
+  build) — so the mod's `VT_CAMSET_RVA` is correct; a vtable scan IS the right way to find the live instance
+  (the fix was to make that scan present-thread-safe, not to replace it — see
+  `windows_w2s_camera_finder_present_hang_findings.md`).
+
+**How VIEW@GameRend+0xF0 is produced each frame** (useful if we ever want the VIEW without touching
+GameRend): `FUN_140b019b0` does `buf = FUN_1403f0f60(FUN_140507ff0(WorldChrMan), local)` then copies `buf`
+into `GameRend+0xF0` (the 4×4) `+0x110`/`+0x120` (params):
+- **`FUN_140507ff0(WorldChrMan)`** (er+0x507ff0) — the camera SOURCE getter: returns the freecam object when
+  `DAT_143d66198 != 0`, else `*(WorldChrMan + 0x1E508)` = **LocalPlayer** (the SAME `[WCM+0x1E508]` the mod
+  already resolves). WorldChrMan static = **er+0x3D65F88** (mod's `WCM_FINDER`).
+- **`FUN_1403f0f60(camsrc, out)`** (er+0x3f0f60) — `FUN_14045e540(*(*(camsrc + 0x190) + 0x68))`: reads
+  `[[camsrc+0x190]+0x68]` (the SAME pose/phys object the coord-teleport writes — `posObj` chain) and computes
+  the VIEW. ⇒ a scan-free VIEW is theoretically reachable as `WorldChrMan → [+0x1E508] → [+0x190] → [+0x68] →
+  FUN_14045e540`, but it needs calling/replicating `FUN_14045e540` (own RE + present-thread crash-risk
+  validation). Deferred — the time-boxed vtable scan is the low-risk path that keeps the proven +0xF0 read.

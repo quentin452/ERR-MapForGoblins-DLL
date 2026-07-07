@@ -63,9 +63,22 @@ namespace
         return !ident;
     }
 
-    // Crash-safe windowed scan for the GameRendCameraSet vtable -> the camera instance whose +0xE0 is a
-    // valid VIEW matrix. Cached; re-validated (vtable qword still present) each call.
-    uintptr_t find_cam_instance()
+    // Crash-safe scan for the GameRendCameraSet vtable -> the camera instance whose +0xE0 is a valid
+    // VIEW matrix. Cached; re-validated (vtable qword still present) each call.
+    //
+    // ★ Present-thread-SAFE (Windows-hardening 2026-07-07, docs/re/windows_w2s_camera_finder_present_hang):
+    // GameRend is NOT an FD4Singleton — it has no static slot (it is task-tree-resident, referenced as
+    // renderObj+0xE8 / InGameStep+0xB3628 by many owners; RE'd in Ghidra). So there is no "one deref off a
+    // static" path; finding the live instance genuinely needs a memory scan. The OLD scan walked the WHOLE
+    // multi-GB committed space in one call on the PRESENT thread — a single pass froze the frame (the greybox
+    // render hang). The fix is to TIME-BOX the scan and RESUME across frames via a persistent cursor: each
+    // per-frame call scans for at most `budget_ms`, then returns 0 (no camera THIS frame — render just skips)
+    // and picks up where it left off next frame. Once a hit is cached, every later frame is the cheap
+    // re-validate path. A permanently-absent/rejected vtable degrades to "no render" (a light periodic
+    // sweep), never a hang. `exhaustive` = force a FRESH full sweep in one call (RPC `w2s_probe` wants a
+    // definitive answer, not a resumed slice) with a 2 s hard cap so even that can't wedge. Present-thread
+    // only (single caller set: probe / draw_present / get_camera) → the file-static scan state needs no lock.
+    uintptr_t find_cam_instance(bool exhaustive = false)
     {
         static uintptr_t s_hit = 0;
         uintptr_t base = (uintptr_t)GetModuleHandleA("eldenring.exe");
@@ -81,32 +94,68 @@ namespace
         }
 
         SYSTEM_INFO si; GetSystemInfo(&si);
-        uintptr_t addr = (uintptr_t)si.lpMinimumApplicationAddress;
+        uintptr_t amin = (uintptr_t)si.lpMinimumApplicationAddress;
         uintptr_t aend = (uintptr_t)si.lpMaximumApplicationAddress;
         const size_t WIN = 8 * 1024 * 1024, OVL = 0x200;
-        std::vector<uint8_t> buf(WIN + OVL);
+
+        // Cross-frame scan state: cursor = absolute resume address; a completed miss backs off for
+        // kCooldownMs so a never-present vtable doesn't re-sweep every single frame.
+        static std::vector<uint8_t> s_buf;
+        static uintptr_t s_cursor = 0;
+        static bool s_sweeping = false;
+        static DWORD s_next_sweep_tick = 0;
+        if (s_buf.size() < WIN + OVL) s_buf.resize(WIN + OVL);
+
+        // Per-CALL time box: tiny for the per-frame render path (frame-safe, resumes next frame); generous
+        // for the manual RPC probe so ONE `w2s_probe` usually completes a full sweep, still capped so it
+        // can't wedge on a pathologically large region (it just resumes on the next `w2s_probe`).
+        const DWORD budget_ms = exhaustive ? 2000 : 2;
+        const DWORD kCooldownMs = 2000;                  // wait between full sweeps that found nothing
+        const DWORD t0 = GetTickCount();
+
+        if (exhaustive)
+        {
+            s_sweeping = true; s_cursor = amin;   // manual probe: always a FRESH complete sweep
+        }
+        else if (!s_sweeping)
+        {
+            if ((int)(s_next_sweep_tick - t0) > 0) return 0;   // still cooling down
+            s_sweeping = true; s_cursor = amin;
+        }
+
         MEMORY_BASIC_INFORMATION mbi;
+        uintptr_t addr = s_cursor;
         while (addr < aend && VirtualQuery((void *)addr, &mbi, sizeof(mbi)) == sizeof(mbi))
         {
             uintptr_t rbase = (uintptr_t)mbi.BaseAddress; size_t rsz = mbi.RegionSize; DWORD pr = mbi.Protect;
             bool ok = mbi.State == MEM_COMMIT && rsz >= 16 &&
                       (pr & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE)) &&
                       !(pr & (PAGE_GUARD | PAGE_NOACCESS));
+            // Resume mid-region: skip windows already scanned this sweep (cursor landed inside rbase..+rsz).
+            size_t start_off = (s_cursor > rbase && s_cursor < rbase + rsz) ? ((s_cursor - rbase) & ~(WIN - 1)) : 0;
             if (ok)
-                for (size_t off = 0; off < rsz; off += WIN)
+                for (size_t off = start_off; off < rsz; off += WIN)
                 {
                     size_t want = rsz - off; if (want > WIN + OVL) want = WIN + OVL;
-                    if (!safe_read((void *)(rbase + off), buf.data(), want)) continue;
-                    size_t scan_to = (want > WIN) ? WIN : (want >= 8 ? want - 8 : 0);
-                    for (size_t i = 0; i < scan_to; i += 8)
-                        if (*(const uint64_t *)(buf.data() + i) == vt)
-                        {
-                            uintptr_t hit = rbase + off + i; float m[16];
-                            if (rd(hit + VIEW_FROM_HIT, m) && looks_like_view(m)) { s_hit = hit; return hit; }
-                        }
+                    if (safe_read((void *)(rbase + off), s_buf.data(), want))
+                    {
+                        size_t scan_to = (want > WIN) ? WIN : (want >= 8 ? want - 8 : 0);
+                        for (size_t i = 0; i < scan_to; i += 8)
+                            if (*(const uint64_t *)(s_buf.data() + i) == vt)
+                            {
+                                uintptr_t hit = rbase + off + i; float m[16];
+                                if (rd(hit + VIEW_FROM_HIT, m) && looks_like_view(m))
+                                { s_hit = hit; s_sweeping = false; s_cursor = 0; return hit; }
+                            }
+                    }
+                    if ((GetTickCount() - t0) >= budget_ms)
+                    { s_cursor = rbase + off + WIN; return 0; }   // out of time — resume here next call
                 }
             uintptr_t nxt = rbase + rsz; if (nxt <= addr) break; addr = nxt;
+            if ((GetTickCount() - t0) >= budget_ms) { s_cursor = addr; return 0; }
         }
+        // Full sweep completed with no valid hit — reset + back off before the next sweep.
+        s_sweeping = false; s_cursor = 0; s_next_sweep_tick = GetTickCount() + kCooldownMs;
         return 0;
     }
 
@@ -195,8 +244,9 @@ namespace goblin::w2s
     {
         uintptr_t base = (uintptr_t)GetModuleHandleA("eldenring.exe");
         if (!base) return "err: eldenring.exe base not found";
-        uintptr_t hit = find_cam_instance();
-        if (!hit) return "err: no GameRendCameraSet instance with a valid VIEW matrix (in-world? camera active?)";
+        uintptr_t hit = find_cam_instance(/*exhaustive=*/true);   // manual probe wants a full sweep, not a slice
+        if (!hit) return "err: no GameRendCameraSet instance with a valid VIEW matrix (in-world? camera active? "
+                         "run w2s_probe again if it timed out mid-sweep)";
 
         float px, py, pz;
         if (!goblin::get_player_world_pos(px, py, pz)) return "err: no player world pos (in-world?)";

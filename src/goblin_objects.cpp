@@ -20,9 +20,12 @@ std::vector<ObjectDef> g_defs;
 std::filesystem::path g_folder;
 std::mutex g_mtx;
 bool g_try_collision = false;   // experimental walkable-collision pass (frame + borrowed-shape caveats)
-// ⚠ DEFAULT OFF: the ImGui render calls w2s::get_camera every frame, which HANGS the present thread on
-// native Windows (find_cam_instance memory scan — w2s was Linux/vkd3d-verified only, same as r3d;
-// 2026-07-07). Enable explicitly with `objects render on` only once get_camera is Windows-hardened.
+// ⚠ DEFAULT OFF pending one live confirm: the ImGui render calls w2s::get_camera every frame. That used to
+// HANG the present thread on native Windows (find_cam_instance walked the whole multi-GB address space in one
+// present-frame call). Fixed 2026-07-07: the scan is now TIME-BOXED + resumes across frames (goblin_w2s.cpp),
+// so a slow/failed find degrades to "no render", never a freeze. GameRend has no static slot to shortcut the
+// scan (it is task-tree-resident — docs/re/windows_w2s_camera_finder_present_hang_findings.md). Kept OFF by
+// default until `objects render on` + `w2s_probe` are verified in-world once; then flip to true if desired.
 std::atomic<bool> g_render_enabled{false};
 std::vector<RenderBox> g_render_boxes;   // realized boxes (absolute world), drawn by the overlay via ImGui
 std::mutex g_render_mtx;

@@ -16,41 +16,64 @@ Every attempt to render the objects.toml greybox froze the game:
 
 Both backends have ONE thing in common: they call **`goblin::w2s::get_camera()` every present frame**.
 
-## Root cause: `find_cam_instance()` full-address-space scan every frame
+## Root cause: `find_cam_instance()` full-address-space scan on the present thread
 
 `goblin_w2s.cpp::find_cam_instance()` caches the camera instance in `s_hit`. On a cache MISS it
-**`VirtualQuery`-walks the entire committed address space** (`lpMinimumApplicationAddress` →
+**`VirtualQuery`-walked the entire committed address space** (`lpMinimumApplicationAddress` →
 `lpMaximumApplicationAddress`) in 8 MB windows, scanning every qword for the camera vtable
-(`base + VT_CAMSET_RVA`). ER is a multi-GB process → this scan is very expensive, and it runs **on the
-present thread**. If it never finds a hit, `s_hit` stays 0 and it **re-scans the whole space EVERY
-frame** → the present thread stalls for seconds per frame = the freeze/hang.
+(`base + VT_CAMSET_RVA`), **in one present-frame call**. ER is a multi-GB process → a SINGLE pass takes
+long enough to freeze the frame (and trip the freeze watchdog). The first `get_camera` call inside the
+render block hung before the one-shot `[OBJECTS-RENDER]` log could fire.
 
-**Why it never finds on this box:** `VT_CAMSET_RVA = 0x2a7f2b8` is a **static, UNVERIFIED Ghidra guess** —
-`docs/re/windows_world_to_screen_camera_re_findings.md` says "static recon done; live-probe pending … not
-yet runtime-verified". On the running exe **2.6.2.0** it is likely wrong (or the camera layout differs),
-so the vtable is never matched → permanent per-frame full rescan.
+## ★ CORRECTION 2026-07-07 (Ghidra RE, D:\ghidra_proj2) — the premise above was wrong on two counts
 
-r3d's world-anchored cube was "live-verified 2026-07-05" — on the **Linux/Proton** dev box, whose ER build
-(and thus the camera vtable RVA) differs from this Windows 2.6.2.0 install. So get_camera worked THERE and
-has never actually resolved on this Windows box.
+The earlier "the RVA is a wrong guess → never caches → rescans every frame" theory was NOT confirmed by
+the RE. Both assumptions it rested on are false:
 
-## The two independent fixes (w2s Windows-hardening — the real next task)
+1. **`VT_CAMSET_RVA = 0x2a7f2b8` is CORRECT for this build.** `tools/ghidra/rtti_index.txt` (built from
+   the running 2.6.2.0 exe) lists `GameRendCameraSet@GameRend@CS@@` vtable at **er+0x2a7f2b8** — exactly the
+   mod's constant. `VIEW_FROM_HIT = 0xE0` (hit = GameRend+0x10, VIEW @ GameRend+0xF0) is likewise confirmed
+   by the live Linux calibration AND by the Ghidra init `FUN_1406800f0`. So the scan was NOT failing to
+   match a wrong vtable — a full sweep would have found the instance; it just took too long ON the present
+   thread. (The "re-scans every frame" was an inference, not a measurement — the real defect is the single
+   unbounded sweep.)
+2. **GameRend is NOT an FD4Singleton — it has NO static slot.** The HANDOFF's planned fix ("AOB → GameRend
+   singleton slot, one deref, zero scan") is **not achievable as written.** GameRend is allocated inside the
+   game's task-step tree and referenced by POINTER from many owners, none of which is a static global:
+   - the per-frame VIEW writer `FUN_140b019b0` holds it as `renderObj+0xE8`;
+   - the InGameStep factory `FUN_140aec120`/`FUN_140aed820` stores it at `InGameStep_megaobj+0xB3628`, and
+     the dtor `FUN_140aed380` reads it back from there;
+   - the mega-object is `new`'d in `FUN_140aeaaa0`, stored in a parent `CSStepTask` member array — heap all
+     the way up (EzChildStep / InGameStep / MoveMapStep / CSStepTask<TitleStep>), no `mov [rip+disp]` store
+     of the instance anywhere.
+   So reaching GameRend from a static would mean walking live task-manager pointers with non-AOB-able slot
+   indices — worse than the scan. **A memory scan for the vtable is genuinely the simplest way to find the
+   live instance.** Full VIEW-writer chain in `windows_world_to_screen_camera_re_findings.md`.
 
-1. **Make `find_cam_instance` present-thread-SAFE.** Never full-scan the address space on the present
-   thread every frame. Options: rate-limit the rescan (attempt at most once every few seconds when
-   uncached, return 0 in between → the render just doesn't draw, no hang); bound the scan to ER's main
-   heap regions; or run the find on a background thread and have the present thread use only the cached
-   result. Then a wrong RVA degrades to "no render", never a hang.
-2. **Verify/fix `VT_CAMSET_RVA` for exe 2.6.2.0.** It is an unverified static guess. Confirm the camera
-   vtable live (a bounded `w2s_probe` that reports the found instance + the VIEW matrix), or re-derive the
-   RVA for this exe. `VIEW_FROM_HIT = 0xE0` (GameRend+0xF0) is the same doc's guess and needs the same
-   check.
+## Fix SHIPPED 2026-07-07 — time-boxed, resumable scan (keeps the proven VIEW read; kills the hang)
 
-## Current mitigation (shipped)
+Rewrote `find_cam_instance(bool exhaustive=false)` in `goblin_w2s.cpp`:
+- **Per-frame path (`draw_present`/`get_camera`):** scan for at most **2 ms per call**, then return 0 (no
+  camera THIS frame → render just skips a frame) and **resume next frame** via a persistent cursor
+  (`s_cursor`, resumes mid-region at 8 MB-window granularity). Once a valid hit is cached, every later frame
+  is the cheap re-validate path (unchanged). So acquisition costs ~a few tenths of a second of skipped
+  frames on first enable, then near-zero — never a stall.
+- **Never-found degrades gracefully:** a completed sweep with no valid hit resets and **backs off 2 s**
+  before the next sweep (a permanently-absent/rejected vtable = light periodic scan + no render, never a
+  hang).
+- **RPC `w2s_probe` path (`exhaustive=true`):** one call runs a full sweep (2 s cap so even the manual probe
+  can't wedge; re-run `w2s_probe` if it times out mid-sweep). Present-thread only (single caller set) → the
+  file-static scan state needs no locking.
 
-`goblin::objects` render is **OFF by default** (`g_render_enabled=false`) — `objects realize` stores the
-boxes but nothing calls get_camera, so the game is stable. Enable with `objects render on` only after the
-w2s fixes above. r3d likewise stays off (`r3d 1`) — same get_camera dependency.
+Both builds green (`build-err` + `build-err-hotreload`, both DLLs link). Change is host-only.
+
+## Current default (still OFF, pending ONE live confirm)
+
+`goblin::objects` render stays **OFF by default** (`g_render_enabled=false`) until verified once in-world.
+`objects realize` stores the boxes but nothing calls get_camera unless `objects render on`. **Next boot:**
+`objects render on` then move around a placed box — it must draw as a greybox with NO freeze; `w2s_probe`
+should report `ok w2s cam GameRend=… VIEW@+0xF0:` with a live matrix and (after `w2s_probe dot on`) the dot
+should track the player. r3d benefits from the same finder (shared `get_camera`).
 
 ---
 

@@ -24,18 +24,23 @@ step 3.
   build/RVA).
 - **Mitigation shipped:** `objects` render is **OFF by default** (`objects render on` to enable); r3d off
   (`r3d 1`). Game is stable. `assets/objects.toml` staged in `dll/offline/` for the eventual test.
-- **★ NEXT — w2s Windows-hardening: replace the RVA+scan with an AOB→GameRend SINGLETON (user's call
-  2026-07-07).** The definitive fix is NOT "AOB the camera vtable" (that still needs a memory scan to find
-  the instance) — it's an **AOB that resolves the GameRend singleton SLOT** (a static pointer, like
-  `CSMENUMAN_SLOT`/`WCM_FINDER` in re_signatures.hpp), so the camera is one deref away with **zero
-  address-space scan** → kills the present-thread hang AND is version-resilient (survives ER updates).
-  Steps: (1) Ghidra `D:\ghidra_proj2\ER` — find the code that loads GameRend (references the camera
-  singleton), author an AOB→slot (`relative_offsets` like the other slots), add to re_signatures.hpp with
-  the boot PASS/FAIL health check; (2) rewrite `find_cam_instance` to read `*slot` (drop the whole
-  VirtualQuery walk); (3) live-verify `VIEW_FROM_HIT=0xE0` (VIEW @ GameRend+0xF0) with a bounded
-  `w2s_probe`. Then `objects render on` draws the greybox via ImGui, and r3d benefits from the same fix
-  (shared `get_camera`). Interim option if an AOB is slow to find: rate-limit the existing scan
-  (GetTickCount ≥3 s between full scans, return 0 between) so it degrades to no-render instead of a hang.
+- **✅ w2s Windows-hardening DONE 2026-07-07 (premise corrected + fix shipped) — pending ONE live confirm.**
+  The planned "AOB→GameRend SINGLETON slot, zero scan" turned out **impossible**: Ghidra RE
+  (`D:\ghidra_proj2`) proved **GameRend is NOT an FD4Singleton** — it is task-tree-resident, held by pointer
+  as `renderObj+0xE8` / `InGameStep_megaobj+0xB3628` by many owners, none a static global (the mega-object is
+  `new`'d up an EzChildStep/InGameStep/CSStepTask chain). Also DISPROVED: the "wrong RVA" theory — the
+  `GameRendCameraSet` vtable **er+0x2a7f2b8 is CORRECT** for 2.6.2.0 (matches `rtti_index.txt`), so a scan IS
+  the right way to find the live instance. The real hang was just the **unbounded full-address-space sweep on
+  the present thread** (one pass over multi-GB = frozen frame). **Fix shipped** (`goblin_w2s.cpp`
+  `find_cam_instance` rewrite): the scan is now **time-boxed to 2 ms/frame + resumes across frames** via a
+  persistent cursor; found → cached (cheap re-validate after); never-found → 2 s-cooldown light sweep + no
+  render, never a hang. `w2s_probe` runs an exhaustive (2 s-capped) sweep. Both builds green (host-only
+  change). RE: `windows_w2s_camera_finder_present_hang_findings.md` (premise correction + fix) +
+  `windows_world_to_screen_camera_re_findings.md` (GameRend structure + the VIEW-writer chain
+  `FUN_140507ff0`→`FUN_1403f0f60`→GameRend+0xF0). **★ NEXT (needs a boot): flip `objects render on`, move
+  near a placed box → must draw a greybox with NO freeze; `w2s_probe` must report a live VIEW@+0xF0 + (dot on)
+  track the player.** If green, consider defaulting render ON. Scan-free VIEW (WorldChrMan→[+0x1E508]→
+  [+0x190]→[+0x68]→`FUN_14045e540`) is documented as a future option (needs its own RE — deferred).
 
 
 ## ⇒ 2026-07-07 (Windows) — ★ coord-teleport VOID bug (v2.2.0) FIXED + save-wedge RESCUE procedure; coop NPC-phantom test attempt 1 aborted
