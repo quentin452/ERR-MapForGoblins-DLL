@@ -21,8 +21,13 @@ namespace
 // r8d = graceId - 1000. Return value unused (the CT stub discards it).
 using LuaWarpFn = uint64_t(*)(void *a, void *b, uint32_t code);
 
+// ChrIns SetPos(rcx=ChrIns, rdx=&PosStruct, r8=name-or-null, r9b=hardSet). See the SETPOS
+// AOB comment in re_signatures.hpp for the full ABI + why it beats a raw +0x6C0 store.
+using SetPosFn = void(*)(void *chr, void *pos_struct, void *name, uint8_t hard_set);
+
 LuaWarpFn g_warp = nullptr;
 void **g_lem_slot = nullptr;   // *g_lem_slot == CSLuaEventManager (re-read each call)
+SetPosFn g_setpos = nullptr;
 std::atomic<bool> g_ready{false};
 }  // namespace
 
@@ -39,9 +44,13 @@ void initialize()
         int32_t disp = *reinterpret_cast<int32_t *>(m + 3);
         g_lem_slot = reinterpret_cast<void **>(m + 7 + disp);
     }
+    // ChrIns SetPos — the coordinate-teleport entry (SETPOS AOB anchors the fn ENTRY directly).
+    if (auto *m = reinterpret_cast<uint8_t *>(modutils::scan<void>({.aob = goblin::sig::SETPOS})))
+        g_setpos = reinterpret_cast<SetPosFn>(m);
     g_ready.store(true);
-    spdlog::info("[WARP] LuaWarp_01={} CSLuaEventManager_slot={} ({})", (void *)g_warp,
-                 (void *)g_lem_slot, (g_warp && g_lem_slot) ? "OK" : "MISS");
+    spdlog::info("[WARP] LuaWarp_01={} CSLuaEventManager_slot={} SetPos={} ({})", (void *)g_warp,
+                 (void *)g_lem_slot, (void *)g_setpos,
+                 (g_warp && g_lem_slot) ? "OK" : "MISS");
 }
 
 // The raw game call, isolated so the caller's __try wraps a lone opaque CALL (clang-cl keeps
@@ -113,6 +122,52 @@ bool to_grace(int32_t grace_id, int32_t offset)
     bool ok = warp_seh(a, b, code);
     spdlog::info("[WARP] to_grace grace_id={} offset={} code={} lem={} -> {}", grace_id, offset, code, lem,
                  ok ? "called" : "FAULTED");
+    return ok;
+}
+
+// The raw engine SetPos call, isolated so the caller's __try wraps a lone opaque CALL
+// (clang-cl keeps that; a __try around inline loads/stores gets elided — clang-cl-seh-noinline).
+__declspec(noinline) static bool call_setpos(void *chr, void *pos_struct)
+{
+    __try
+    {
+        // r8=null → the propagate fn substitutes a default name; r9b=1 = hard set (matches the
+        // engine's own legit caller at er+0xda797b).
+        g_setpos(chr, pos_struct, nullptr, 1);
+        return true;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return false;
+    }
+}
+
+bool teleport_coords(float x, float y, float z)
+{
+    if (!g_ready.load()) initialize();
+    if (!g_setpos) { spdlog::warn("[WARP] SetPos unresolved — teleport_coords skipped"); return false; }
+
+    // Re-entrancy / not-in-world guard (same rationale as to_grace): LocalPlayer is null during a
+    // load, and get_player_world_pos returns false exactly then. It also hands us the LIVE yaw so we
+    // preserve the player's facing (SetPos copies the 4th struct float over +0x6CC = yaw).
+    void *lp = goblin::get_local_player_ptr();
+    if (!lp)
+    {
+        spdlog::warn("[WARP] LocalPlayer null (loading / not in-world) — teleport_coords skipped");
+        return false;
+    }
+    float yaw = 0.0f;
+    goblin::get_player_facing_yaw(yaw);   // best-effort; 0 if unresolved (harmless default facing)
+
+    // PosStruct: SetPos reads only the 16-byte xmmword at +0x30. Give it a zeroed 0x40 block with
+    // the target {x, y, z, yaw} at +0x30 (w=yaw so facing is kept). 16-byte aligned for the movaps.
+    alignas(16) uint8_t pos_struct[0x40] = {};
+    float *p = reinterpret_cast<float *>(pos_struct + 0x30);
+    p[0] = x; p[1] = y; p[2] = z; p[3] = yaw;
+
+    bool ok = call_setpos(lp, pos_struct);
+    spdlog::info("[WARP] teleport_coords ({:.2f},{:.2f},{:.2f}) yaw={:.3f} lp={} -> {}",
+                 x, y, z, yaw, lp, ok ? "called" : "FAULTED");
     return ok;
 }
 }  // namespace goblin::warp

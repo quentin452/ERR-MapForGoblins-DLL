@@ -9,6 +9,29 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
+## ⇒ 2026-07-07 (Windows/Ghidra) — coordinate teleport SOLVED + implemented; ★ needs a Linux live-verify
+
+The `warp_local`/`warp_xyz` "does nothing" bug (raw `LocalPlayer+0x6C0` store snaps back — +0x6C0 is an
+OUTPUT MIRROR) is now fully RE'd AND implemented; the ONE remaining step is a Linux/Proton deploy + boot to
+confirm it moves the player without a fault. Findings: `docs/re/linux_player_pos_write_setpos_re_findings.md`.
+
+- **The engine entry = ChrIns `SetPos` (er+0xdc6380, `SETPOS` AOB, UNIQUE).** ABI fully decompiled (caller
+  er+0xda797b + the whole propagate chain dc6e90/dc6600/dc7b40/dc7260/dc8150): `void SetPos(rcx=ChrIns,
+  rdx=&PosStruct, r8=name-or-null, r9b=hardSet)`. It arms `+0x160|0x80`, stages the 16-byte pos from
+  `[rdx+0x30]` into `+0x6C0`, and propagates so the per-frame consumer drives the body there. `rdx` is read
+  ONLY at +0x30 (`{x,y,z,w}`); the **4th float w → +0x6CC = YAW** (pass current yaw to keep facing); r8=null
+  is safe (default name substituted); r9b=1 matches the legit caller.
+- **Implemented: `goblin::warp::teleport_coords(x,y,z)`** (`src/goblin_warp.cpp`) — reads live yaw, builds a
+  zeroed 0x40 struct with `{x,y,z,yaw}`@+0x30, calls SetPos behind noinline+SEH (same shape as `to_grace`).
+  Wired into `warp_local`/`warp_xyz` RPC + the vmap click-to-warp (`warp_to_world_xz`), all of which
+  previously did the broken raw store. `SETPOS` pinned in `re_signatures.hpp` (health-registered). **Default
+  build green.** All edits host→host (no split-boundary change).
+- **★ NEXT (Linux, the only open step): deploy + boot in-world → `[WARP]` log must show `SetPos=<nonzero>`
+  → `warp_local x y+2 z` should MOVE + STAY (no snap-back), facing kept → `warp_xyz` a short hop. If it
+  FAULTS (log `FAULTED`, no move) the RPC-thread context is unsafe for SetPos → drain on the main-update
+  thread via the geom-spawn per-frame hook. Co-op: same local-sim caveat as the vmap freeze (guard on
+  `coop::others_present()`). On a clean run: mark the finding SOLVED + add a changelog `[Unreleased]` fix.**
+
 ## ⇒ 2026-07-07 — coop RPC diag verb + `vmap graces` discovered-bug fix; NPC-phantom coop test PENDING (manual)
 
 - **✅ `coop` RPC verb SHIPPED (`965e6896`)** — session diag: `count=`/`others=`/`markers=`/`freeze_skip=` +

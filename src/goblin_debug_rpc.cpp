@@ -1597,9 +1597,10 @@ namespace goblin::debug_rpc
                         "ok local=(%.2f,%.2f,%.2f) world=? (map-pos unresolved)", lx, ly, lz);
                 return std::string(b);
             }
-            // warp_local <x> <y> <z> — write the tile-local Havok pos DIRECTLY (mirrors er_console
-            // `tp`). Absolute within the current tile frame. The discriminating test: warp_local to
-            // the SAME x y z twice → same spot ⇒ absolute-in-frame; drifts ⇒ pure delta.
+            // warp_local <x> <y> <z> — teleport to the tile-local Havok pos via the ENGINE SetPos
+            // (er+0xdc6380). Absolute within the current tile frame. A RAW +0x6C0 store (the old path)
+            // snaps back — +0x6C0 is an output mirror the physics thread rewrites; SetPos arms the
+            // pending bit + propagates so the body actually moves (RE linux_player_pos_write_setpos).
             if (cmd == "warp_local")
             {
                 std::string xs = next_token(rest), ys = next_token(rest), zs = next_token(rest);
@@ -1607,8 +1608,8 @@ namespace goblin::debug_rpc
                 float x, y, z;
                 try { x = std::stof(xs); y = std::stof(ys); z = std::stof(zs); }
                 catch (...) { return "err bad x/y/z"; }
-                if (!goblin::write_player_local_pos(x, y, z, /*set_y=*/true))
-                    return "err write failed (not in-world?)";
+                if (!goblin::warp::teleport_coords(x, y, z))
+                    return "err teleport failed (unresolved / not in-world?)";
                 float rx = 0, ry = 0, rz = 0; goblin::get_player_world_pos(rx, ry, rz);  // read-back
                 char b[160];
                 std::snprintf(b, sizeof(b),
@@ -1631,8 +1632,8 @@ namespace goblin::debug_rpc
                 int area = 0; float cwx = 0, cwz = 0;
                 if (!goblin::get_player_raw_pos(area, cwx, cwz)) return "err world-pos unresolved";
                 float nlx = lx + (twx - cwx), nlz = lz + (twz - cwz), nly = has_y ? twy : ly;
-                if (!goblin::write_player_local_pos(nlx, nly, nlz, /*set_y=*/true))
-                    return "err write failed";
+                if (!goblin::warp::teleport_coords(nlx, nly, nlz))
+                    return "err teleport failed";
                 int narea = 0; float rwx = 0, rwz = 0;
                 goblin::get_player_raw_pos(narea, rwx, rwz);  // read-back in the world frame
                 char b[224];

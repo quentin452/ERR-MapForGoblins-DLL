@@ -89,14 +89,15 @@ namespace goblin::overlay_api
 
     // Teleport to an ABSOLUTE world XZ (unified marker frame) — same logic as the warp_xyz RPC:
     // keep the current tile, offset the player's local pos by (target − currentRaw). Intra-region only
-    // (a far cross-map target may land in unstreamed void). Returns false if not in-world / write failed.
+    // (a far cross-map target may land in unstreamed void). Drives the ENGINE SetPos (a raw +0x6C0
+    // store snaps back — RE linux_player_pos_write_setpos). Returns false if not in-world / faulted.
     bool warp_to_world_xz(float wx, float wz)
     {
         float lx, ly, lz;
         if (!goblin::get_player_world_pos(lx, ly, lz)) return false;
         int area = 0; float cwx = 0.f, cwz = 0.f;
         if (!goblin::get_player_raw_pos(area, cwx, cwz)) return false;
-        return goblin::write_player_local_pos(lx + (wx - cwx), ly, lz + (wz - cwz), /*set_y=*/false);
+        return goblin::warp::teleport_coords(lx + (wx - cwx), ly, lz + (wz - cwz));
     }
     const char *category_label(int c) { return goblin::ui::category_label(c); }
     const char *section_label(int idx) { return goblin::ui::section_label(idx); }
