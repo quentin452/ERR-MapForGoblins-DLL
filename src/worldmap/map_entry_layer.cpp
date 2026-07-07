@@ -1400,13 +1400,22 @@ struct MerchantSeller
     std::vector<std::pair<int32_t, int32_t>> ranges;  // ShopLineupParam [begin,end] runs
 };
 static std::vector<MerchantSeller> g_merchant_sellers;
+// name_ids (+700M) of the merchant markers actually PINNED (unmappable ones excluded) —
+// QuestNpcLayer's runtime-FALLBACK pins dedup against this so one NPC gets one glyph
+// (the merchant pin wins over the minimal name-only fallback; hand-authored quest STEP
+// pins are untouched — they carry step prose and share the same glyph anyway).
+static std::unordered_set<int32_t> g_merchant_pinned_names;
 
 static void build_merchant_search_index()
 {
     g_merchant_items.clear();
     // The seller registry is (re)built by build_disk_merchant_markers earlier in the same
     // bucket build; when that pass is toggled off it never runs, so drop any stale entries.
-    if (!goblin::config::worldFeaturesFromDisk) g_merchant_sellers.clear();
+    if (!goblin::config::worldFeaturesFromDisk)
+    {
+        g_merchant_sellers.clear();
+        g_merchant_pinned_names.clear();
+    }
     std::unordered_map<int32_t, size_t> seen;  // name_id → index in g_merchant_items
     // Seller lookup: a shop ROW id inside a pinned merchant's OpenRegularShop range names the
     // seller. Linear scan (≤ dozens of sellers × few ranges) per row is fine at build time.
@@ -1664,6 +1673,7 @@ static int build_disk_merchant_markers(const std::vector<DiskEnemy> &enemies,
     GOBLIN_BENCH("build.disk_merchants");
     const int cat = static_cast<int>(gen::Category::WorldMerchant);
     g_merchant_sellers.clear();
+    g_merchant_pinned_names.clear();
     std::unordered_map<uint32_t, std::vector<std::pair<int32_t, int32_t>>> by_talk;
     {
         std::vector<goblin::esd::TalkShopRange> all = load_merchant_shop_ranges();
@@ -1679,7 +1689,7 @@ static int build_disk_merchant_markers(const std::vector<DiskEnemy> &enemies,
             if (r.talkId >= 100000)
                 by_talk[r.talkId].emplace_back(r.begin, r.end);
     }
-    int emitted = 0, dup = 0, no_name = 0, at_origin = 0;
+    int emitted = 0, dup = 0, no_name = 0, at_origin = 0, unmapped = 0;
     std::unordered_set<std::string> seen_pos;
     std::unordered_set<uint32_t> seller_talk;  // one seller entry per talkId
     for (const DiskEnemy &e : enemies)
@@ -1690,6 +1700,28 @@ static int build_disk_merchant_markers(const std::vector<DiskEnemy> &enemies,
         // A part at EXACTLY the tile origin is a utility placement, not a standing NPC
         // (ERR's hidden system c0000s sit at 0,0,0) — belt-and-braces under the talkId cut.
         if (e.posX == 0.0f && e.posY == 0.0f && e.posZ == 0.0f) { ++at_origin; continue; }
+        // UNMAPPABLE area guard (user-caught 2026-07-07: Roundtable merchants drew at
+        // gx*256 garbage): m11_10 / ERR's m31_90 copy have NO WorldMapLegacyConvParam row
+        // and no map page, so the unified projection can't place them. Same test as
+        // marker_fragment_flag: after the conv_underground fold, anything not on the
+        // overworld (60) / DLC (61) surface has nowhere to draw → skip the pin. The NPC
+        // stays in the seller registry below, so the search's "sold by" tag still works.
+        {
+            int ga = 0;
+            float wx = 0, wz = 0;
+            goblin::overlay_api::marker_world_pos(e.area, e.gx, e.gz, e.posX, e.posZ, ga, wx, wz,
+                                                  /*conv_underground=*/true);
+            if (ga != 60 && ga != 61)
+            {
+                ++unmapped;
+                uint8_t team = 0;
+                int32_t nm = 0;
+                goblin::overlay_api::npc_team_and_name(e.npcParamId, &team, &nm);
+                if (nm > 0 && seller_talk.insert(e.talkId).second)
+                    g_merchant_sellers.push_back(MerchantSeller{nm + 700000000, it->second});
+                continue;
+            }
+        }
         uint8_t team = 0;
         int32_t name = 0;
         goblin::overlay_api::npc_team_and_name(e.npcParamId, &team, &name);
@@ -1715,12 +1747,14 @@ static int build_disk_merchant_markers(const std::vector<DiskEnemy> &enemies,
         push_marker(/*row_id=*/e.talkId, d, cat, /*lotId=*/0u, /*lotType=*/0u, Source::DiskMSB);
         out_cells.insert(cell_of(g_buckets[cat].back()));   // finalize "pass ran" signal
         ++emitted;
+        g_merchant_pinned_names.insert(name + 700000000);   // quest-fallback dedup key
         if (seller_talk.insert(e.talkId).second)
             g_merchant_sellers.push_back(MerchantSeller{name + 700000000, it->second});
     }
     spdlog::info("[MERCHANTPINS] {} merchant pins from disk enemies × talk-ESD shop ranges "
-                 "({} shop TalkIDs, {} dup-pos, {} nameless-skipped, {} origin-skipped)",
-                 emitted, (int)by_talk.size(), dup, no_name, at_origin);
+                 "({} shop TalkIDs, {} dup-pos, {} nameless-skipped, {} origin-skipped, "
+                 "{} unmappable-skipped)",
+                 emitted, (int)by_talk.size(), dup, no_name, at_origin, unmapped);
     return emitted;
 }
 
@@ -4096,6 +4130,7 @@ bool entity_world_pos(uint32_t entity_id, float &worldX, float &worldZ, int &gro
 // Public accessor for the F1 item search (defined out here, not in the anon namespace above,
 // so it has external linkage; g_merchant_items is file-scope-visible from the same TU).
 const std::vector<MerchantItem> &merchant_search_items() { return g_merchant_items; }
+const std::unordered_set<int32_t> &merchant_pinned_names() { return g_merchant_pinned_names; }
 } // namespace goblin::worldmap
 
 #if defined(GOBLIN_OVERLAY_HOTRELOAD_BUILD)

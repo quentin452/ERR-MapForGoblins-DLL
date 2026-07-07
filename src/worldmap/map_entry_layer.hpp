@@ -7,6 +7,7 @@
 #include "../goblin_heightfield.hpp"   // heightfield::Cell (D-far -1 MSB Y-cloud relief snapshot)
 
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace goblin::worldmap
@@ -80,4 +81,10 @@ struct MerchantItem { int32_t name_id; bool infinite; bool gated; int32_t seller
 // Deduped list of merchant-sold items, rebuilt each bucket build (build_buckets_impl).
 // Empty if ShopLineupParam is absent. Read by the F1 item search on the present thread.
 const std::vector<MerchantItem> &merchant_search_items();
+
+// name_ids (+700M NpcName keys) of the PINNED WorldMerchant markers, rebuilt each bucket
+// build. QuestNpcLayer's runtime-fallback pins dedup against this — a merchant NPC keeps
+// ONE glyph (the merchant pin) instead of merchant + name-only fallback twins. Hand-authored
+// quest STEP pins are not deduped (they add step prose and share the same glyph).
+const std::unordered_set<int32_t> &merchant_pinned_names();
 } // namespace goblin::worldmap

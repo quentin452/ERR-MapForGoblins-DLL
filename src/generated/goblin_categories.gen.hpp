@@ -213,6 +213,7 @@ inline constexpr CategoryGpuIcon CATEGORY_GPU_ICONS[] = {
     {static_cast<int>(Category::WorldMiquellaCross), 208, 1.0f, 0u},
     {static_cast<int>(Category::WorldColosseum), 24, 1.0f, 0u},
     {static_cast<int>(Category::WorldElevator), 21, 0.6f, 3955145145u},  // tint rgb(185,185,190)
+    {static_cast<int>(Category::WorldMerchant), 80, 1.0f, 0u},
 };
 
 // Per-category NAME-keyed engine map symbol (+ scale). From each category's `glyph_name`

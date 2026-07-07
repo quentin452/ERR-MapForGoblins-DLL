@@ -53,11 +53,23 @@ one in-game look remains. `docs/plans/merchant_item_search_plan.md` has the full
 - **The recurring "crash" at session end = the game's OWN exit-teardown crash, not a bug:** 392 of the
   406 historical crash triages on this box share the exact fault `eldenring.exe+0x1EB9999` — it fires
   every time the game is quit. Ignore it for merchant work.
-- **★ NEXT (user, visual):** boot + actually open the worldmap/vmap: Kalé at Elleh (ERR's talk
-  437006001), Twin Maidens/Enia/Hewg/Twin-Husks cluster at the Roundtable, Gostoc inside Stormveil,
-  Patches in Murkwater Cave; toggle = "World - Merchants". F1 search "telescope" → "· sold by …" tag.
-  With the game left running, `vmap dump_markers` (RPC) can list the WorldMerchant bucket for an
-  exhaustive name/position audit.
+- **THIRD ROUND — user visual check: WORKS, 2 bugs found + FIXED (deployed, needs re-look):**
+  1. **Roundtable merchants at garbage positions** — m11_10 (and ERR's m31_90 copy) has NO
+     WorldMapLegacyConvParam row and no map page, so the unified projection left `gx*256` raw coords
+     (a PRE-EXISTING trait of every unmappable-area marker; merchants made it visible). Fix: the
+     merchant pass now projects first and SKIPS any pin not landing on the 60/61 surface
+     (`unmappable-skipped` counter). Roundtable merchants keep their search "sold by" tag (seller
+     registry still fed) — there is simply no map surface to pin them on.
+  2. **Merchant + quest-NPC double markers** — most merchants are also quest NPCs, so the
+     QuestNpcLayer runtime-FALLBACK pin (name-only, "Auto-detected quest") twinned the new merchant
+     pin. Fix per user: (a) WorldMerchant now draws the SAME engine glyph as quest NPCs (map-point
+     iconId 80, categories.json `glyph`); (b) the fallback pins dedup against
+     `merchant_pinned_names()` (merchant pin wins — it's the richer static pin); hand-authored quest
+     STEP pins are kept (step prose; same glyph → a coincident one overlaps invisibly and its hover
+     tooltip still shows the quest info).
+- **★ NEXT (user, visual re-check):** merchants now at correct spots only (no Roundtable strays),
+  one glyph per NPC (icon 80), quest STEP pins still following steps. Expect the `[MERCHANTPINS]`
+  line to show `unmappable-skipped≈12` (the Roundtable + m31_90 set).
 
 ## ⇒ 2026-07-07 (Windows) — coordinate teleport SOLVED + LIVE-VERIFIED (havok body write, er_console_mod's method)
 

@@ -84,6 +84,9 @@ const std::vector<Marker> &QuestNpcLayer::markers() const
             fbResolved++;
     }
     sig = sig * 1000003u + fbResolved;
+    // Merchant-pin dedup set (below): its size changes once the merchant pass builds, so
+    // fold it in — the fallback pins must re-evaluate then, not keep the pre-merchant set.
+    sig = sig * 1000003u + merchant_pinned_names().size();
     if (sig == built_sig_)
         return cache_;
     built_sig_ = sig;
@@ -186,6 +189,11 @@ const std::vector<Marker> &QuestNpcLayer::markers() const
         }
         if (nameId && handPinnedName.count(nameId))
             continue; // this NPC already has a richer step-following pin above
+        // Merchant dedup (user-caught double 2026-07-07): a merchant NPC already has a
+        // WorldMerchant pin with the SAME glyph + name — this minimal name-only fallback
+        // would be a twin. The merchant pin wins; hand STEP pins above are kept (step prose).
+        if (nameId && merchant_pinned_names().count(nameId + 700000000))
+            continue;
 
         Marker m{};
         m.worldX = wx;

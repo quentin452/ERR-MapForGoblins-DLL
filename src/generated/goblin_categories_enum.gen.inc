@@ -111,6 +111,8 @@
     // in the active install's talk ESDs (runtime C++ ESD parse, load_merchant_shop_ranges). Name =
     // live NpcParam.nameId -> NpcName. Mod-agnostic, no bake. See
     // docs/plans/merchant_item_search_plan.md Slice 3 option A.
+    // Glyph = engine map-point iconId 80, the SAME symbol as WorldQuestNPC, so a merchant
+    // who also has a hand-authored quest STEP pin overlaps invisibly (one visual marker).
     WorldMerchant,
     // TERMINAL catch-all — MUST stay LAST (every 'Category::…) + 1' count idiom points here).
     // Any pickup MFG's live taxonomy can't classify (cat < 0) is routed here instead of being
