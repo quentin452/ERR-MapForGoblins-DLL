@@ -24,12 +24,18 @@ step 3.
   build/RVA).
 - **Mitigation shipped:** `objects` render is **OFF by default** (`objects render on` to enable); r3d off
   (`r3d 1`). Game is stable. `assets/objects.toml` staged in `dll/offline/` for the eventual test.
-- **★ NEXT — w2s Windows-hardening (two independent fixes, then the render works):** (1) make
-  `find_cam_instance` present-thread-SAFE — rate-limit the rescan (GetTickCount, ≥3 s between full scans
-  when uncached; return 0 in between so a bad RVA degrades to no-render, never a hang) or move the find
-  off-thread; (2) verify/fix `VT_CAMSET_RVA` (+ `VIEW_FROM_HIT=0xE0`) for exe 2.6.2.0 via a bounded
-  `w2s_probe` once (1) makes probing safe. Then `objects render on` draws the greybox via ImGui (stable
-  path); r3d real-3D stays a later Windows-D3D12 task.
+- **★ NEXT — w2s Windows-hardening: replace the RVA+scan with an AOB→GameRend SINGLETON (user's call
+  2026-07-07).** The definitive fix is NOT "AOB the camera vtable" (that still needs a memory scan to find
+  the instance) — it's an **AOB that resolves the GameRend singleton SLOT** (a static pointer, like
+  `CSMENUMAN_SLOT`/`WCM_FINDER` in re_signatures.hpp), so the camera is one deref away with **zero
+  address-space scan** → kills the present-thread hang AND is version-resilient (survives ER updates).
+  Steps: (1) Ghidra `D:\ghidra_proj2\ER` — find the code that loads GameRend (references the camera
+  singleton), author an AOB→slot (`relative_offsets` like the other slots), add to re_signatures.hpp with
+  the boot PASS/FAIL health check; (2) rewrite `find_cam_instance` to read `*slot` (drop the whole
+  VirtualQuery walk); (3) live-verify `VIEW_FROM_HIT=0xE0` (VIEW @ GameRend+0xF0) with a bounded
+  `w2s_probe`. Then `objects render on` draws the greybox via ImGui, and r3d benefits from the same fix
+  (shared `get_camera`). Interim option if an AOB is slow to find: rate-limit the existing scan
+  (GetTickCount ≥3 s between full scans, return 0 between) so it degrades to no-render instead of a hang.
 
 
 ## ⇒ 2026-07-07 (Windows) — ★ coord-teleport VOID bug (v2.2.0) FIXED + save-wedge RESCUE procedure; coop NPC-phantom test attempt 1 aborted
