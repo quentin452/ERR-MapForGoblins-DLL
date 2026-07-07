@@ -219,6 +219,8 @@ set(GOBLIN_HOST_SOURCES
   src/goblin_custom_items.cpp
   src/goblin_warp.hpp
   src/goblin_warp.cpp
+  src/goblin_load_rescue.hpp
+  src/goblin_load_rescue.cpp
   src/goblin_world_editor.hpp
   src/goblin_world_editor.cpp
   src/goblin_world_bundle.hpp

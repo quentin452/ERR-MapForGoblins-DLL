@@ -117,6 +117,16 @@ namespace goblin::sig
     //  SetPos path (er+0xdc6380) was RE'd but does NOT complete the warp from the RPC thread; the
     //  direct body write is er_console_mod's proven method. See linux_player_pos_write_setpos.)
 
+    // ── Spawn/warp applier — the load-wedge rescue hook (SetPlayerMapAndPos) ──
+    // FUN_1406260e0(worldInfo, int* mapId, u32, u8, short* posData) — sets the current MAP (via the
+    // SetCurrentMap funnel FUN_140627fc0) AND the player POSITION (worldInfo+0x180) from a spawn/warp
+    // target. This is the funnel a poisoned save's area-0 spawn flows through at load; the rescue hook
+    // validates `*mapId` and, when the area byte is 0 (unloadable), substitutes a known-good spawn
+    // (First Step) so the load can't wedge. RE: docs/re/windows_load_wedge_mapid_writer_re_findings.md
+    // (getter er+0x6190c0, setter er+0x627fc0, this applier er+0x6260e0; exe 2.6.2.0). Entry prologue:
+    inline constexpr const char *SPAWN_APPLIER =
+        "44 89 44 24 18 55 56 57 41 56 41 57 48 8D 6C 24 D1 48 81 EC A0 00 00 00";
+
     // ── Live param + message repositories (SoloParamRepository / MsgRepositoryImp) ──
     // Param list address (get_param). relative_offsets {{3,7}}.
     inline constexpr const char *SOLO_PARAM_LIST =
@@ -441,6 +451,7 @@ namespace goblin::sig
             {"SERIALIZE_FN", SERIALIZE_FN},
             {"LUA_WARP", LUA_WARP},
             {"CS_LUA_EVENT_MANAGER", CS_LUA_EVENT_MANAGER},
+            {"SPAWN_APPLIER", SPAWN_APPLIER},
             {"SOLO_PARAM_LIST", SOLO_PARAM_LIST},
             {"MSG_REPOSITORY", MSG_REPOSITORY},
             {"GETMESSAGE", GETMESSAGE},

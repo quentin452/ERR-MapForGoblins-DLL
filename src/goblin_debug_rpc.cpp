@@ -21,6 +21,7 @@
 #include "goblin_sidecar.hpp"  // sidecar cmd — Phase 1 state store drive/verify
 #include "goblin_inventory.hpp"  // give_item cmd — Gap C grant / Phase-2 strip RE
 #include "goblin_warp.hpp"  // warp cmd — grace fast-travel (dev-world nav)
+#include "goblin_load_rescue.hpp"  // load_rescue cmd — spawn-applier hook (load-wedge fix)
 #include "goblin_world_editor.hpp"  // we_scan cmd — World Editor picker enumeration
 #include "goblin_world_bundle.hpp"  // bundle cmd — World Editor save/apply persistence
 #include "goblin_geom_move.hpp"     // move_asset cmd — live geom transform-setter test (MSB-write RE)
@@ -450,7 +451,7 @@ namespace goblin::debug_rpc
             if (cmd == "help" || cmd == "?")
                 return "ok commands: help ping status idlediag open_f1 f1_tab vmap vworld assets_probe maptile_probe pause set screenshot dumpmenu reload_overlay coop"
                        " | param_get param_set param_getf param_setf param_clone"
-                       " | loot_at refresh_markers warp coords warp_local warp_xyz warp_far we_scan"
+                       " | loot_at refresh_markers warp coords warp_local warp_xyz warp_far load_rescue we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
                        " | hp immortal exit mfg_build er_base er_version proj mem_dump mem_write mem_scan_f3 mem_scan_u32 mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset spawn_cap4e80 spawn_capreg add_collision hf_probe hf_probe_present hf_sample hf_shape_probe ground_at far_relief_probe far_relief w2s_probe"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
@@ -1645,6 +1646,13 @@ namespace goblin::debug_rpc
                     "ok warp_local set=(%.2f,%.2f,%.2f) readback=(%.2f,%.2f,%.2f)", x, y, z, rx, ry, rz);
                 return std::string(b);
             }
+            // load_rescue [status|on|off|verbose 0|1|capture|set <mapHex>] — the load-wedge fix.
+            // Hooks the spawn applier (SetPlayerMapAndPos); logs every (mapId,area,pos); when ARMED,
+            // rewrites an INVALID area-0 spawn (the poisoned-save case) to a safe target (default First
+            // Step; `capture` snapshots a real good spawn for the position). See
+            // docs/re/windows_load_wedge_mapid_writer_re_findings.md.
+            if (cmd == "load_rescue")
+                return goblin::load_rescue::command(rest);
             // warp_far <worldX> <worldZ> — STREAMED far teleport (unified world frame): LuaWarp to
             // the nearest DISCOVERED grace (the game's own streaming/area-load), then one
             // ground-checked hop to the exact target. ASYNC — a load runs; poll `coords` until it

@@ -30,6 +30,7 @@
 #include "goblin_virtual_world.hpp"
 #include "goblin_inventory.hpp"
 #include "goblin_warp.hpp"
+#include "goblin_load_rescue.hpp"
 #include "goblin_logic.hpp"
 #include "goblin_markers.hpp"
 #include "goblin_messages.hpp"
@@ -141,6 +142,7 @@ static void init_tutorial_popup()   { goblin::inject_tutorial_popup_rows(); }
 static void init_param_overrides()  { goblin::apply_param_overrides(); }
 static void init_inventory()        { goblin::inventory::initialize(); }
 static void init_warp()             { goblin::warp::initialize(); }
+static void init_load_rescue()      { goblin::load_rescue::install(); }
 static void init_save_hook()        { goblin::sidecar::install_save_hook(); }
 static void init_setup_messages()   { goblin::setup_messages(); }
 static void init_icon_tex_probe()   { goblin::install_icon_texture_probe(); }
@@ -310,6 +312,8 @@ static void setup_mod()
         safe_init_step(&init_inventory,       "inventory::initialize");
         // Grace warp (dev-world navigation) — resolve LuaWarp_01 + CSLuaEventManager AOBs.
         safe_init_step(&init_warp,            "warp::initialize");
+        // Load-wedge rescue: hook the spawn applier (log-only until `load_rescue on`).
+        safe_init_step(&init_load_rescue,     "load_rescue::install");
         // Sidecar Phase-2 RE: read-only observer on the save routine (gated on sidecar_save).
         safe_init_step(&init_save_hook,       "sidecar::install_save_hook");
         safe_init_step(&init_setup_messages,  "setup_messages");
