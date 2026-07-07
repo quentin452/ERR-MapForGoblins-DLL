@@ -109,9 +109,9 @@ one in-game look remains. `docs/plans/merchant_item_search_plan.md` has the full
      `merchant_pinned_names()` (merchant pin wins — it's the richer static pin); hand-authored quest
      STEP pins are kept (step prose; same glyph → a coincident one overlaps invisibly and its hover
      tooltip still shows the quest info).
-- **★ NEXT (user, visual re-check):** merchants now at correct spots only (no Roundtable strays),
-  one glyph per NPC (icon 80), quest STEP pins still following steps. Expect the `[MERCHANTPINS]`
-  line to show `unmappable-skipped≈12` (the Roundtable + m31_90 set).
+- **✅ USER VISUAL RE-CHECK PASSED (2026-07-07):** merchants at correct spots only (no Roundtable
+  strays), one glyph per NPC (icon 80), quest STEP pins still following steps. Merchant-pin thread
+  is DONE end-to-end (shipped in v2.2.0).
 
 ## ⇒ 2026-07-07 (Windows) — coordinate teleport SOLVED + LIVE-VERIFIED (havok body write, er_console_mod's method)
 
@@ -240,7 +240,16 @@ than suppressing it (native render flag "does not hide the map" — proven). Bot
 - **✅ F1-CLOSED vmap interaction FIXED (`6c20613`):** the ImGui click/wheel/keyboard poll block in hk_present
   was gated `g_show` (F1) only — ER's map screen posts no legacy WM clicks/wheel, so F1-closed the vmap got
   nothing ("only worked with F1"). Now gated `g_show || vmap_covers_map()`. User-confirmed working.
-- **★ NATIVE MAP RENDER CULL — candidate 1 RE'd on Windows, goal A DEAD; goal B (a render/visible gate) is
+- **✅ NATIVE-MAP REDIRECT — DONE + LIVE-VERIFIED 2026-07-06, user re-confirmed 2026-07-07.** The
+  pivot below was executed same-day: mem_fwa recon (`ed52b7a`, hook the open-menu CONVERGENCE
+  er+0x7efb89) → safe open+close redirect (`c7ac663`) → **TRUE redirect (`732fba1`): create-callback
+  hooked, the native map NEVER opens** (changelog'd, in v2.2.0). The whole render-cull hunt below
+  (sfplayer A/B, Route-2 Ghidra trace) is CLOSED/superseded — kept for the RE record. Residuals now
+  live in `docs/re/native_map_redirect_linux_re_plan.md` "Post-redirect follow-ups": #3 in-combat
+  gate ✅ solved by the 07-06h world-freeze; still open = #4 refocus first-input-loss (pre-existing,
+  deferred) and #5 net players on the VMAP (co-op markers shipped for native map+minimap `19d7169f`;
+  vmap feed + 2-player validation pending).
+- **(historical) ★ NATIVE MAP RENDER CULL — candidate 1 RE'd on Windows, goal A DEAD; goal B (a render/visible gate) is
   the path (2026-07-06, Windows/Ghidra).** `docs/re/windows_native_map_drawvfunc_re_findings.md`:
   **there is NO per-menu draw vfunc to no-op** — `WorldMapDialog`'s vtable (er+0x2b2d7d8) is a fully-enumerated
   13 slots, none submit the movie; and `CSMenuManImp` registers only ONE per-frame task (the UPDATE tick
@@ -274,12 +283,11 @@ than suppressing it (native render flag "does not hide the map" — proven). Bot
   the render-cull hunt (A/B negative, §7). Needs a live game for the mem_fwa recon.
 - Boot infra now works (`hold_er.py` + socket
     release; the earlier flakiness was my `MFG_PROFILE=err` override — the real me3 profile is `err_offline.me3`).
-- **★ NEXT (remaining input authority):** (1) **gamepad/right-stick pan still drives the native map** — the
-  game reads XInput directly (not via wndproc), so the stick isn't gated; the vmap already has its own pad
-  reticle, but the hidden native map still pans on the stick. Gate the game's XInput read (or the pad poll)
-  when `vmap_covers_map()`. (2) Optional: feed keyboard to ImGui when vmap-fullscreen so the vmap SEARCH box
-  is typable (currently keyboard → game only, to keep close working — would need to let close-key through but
-  route other keys to ImGui).
+- **★ NEXT (remaining input authority):** (1) ~~gamepad/right-stick pan still drives the native map~~ —
+  **MOOT since the TRUE redirect (`732fba1`)**: the native map never opens, so there is no hidden map to
+  pan. (2) Optional, still open: feed keyboard to ImGui when vmap-fullscreen so the vmap SEARCH box is
+  typable (currently keyboard → game only, to keep close working — would need to let close-key through but
+  route other keys to ImGui; pad users have the OSK).
 
 ## ⇒ SESSION WRAP 2026-07-06g (Linux/Opus) — water Probe 2: offline dvdbnd→collision chain BUILT + VALIDATED, Oodle is the one wall
 
@@ -1801,7 +1809,7 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
 
 Two read-only Sonnet subagents ran at session end; findings banked here (NOT yet actioned).
 
-**★ vmap/minimap player DX (3 real bugs, all RENDER-side = hot-reloadable) — ✅ ALL FIXED 2026-07-06 (both builds link clean; NOT yet in-game verified — do a `reload_overlay` pass next boot):**
+**★ vmap/minimap player DX (3 real bugs, all RENDER-side = hot-reloadable) — ✅ ALL FIXED 2026-07-06 + IN-GAME VERIFIED by user 2026-07-07:**
 1. **✅ Player blue circle not zoom-aware** — the constant-px halo behind the player pin now fades as `s_zoom`
    climbs past 0.30 px/unit (gone by ~1.0) so it stops blobbing over the character when zoomed in
    (`panel_virtual_map.cpp`, the `MENU_MAP_Player_01` halo). ⚠ used a manual taper, NOT `std::max` — the
