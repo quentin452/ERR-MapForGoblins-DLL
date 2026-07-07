@@ -20,7 +20,10 @@ std::vector<ObjectDef> g_defs;
 std::filesystem::path g_folder;
 std::mutex g_mtx;
 bool g_try_collision = false;   // experimental walkable-collision pass (frame + borrowed-shape caveats)
-std::atomic<bool> g_render_enabled{true};   // ImGui object-box draw on/off (overlay gate; bisection)
+// ⚠ DEFAULT OFF: the ImGui render calls w2s::get_camera every frame, which HANGS the present thread on
+// native Windows (find_cam_instance memory scan — w2s was Linux/vkd3d-verified only, same as r3d;
+// 2026-07-07). Enable explicitly with `objects render on` only once get_camera is Windows-hardened.
+std::atomic<bool> g_render_enabled{false};
 std::vector<RenderBox> g_render_boxes;   // realized boxes (absolute world), drawn by the overlay via ImGui
 std::mutex g_render_mtx;
 
