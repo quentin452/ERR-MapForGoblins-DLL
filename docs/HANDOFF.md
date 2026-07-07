@@ -47,14 +47,24 @@ step 3.
   this box in practical time: the process is **~8.75 GB paged / 14.6 GB virtual**, the exhaustive probe hits
   its 2 s cap mid-sweep (measured 2.19 s wall, incomplete), and the per-frame 2 ms path didn't finish a sweep
   either. So render on Windows is **still blocked — but on scan SPEED/COMPLETION, not a hang.**
-- **✅ SCAN NARROWED to MEM_PRIVATE 2026-07-07 (shipped, needs a boot MEASUREMENT).** Kept the PROVEN VIEW
-  read (GameRendCameraSet vtable scan, live-confirmed on Linux) but restricted `find_cam_instance`'s sweep to
-  **MEM_PRIVATE RW committed** regions — the camera is an FD4-heap object, so this skips the loaded-module
-  IMAGES + file/texture MAPPINGS (most of the 8 GB) → a full sweep should now finish in budget. `w2s_probe`
-  now reports coverage: on a miss `sweep COMPLETED/timed out after N MB`; on a hit `found_after=N MB`.
-  **★ NEXT (needs a boot): `w2s_probe` — read the diagnostic.** COMPLETED + still no-match ⇒ genuine no-match
-  (the vtable/VIEW isn't where we scan → chase elsewhere); timed-out ⇒ still too slow (widen budget / narrow
-  further). If it now FINDS the camera → `objects render on` draws the greybox + r3d works, done.
+- **✅✅ SCAN NARROWED to MEM_PRIVATE — LIVE-VERIFIED 2026-07-07 23:3x: THE CAMERA NOW RESOLVES.** Kept the
+  PROVEN VIEW read (GameRendCameraSet vtable scan) but restricted `find_cam_instance`'s sweep to **MEM_PRIVATE
+  RW committed** regions (the camera is an FD4-heap object) → skips the module IMAGES + file/texture MAPPINGS.
+  Live: `w2s_probe` = `ok w2s cam GameRend=0x193aa460500 … found_after=562MB(MEM_PRIVATE)` (vs the old 8 GB
+  walk that never finished), ~1.4 s exhaustive. `objects render on` → `[OBJECTS-RENDER] first draw: 3 boxes,
+  36 edges, cam ok` — the render pipeline runs END-TO-END, **no freeze** (~30 fps, frame advancing). The hang
+  AND the scan-speed block are both DEAD.
+- **★ NEXT — the LAST piece is PROJECTION ACCURACY (the render rebase origin), NOT the scan/camera.** The
+  debug dot (`w2s_probe dot on`) + the boxes render but land OFF-position: `find_origin` picked a WRONG
+  rebase origin **`(0, 2, 2000)` @GameRend+0x1E0** while the player was at `(-5.70, 93.39, -80.14)` — Y (2 vs
+  ~93) and Z (2000 vs ~-80) are far off. It satisfies the finder's loose heuristic (player projects on-screen
+  at px (1312,474), "LOCKED") but isn't the true origin, so the dot floats in the field instead of the feet.
+  The VIEW itself is clean (Y-rotation, row-vector, conv2, fovy 0.7505 — all as Linux). ⇒ Fix `find_origin`
+  for this build: tighten the heuristic (the current ±3000 m gate lets Z=2080-off win), or RE the true
+  render-origin FIELD in GameRend (a specific offset, not a scan). VIEW dump @ 23:31:30 in
+  `dll/offline/logs/MapForGoblins.log`: rot `[0.9673 0 0.2538 / 0 1 0 / -0.2538 0 0.9673]`, trans
+  `(-5.7040, 5.3913, -0.1362)` — note the **Y row is identity** (pass-through), so the origin's Y/Z dominate
+  the vertical placement, which is why a wrong Z wrecks it.
 - **Scan-FREE path DEFERRED (murky — needs live iteration).** RE'd the VIEW-builder chain that fills
   GameRend+0xF0 (`FUN_140b019b0`: `buf=FUN_1403f0f60(FUN_140507ff0(WCM),&local)` → copy buf→GameRend+0xF0;
   `FUN_14045e540` builds the 4×4 from a pose object's **pos(+0x70)+quaternion(+0x60)**). Two problems for a
