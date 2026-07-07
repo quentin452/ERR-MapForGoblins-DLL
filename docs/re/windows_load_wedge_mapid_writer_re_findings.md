@@ -60,21 +60,54 @@ wedge does NOT unwedge — the streamer reads the authority, not the mirror). Ca
 overlap the getter's load cluster → same map/session update path, so the LOAD restore of the spawn MapId
 almost certainly flows through `er+0x627ffc` (or its `r14` source) too.
 
+## ✅ Ghidra decomp of the writer + its callers (2026-07-07, `D:\ghidra_proj2\ER`, exe 2.6.2.0)
+
+`r14` = `param_2` of the writer = a pointer to the incoming MapId. The functions, top-down:
+
+- **`FUN_140627fc0` = `SetCurrentMap(worldInfo* p1, int* mapId, u32 subId)`** — the map-change FUNNEL.
+  `if (p1[0x2c] != *mapId) { p1[0x30]=p1[0x2c]; p1[0x2c]=*mapId; FUN_140ca1370(); if(changed){
+  FUN_14062a120(p1); if(DAT_..d69d98)FUN_1406eaaf0(); if(DAT_..d66258)FUN_1405140b0();
+  if(DAT_..d68838)FUN_1405fb2b0(); } } p1[0x28]=subId;` — i.e. it writes the mirror AND fires the
+  change-notifications that propagate to streaming. This is why a bare `mem_write` of `+0x2c` never
+  unwedged: no notification fired. `worldInfo` fields: `+0x2c` mapId, `+0x28` subId, `+0x30` prevMap,
+  `+0x180` position, sub-ptrs `+0x18/+0xe8/+0xf0`.
+- **`FUN_140622c70(worldInfo, mapDescriptor)`** — applies a map DESCRIPTOR: reads `desc+0x84` (mapId,
+  when `desc[0x10]==0`) / `desc+0x83` (byte→subId), stores `desc` at `worldInfo+400`, calls the setter.
+  The tile-crossing path (the FWA caller chain: setter ← `FUN_140622c70` ← `FUN_140b012d0`).
+- **`FUN_1406260e0 = SetPlayerMapAndPos(worldInfo, int* mapId, u32, u8, short* posData)`** — ★ the
+  spawn/warp APPLIER: sets the map (`local_94=*mapId; …; FUN_140627fc0(worldInfo,…)`) AND the position
+  (`worldInfo+0x180 = *posData`). Callers `FUN_140625670 / FUN_140a9e810 / FUN_140a9e890`. **This is the
+  best rescue hook — it carries BOTH the map and the position**, which is exactly what a poisoned save
+  corrupts (area-0 map + fall position).
+- **`FUN_140b012d0`** — per-frame/transition map updater: `sess=FUN_140507ff0(); desc=FUN_1403ef9f0(sess);
+  cur=FUN_14061f780(worldInfo+0xf0); if(desc!=cur){ FUN_140622c70(worldInfo+0xf0, desc); copy pos →
+  (worldInfo+0xe8)+0x30 }`. Reads the session's TARGET map descriptor (`desc+0x84`=mapId) and commits it.
+
+The invalid `0x000B0000` therefore lives in a **map-descriptor's `+0x84`** (or the `int* mapId` an applier
+is handed), loaded from the `.err`. Fixing the mirror is useless; fix the value BEFORE/AT an applier so the
+notifications carry a valid map.
+
 ## ★ Rescue-hook RE — the last mile (Ghidra `D:\ghidra_proj2\ER`)
 
 Goal: at load, if the spawn MapId is invalid (area byte 0), force a safe spawn (The First Step) instead of
 wedging — the user's ask "si le warp est invalide, teleport to the First Step".
 
-1. **Identify `r14`** in the function containing `er+0x627ffc`: walk its prologue to see how `r14` is
-   derived (a param, or a field of a session/world-info struct). `r14` (or what feeds it) IS the authority
-   holding `0x000B0000` at load.
-2. **Find the save-load writer of the authority** — where the `.err` blob's saved location lands in the
-   `r14` struct. FWA-write that field DURING a poisoned load (arm BEFORE `Continue`; a preserved poisoned
-   save is `ER0000.err.POISONED-void-…` / `…-lakefall-…` next to the save dir). That writer reads the save.
-3. **Hook + validate:** detour the authority writer (or `er+0x627ffc`); if the incoming MapId `area==0`,
-   substitute First Step's MapId **and** position (BonfireWarpParam / the known m60_42_35 spawn), so both the
-   mirror and the streamer agree on a loadable location. Validate by `mem_write`ing the fix during a live
-   wedge first (authority field, not the mirror) — if the load completes, the hook point is proven.
+1. ✅ **`r14` identified** — `param_2` = the incoming MapId pointer; the applier `FUN_1406260e0` carries
+   both map (`param_2`) and position (`param_5`). (Done above.)
+2. **Which applier does the LOAD use? (next boot, poisoned save — the decisive test.)** Arm FWA on
+   `FUN_1406260e0` ENTRY (`er+0x6260e0`) BEFORE `Continue`, load a poisoned save
+   (`ER0000.err.POISONED-void-…` / `…-lakefall-…` next to the save dir), and see if it fires with the
+   invalid map:
+   - **Fires** → hook `FUN_1406260e0`: if `*param_2` area byte == 0, overwrite `*param_2` (mapId) → First
+     Step's MapId and `param_5` (posData) → First Step's pos. Complete rescue (map + pos) in one place.
+   - **Doesn't fire** → arm the setter `FUN_140627fc0` (`er+0x627fc0`); if THAT fires, hook it for the map
+     and find the separate position writer (`worldInfo+0x180`) to fix pos too.
+   - **Neither fires** → the streamer reads the descriptor (`desc+0x84`) before any applier; FWA-write
+     `desc+0x84` during the poisoned load to catch the save-parse that fills it, and hook there.
+3. **Prove before shipping:** `mem_write` the fix into the live authority during a wedge (the descriptor
+   `+0x84` / the applier's incoming mapId, NOT the mirror `+0x2c`) — if the load completes, the hook point
+   is confirmed. First Step MapId = `m60_42_35` = `0x3C2A2300`; grace/pos from BonfireWarpParam (row for
+   The First Step, `bonfireEntityId 1042362951`).
 
 ## Method notes (reusable)
 
