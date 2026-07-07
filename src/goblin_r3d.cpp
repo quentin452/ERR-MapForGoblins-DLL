@@ -29,7 +29,7 @@ namespace
     D3D12_INDEX_BUFFER_VIEW g_ibv{};
     uint32_t g_frame = 0;   // spin counter (Date/time-free)
 
-    struct DbgBox { float x, y, z, size; };
+    struct DbgBox { float x, y, z, hx, hy, hz; };  // center + per-axis HALF-extents
     std::vector<DbgBox> g_boxes;   // debug boxes at world positions (invisible-thing visualiser)
     std::mutex g_boxmtx;
 
@@ -61,6 +61,7 @@ namespace
     }
     M4 translate(float x, float y, float z) { return M4{{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1}}; }
     M4 scale(float s) { return M4{{s, 0, 0, 0, 0, s, 0, 0, 0, 0, s, 0, 0, 0, 0, 1}}; }
+    M4 scale3(float x, float y, float z) { return M4{{x, 0, 0, 0, 0, y, 0, 0, 0, 0, z, 0, 0, 0, 0, 1}}; }
     // Perspective for ER's calibrated camera convention: row-vector, forward = -vz (conv2), clip.w = -vz.
     // Reproduces w2s's validated pinhole exactly (aspect = W/H). Depth is flat (NDC.z=0.5) — fine for the
     // wireframe cube with no depth buffer; the 3D shape comes from the perspective x/y divide.
@@ -221,8 +222,17 @@ namespace goblin::r3d
 
     void add_box(float x, float y, float z, float size)
     {
+        float h = (size > 0.f ? size : 1.0f) * 0.5f;   // `size` = full width → half each axis
         std::lock_guard<std::mutex> lk(g_boxmtx);
-        g_boxes.push_back({x, y, z, size > 0.f ? size : 1.0f});
+        g_boxes.push_back({x, y, z, h, h, h});
+    }
+    void add_box_ex(const float pos[3], const float half[3])
+    {
+        std::lock_guard<std::mutex> lk(g_boxmtx);
+        g_boxes.push_back({pos[0], pos[1], pos[2],
+                           half[0] > 0.f ? half[0] : 0.5f,
+                           half[1] > 0.f ? half[1] : 0.5f,
+                           half[2] > 0.f ? half[2] : 0.5f});
     }
     void clear_boxes()
     {
@@ -266,10 +276,11 @@ namespace goblin::r3d
             for (int i = 0; i < 16; ++i) V.m[i] = view16[i];
             M4 vpm = mul(mul(translate(-origin[0], -origin[1], -origin[2]), V), perspNegZ(fovy, vpW / vpH));
             if (boxes.empty() && goblin::get_player_world_pos(px, py, pz))
-                boxes.push_back({px, py, pz, 1.5f});   // default: a cube on the player
+                boxes.push_back({px, py, pz, 0.75f, 0.75f, 0.75f});   // default: a cube on the player
             for (const DbgBox &b : boxes)
             {
-                M4 mvp = mul(mul(scale(b.size), translate(b.x, b.y, b.z)), vpm);  // world->clip for this box
+                // unit-cube base [-0.5,0.5] → full size = 2*half per axis
+                M4 mvp = mul(mul(scale3(b.hx * 2.f, b.hy * 2.f, b.hz * 2.f), translate(b.x, b.y, b.z)), vpm);
                 cl->SetGraphicsRoot32BitConstants(0, 16, mvp.m, 0);
                 cl->DrawIndexedInstanced(36, 1, 0, 0, 0);
             }

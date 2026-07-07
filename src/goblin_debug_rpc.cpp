@@ -29,6 +29,7 @@
 #include "goblin_heightfield.hpp"   // hf_probe cmd — terrain raycast heightfield (Track D2)
 #include "goblin_w2s.hpp"           // w2s_probe cmd — 3D world-to-screen camera calibration
 #include "goblin_r3d.hpp"           // r3d cmd — mod-owned D3D12 3D backend test cube
+#include "goblin_objects.hpp"       // objects cmd — objects.toml greybox realizer
 #include "goblin_postfx.hpp"        // postfx cmd — greybox #2b full-screen restyle of ER's frame
 #include "goblin_mod.hpp"           // mod cmd — the mod.toml manifest (status/reload)
 #include "goblin_dbgrender.hpp"     // dbgrender_probe cmd — greybox #2a debug-draw gate probe
@@ -453,7 +454,7 @@ namespace goblin::debug_rpc
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp coords warp_local warp_xyz warp_far load_rescue we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
-                       " | hp immortal exit mfg_build er_base er_version proj mem_dump mem_write mem_scan_f3 mem_scan_u32 mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset spawn_cap4e80 spawn_capreg add_collision hf_probe hf_probe_present hf_sample hf_shape_probe ground_at far_relief_probe far_relief w2s_probe"
+                       " | hp immortal exit mfg_build er_base er_version proj mem_dump mem_write mem_scan_f3 mem_scan_u32 mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset spawn_cap4e80 spawn_capreg add_collision objects hf_probe hf_probe_present hf_sample hf_shape_probe ground_at far_relief_probe far_relief w2s_probe"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
             if (cmd == "idlediag")
@@ -1506,6 +1507,11 @@ namespace goblin::debug_rpc
                 goblin::r3d::set_enabled(on);
                 return std::string("ok r3d ") + (on ? "on" : "off");
             }
+            // objects [list|reload|realize|clear|load <path>] — the objects.toml realizer: materialize
+            // greybox objects (walkable add_collision box + r3d render) from a TOML file. `realize`/
+            // `reload` must be run IN-WORLD (map closed). See goblin_objects + rpc-commands.md.
+            if (cmd == "objects")
+                return goblin::objects::command(rest);
             // movieclip — native-map viewport diagnostic + a DISPROVEN cull experiment. `read` reports the
             // live Scaleform map clip rect + buffer size (a useful live map-viewport readout). `hide`/`show`
             // arm/disarm a per-frame zero-write of MovieImpl+0xB0 — but that clip is DESCRIPTIVE, not a render

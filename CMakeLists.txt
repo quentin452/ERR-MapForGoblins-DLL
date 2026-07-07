@@ -152,6 +152,8 @@ set(GOBLIN_HOST_SOURCES
   src/goblin_virtual_world.cpp
   src/goblin_custom_markers.cpp
   src/goblin_add_collision.cpp
+  src/goblin_objects.hpp
+  src/goblin_objects.cpp
   src/worldmap/maptile.hpp
   src/worldmap/maptile.cpp
   src/modutils.hpp

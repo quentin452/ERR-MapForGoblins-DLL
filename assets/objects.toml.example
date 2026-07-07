@@ -1,0 +1,36 @@
+# MapForGoblins — greybox object definitions (objects.toml realizer, slice 1).
+#
+# Copy this to your mod folder as `objects.toml` (next to MapForGoblins.dll, e.g.
+# <ERR>/dll/offline/objects.toml). Enable it in mod.toml [sections] objects=true (or omit mod.toml
+# entirely — sections default ON). Then IN-WORLD: RPC `objects realize` draws the greybox.
+#
+# Each [[object]] becomes a mod-owned 3D box (r3d). `pos` is an OFFSET from the player by default
+# (relative=true) so objects appear near you wherever you stand — great for a first look. Set
+# relative=false for an absolute r3d-world position. `size` = full extents in metres.
+#
+# Walkable collision is EXPERIMENTAL (RPC `objects collision on` before `realize`): the collision box
+# borrows a live shape + uses a different frame, so it may be mis-sized/placed until slice 2. Render is
+# the solid slice-1 deliverable.
+
+[[object]]
+id     = "platform_1"
+world  = "dev_arena"
+pos    = [0.0, -1.5, 6.0]                 # 6 m in front, 1.5 m below eye height
+kind   = "platform"
+render = { backend = "mesh3d", primitive = "box", size = [6.0, 0.5, 6.0] }
+collision = { shape = "box", size = [6.0, 0.5, 6.0] }
+
+[[object]]
+id     = "pillar_1"
+world  = "dev_arena"
+pos    = [0.0, 0.5, 6.0]                  # a pillar on the platform
+kind   = "wall"
+render = { backend = "mesh3d", primitive = "box", size = [1.0, 4.0, 1.0] }
+collision = { shape = "box", size = [1.0, 4.0, 1.0] }
+
+[[object]]
+id     = "beacon_1"
+world  = "dev_arena"
+pos    = [3.0, 2.0, 6.0]                  # a floating marker cube
+kind   = "beacon"
+render = { backend = "mesh3d", primitive = "box", size = [0.6, 0.6, 0.6] }

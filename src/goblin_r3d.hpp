@@ -22,6 +22,10 @@ namespace goblin::r3d
     // invisible mesh / entity / loot at its real coords). Boxes render via the live ER camera (get_camera),
     // so they sit in the world. With no boxes added, r3d draws the default cube at the player.
     void add_box(float x, float y, float z, float size);  // RPC `r3d box <x> <y> <z> [size]`
+    // Per-axis box: center `pos` (world XYZ) + `half` extents — the greybox-object render (matches an
+    // add_collision walkable box built from the same half-extents). Wireframe for now (unit-cube base
+    // scaled per axis); solid/greybox material is a later render upgrade.
+    void add_box_ex(const float pos[3], const float half[3]);
     void clear_boxes();                                   // RPC `r3d clear`
     int box_count();
 }

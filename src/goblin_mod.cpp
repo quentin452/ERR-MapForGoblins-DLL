@@ -6,6 +6,7 @@
 #include "goblin_custom_items.hpp"
 #include "goblin_world_bundle.hpp"
 #include "goblin_virtual_world.hpp"
+#include "goblin_objects.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -48,6 +49,8 @@ namespace
             if (section_on(root, "bundle")) { goblin::world_bundle::apply_boot(folder); on += " bundle"; }
             // worlds — virtual_worlds.toml (mod-owned map pages); data-only, after bundle.
             if (section_on(root, "worlds")) { goblin::vworld::load_boot(folder);     on += " worlds"; }
+            // objects — objects.toml (greybox object defs); parse only (realize is in-world, via RPC).
+            if (section_on(root, "objects")) { goblin::objects::load_boot(folder);   on += " objects"; }
         }
         else
             on = " (reload: style only)";
