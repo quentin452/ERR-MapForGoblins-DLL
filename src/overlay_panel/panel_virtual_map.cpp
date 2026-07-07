@@ -262,13 +262,16 @@ std::string virtual_map_graces_dump(int groupf)
         {
             if (m.category != kGraceCat || m.row_id == 0) continue;
             ++total;
-            const bool d = m.discover_flag != 0;
+            // Discovered = the discovery event flag is SET, read LIVE — same check the warp gate
+            // uses (line ~2084). discover_flag alone is the flag ID (nonzero for EVERY grace), so
+            // testing it != 0 counted all graces as discovered (bug caught by the user, 2026-07-07).
+            const bool d = m.discover_flag > 0 &&
+                           goblin::overlay_api::read_event_flag((uint32_t)m.discover_flag);
             if (d) ++disc;
             const int g = (m.group >= 0 && m.group < 4) ? m.group : 0;
             if (d) byGroupDisc[g]++;
             if (groupf >= 0 && g != groupf) continue;
             if (!d) continue;                         // list only DISCOVERED (warpable) graces
-            if (shown < 60)
             {
                 std::string nm = m.name_id > 0 ? goblin::overlay_api::lookup_text_utf8(m.name_id) : std::string();
                 spdlog::info("[VMGRACES]   g{} rowId={} '{}' w({:.0f},{:.0f})", g, m.row_id,

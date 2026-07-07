@@ -9,6 +9,28 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
+## ⇒ 2026-07-07 — coop RPC diag verb + `vmap graces` discovered-bug fix; NPC-phantom coop test PENDING (manual)
+
+- **✅ `coop` RPC verb SHIPPED (`965e6896`)** — session diag: `count=`/`others=`/`markers=`/`freeze_skip=` +
+  local & per-buddy projected map pos/group via `get_chr_map_pos` (the exact partner-marker chain). Host-only.
+  **Live-verified SOLO on all 3 dims** (OW g0 / Nokstella base-UG g1 / DLC g2 — pos matches `coords`, count=1).
+- **✅ `vmap graces` discovered-count bug FIXED (user-caught):** dump tested `discover_flag != 0` = flag **ID**
+  present (true for ALL 438) instead of reading the flag LIVE → fresh save reported "438/438 discovered".
+  Now uses `read_event_flag` like the warp gate (panel_virtual_map.cpp); 60-line log cap dropped. Verified
+  live: 6/438 on the dev save. ⚠ this bug had me mis-reading the save as 100%-complete earlier that session.
+- **★ COOP POSITIVE TEST (buddy enumeration) — NOT yet run; best candidate = NPC invasion (manual):** dev save
+  is EARLY-game (6 graces: First Step→Agheel Lake North) → **Nerijus' Murkwater invasion is still available**.
+  Headless attempt failed on two walls: **(1) `warp_xyz`/`warp_local` do NOT move the player in gameplay** —
+  write + readback OK, then the engine restores the old position (snap-back; the doc's "position WRITE"
+  behaviour does not hold live — worth its own investigation); (2) blind guided walk drifts (camera-yaw
+  correction via `mouse_move` ineffective — heading stuck ~144° regardless). **→ MANUAL test (2 min):** from
+  Agheel Lake North walk the Murkwater riverbed north (~w(11085,9540)→(11100,9650), coords via `vmap find
+  murkwater`) until "Bloody Finger Nerijus" invades → run `coop` → if `count=2 b0 …` the PlayerIns filter
+  sees NPC phantoms = whole marker chain validated solo; ALSO check the minimap/worldmap for the
+  `MENU_MAP_Host` marker directly. If count stays 1, NPC phantoms aren't PlayerIns → real 2-player session
+  (2nd account + copy) remains the only positive test; same-account 2-PC seamless is impossible (Steam
+  single-launch + one SteamID per lobby).
+
 ## ⇒ 2026-07-06i — SESSION WRAP: v2.1.0 first release PREPARED (user pushes) + co-op markers shipped
 
 - **★ v2.1.0 = first tagged fork release, PREPARED locally (not pushed — user's job):** changelog rolled

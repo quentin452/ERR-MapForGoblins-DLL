@@ -26,6 +26,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 - Debug-RPC `coop` verb: co-op session diagnostics (PlayerIns count, vmap freeze-skip state, each
   partner's ChrIns + projected map position/group — the exact chain the co-op partner markers use).
 
+### Fixed
+
+- `vmap graces` counted EVERY grace as discovered (it tested the discovery-flag ID instead of reading
+  the event flag live) — a fresh save reported 438/438 discovered. Now uses the same live
+  `read_event_flag` check as the warp gate, and the log lists all discovered graces (60-line cap dropped).
+
 ## [v2.1.0] - 2026-07-06
 
 First tagged release of this fork. Everything below is specific to it (`master`, ~990 commits ahead of
