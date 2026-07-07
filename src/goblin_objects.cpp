@@ -148,9 +148,12 @@ int realize()
                      "render={}({}) rel={}", o.id, o.kind, wpos[0], wpos[1], wpos[2],
                      o.render_half[0], o.render_half[1], o.render_half[2], o.has_render, o.backend, o.relative);
     }
-    if (made) goblin::r3d::set_enabled(true);   // show the greybox
-    spdlog::info("[OBJECTS] realized {}/{} render object(s); r3d enabled (collision {})",
-                 made, (int)defs.size(), try_coll ? "experimental ON" : "off");
+    // ⚠ Do NOT auto-enable r3d: the D3D12 backend HANGS the GPU on native Windows (TDR → CPU-100%
+    // freeze, seen 2026-07-07 — r3d was only ever live-verified on Linux/Proton via vkd3d, which is
+    // more forgiving than native D3D12). The boxes are registered; enable the render explicitly with
+    // `r3d 1` (at your own risk on Windows) once r3d is D3D12-hardened, or use an ImGui render backend.
+    spdlog::info("[OBJECTS] realized {}/{} render object(s) (r3d NOT auto-enabled — Windows D3D12 hang; "
+                 "collision {})", made, (int)defs.size(), try_coll ? "experimental ON" : "off");
     return made;
 }
 
