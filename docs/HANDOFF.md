@@ -79,13 +79,22 @@ Committed code + `docs/changelog.md` are the record of DONE; this file tracks WH
      poisoned saves were written by the game's UNHOOKED serialize — the invalid location is
      faithfully the game's own state, not our bracket's doing. ⚠ gotcha for future triage:
      SIG PASS ≠ hook installed; grep "observer hooked" to know.
-- **★ NEXT (load-rescue, one boot cycle with a repro save):** restore a POISONED save
-  (`ER0000.err.POISONED-void-…` / `…-lakefall-…` next to the save dir; launcher snapshots
-  18:26:34/18:36/18:37 are ALSO poisoned lineage — do NOT restore those) → boot → **arm
-  `mem_fwa <mapId-singleton+0x2c> 4 w` BEFORE Continue** → click Continue → the [FWA] writer RIP
-  + callers = the copy from the save-side source → Ghidra (`D:\ghidra_proj2\ER`) the writer fn →
-  the authoritative field → `mem_write` THAT during a wedge to prove the rescue → then implement
-  the automatic invalid-spawn → First-Step rescue in the DLL (the user's original ask).
+- **✅ MAPID WRITER + GETTER CAUGHT LIVE (2026-07-07 19:xx) — `docs/re/windows_load_wedge_mapid_writer_re_findings.md`.**
+  Used the getter-at-menu-is-null insight: the singleton is allocated DURING load, so `+0x2c` can't be
+  pre-armed at the menu. Instead (all on a HEALTHY load, no save juggling, DR0 one-shot + `mem_fwa off`
+  re-arm): (1) write-watch the static SLOT → **getter `er+0x6190c0`** (FD4Singleton lazy-get, byte-
+  confirmed) + load caller cluster; (2) write-watch `singleton+0x2c` in-world + cross a map tile →
+  **writer `er+0x627ffc`** = `mov [rdi+0x2c],eax` where `eax=[r14]` ⇒ **`r14` = the upstream AUTHORITY**
+  the mirror copies from (the mirror `+0x2c` is why `mem_write`ing it never unwedged). exe fingerprint
+  `2.6.2.0`. Both RIPs + byte decodes + call stacks in the findings doc.
+- **★ NEXT (rescue, Ghidra `D:\ghidra_proj2\ER` + one poisoned-load FWA):** (1) in the `er+0x627ffc`
+  function, identify what `r14` is (prologue walk) — the authority struct holding `0x000B0000` at load;
+  (2) restore a POISONED save (`ER0000.err.POISONED-void-…` / `…-lakefall-…` next to the save dir; the
+  launcher snapshots 18:26:34/18:36/18:37 + 17-24-39 are ALSO poisoned lineage — do NOT restore those,
+  only 17-58-18 / 16-55-08 / earlier are clean) → **arm `mem_fwa <authority-field> 4 w` BEFORE Continue**
+  → the writer that fills `r14` from the `.err` = the save-load restore; (3) hook it, validate `area==0`
+  → substitute First Step MapId+pos, `mem_write` the fix into the AUTHORITY (not the mirror) during a live
+  wedge to prove it, then ship the auto-rescue in the DLL.
 - **✅ "MINIMAP TOUTE PETITE" = NOT a code regression (user suspected 052af9e/88cbbf1 — cleared):**
   both commits were already live during the 16:46 audit + the user's OK'd visual check, and
   neither touches minimap sizing (`R = cfg::minimapSize × screenH/1080`). Root cause = this
