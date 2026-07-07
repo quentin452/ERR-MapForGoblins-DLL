@@ -51,6 +51,7 @@ change; keep this doc in sync when you add a command.
 | `screenshot` | `screenshot <path.bmp>` | Grab the swapchain to a BMP (client-pixel space — matches `mouse_*` coords). |
 | `dumpmenu` | `dumpmenu [tag]` | Dump menu/worldmap-probe state to the log (`[WMPROBE]`). |
 | `reload_overlay` | `reload_overlay` | Hot-reload the overlay render DLL (hotreload build only; poll `status` gen bump). |
+| `death_mark` / `death_clear` / `death_state` | `death_mark` sets a STICKY manual DropSoul bloodstain at the player pos (survives `tick()`'s auto-clear); `death_clear` removes it; `death_state` one-line live dump: `store[active= manual= world= g souls= raw=area/grid]` (the mod's death-marker store) + `bloodstain[read= souls= map=]` (the game's GameDataMan+0x48) + `player[world= g]` (live map-pos). The boot/load-timing probe — poll during a load to see when/where the marker is applied. |
 | `coop` | `coop` | Co-op session diag (`goblin_coop`): `count=` PlayerIns in the WorldChrMan session array, `others=`/`markers=`, `freeze_skip=` (vmap freeze skipped when >1), then `local area= w(x,z) g<group>` + per-buddy `b<i> chr= area= w(x,z) g<group>` via `get_chr_map_pos` — the exact partner-marker chain. Solo test: summon an NPC gold-sign phantom and see if it shows as a buddy. |
 
 ## Params (regulation-free live edit)

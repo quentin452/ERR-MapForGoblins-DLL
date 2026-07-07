@@ -1305,6 +1305,27 @@ namespace goblin::debug_rpc
                 return std::string(b);
             }
             if (cmd == "death_clear") { goblin::death_marker::clear(); return "ok death_clear"; }
+            // death_state — one-line live dump of the mod's death-marker store + the game's bloodstain +
+            // the live player map-pos, so a boot/load can be watched: is the marker active? at what world/
+            // group? does read_bloodstain resolve (souls)? does the store's group match the player's? This
+            // turns the "applied too early/late" boot-timing hypothesis into a measurement.
+            if (cmd == "death_state")
+            {
+                bool manual = false; float dwx = 0, dwz = 0; int dgrp = 0, dsouls = 0, darea = -1, dgx = 0, dgz = 0;
+                float dpx = 0, dpz = 0;
+                bool active = goblin::death_marker::state(manual, dwx, dwz, dgrp, dsouls, darea, dgx, dgz, dpx, dpz);
+                float bx = 0, by = 0, bz = 0; uint32_t bmap = 0; int32_t bsouls = 0;
+                bool bread = goblin::inventory::read_bloodstain(bx, by, bz, bmap, bsouls);
+                int parea = 0, pgrp = -1; float pwx = 0, pwz = 0;
+                bool ppos = goblin::get_player_map_pos(parea, pwx, pwz, nullptr, nullptr, &pgrp);
+                char b[320];
+                std::snprintf(b, sizeof(b),
+                              "ok death_state store[active=%d manual=%d world=(%.0f,%.0f) g%d souls=%d raw=area%d grid(%d,%d)] "
+                              "bloodstain[read=%d souls=%d map=0x%08X] player[ok=%d world=(%.0f,%.0f) g%d]",
+                              (int)active, (int)manual, dwx, dwz, dgrp, dsouls, darea, dgx, dgz,
+                              (int)bread, bsouls, bmap, (int)ppos, pwx, pwz, pgrp);
+                return std::string(b);
+            }
             if (cmd == "map_rect")
             {
                 // map_rect <MENU_MAP_name> — dump the parsed sheet sub-rect so a name can be cropped +

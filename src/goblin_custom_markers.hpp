@@ -60,6 +60,9 @@ GOBLIN_RENDER_API bool get(float &wx, float &wz, int &group, int &souls);   // f
 // Raw (area, grid, local) of the active marker for the native-map converter projection. false = none
 // active OR no raw coords stored (rawArea<0) → caller should fall back to the world-frame path.
 GOBLIN_RENDER_API bool get_raw(int &area, int &gx, int &gz, float &px, float &pz);
+// Full live state for the death_state diagnostic (returns g_active; fills every field regardless).
+GOBLIN_RENDER_API bool state(bool &manual, float &wx, float &wz, int &group, int &souls,
+                             int &rawArea, int &gx, int &gz, float &px, float &pz);
 GOBLIN_RENDER_API void clear();
 // Per-frame: reads player HP, and on the alive->dead edge records get_player_map_pos as the death spot.
 // Call every present frame (runs during gameplay, map closed). Cheap; no-op until the HP chain resolves.

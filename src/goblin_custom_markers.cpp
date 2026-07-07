@@ -128,6 +128,14 @@ bool get_raw(int &area, int &gx, int &gz, float &px, float &pz)
     area = g_area; gx = g_gx; gz = g_gz; px = g_px; pz = g_pz;
     return true;
 }
+bool state(bool &manual, float &wx, float &wz, int &group, int &souls,
+           int &rawArea, int &gx, int &gz, float &px, float &pz)
+{
+    std::lock_guard<std::mutex> lk(g_dm_mtx);
+    manual = g_manual; wx = g_wx; wz = g_wz; group = g_group; souls = g_souls;
+    rawArea = g_area; gx = g_gx; gz = g_gz; px = g_px; pz = g_pz;
+    return g_active;
+}
 void clear()
 {
     std::lock_guard<std::mutex> lk(g_dm_mtx);
