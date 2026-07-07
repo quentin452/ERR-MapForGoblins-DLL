@@ -37,4 +37,16 @@ namespace goblin::warp
     // current thread (RPC/present — live-verified). Returns false if not in-world / the chain is
     // null / the write faulted. RE: docs/re/linux_player_pos_write_setpos_re_findings.md.
     bool teleport_coords(float x, float y, float z);
+
+    // FAR teleport — reach a target BEYOND the streamed bubble by driving the game's OWN
+    // streaming instead of refusing: LuaWarp to the nearest DISCOVERED grace (full area-load,
+    // proper placement), then one short ground-checked body hop to the exact target. Async —
+    // request from any thread while in-world; tick_far_teleport() (present thread, goblin_overlay)
+    // advances the state machine across the load. v1 scope: overworld/DLC-OW targets in the
+    // unified world/marker frame (their grace grid*256+pos IS that frame); refuses when no
+    // discovered grace lies within ~1200 m of the target (nothing to bridge from).
+    // RPC `warp_far`; also the fallback when a direct vmap click-to-warp is refused.
+    bool request_far_teleport_world(float wx, float wz);
+    void tick_far_teleport();       // call once per present frame
+    bool far_teleport_active();
 }

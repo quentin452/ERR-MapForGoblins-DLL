@@ -27,6 +27,7 @@
 #include <backends/imgui_impl_win32.h>
 
 #include "goblin_inject.hpp"   // goblin::world_map_open()
+#include "goblin_warp.hpp"     // warp::tick_far_teleport() — far-teleport state machine (present tick)
 #include "goblin_markers.hpp"   // goblin::markers::set_event_flag()
 #include "goblin_worldmap_probe.hpp"   // get_live_view() for the marker prototype
 #include "goblin_heightfield.hpp"      // tick_present() — heightfield present-thread probe (D2.2)
@@ -1932,6 +1933,9 @@ namespace
             // Immortal mode (dev, `immortal` RPC verb): per-frame HP top-up to max. Present-thread =
             // frame-synced with damage application; self-gates on the flag + in-world HP resolve.
             goblin::immortal_tick();
+            // FAR teleport state machine (`warp_far` / far click-to-warp): advances the
+            // grace-warp → ground-checked-hop chain across the load. No-op while idle.
+            goblin::warp::tick_far_teleport();
             // FREEZE while the vmap stands in for the native map: instead of detecting combat and force-closing
             // (the old combat_active gate — unreliable: the AI battle-state lives on a pooled CS::CSAiThink with
             // no fixed EnemyIns offset, so per-enemy detection never worked), we FREEZE all characters while the

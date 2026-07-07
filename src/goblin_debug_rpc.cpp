@@ -450,7 +450,7 @@ namespace goblin::debug_rpc
             if (cmd == "help" || cmd == "?")
                 return "ok commands: help ping status idlediag open_f1 f1_tab vmap vworld assets_probe maptile_probe pause set screenshot dumpmenu reload_overlay coop"
                        " | param_get param_set param_getf param_setf param_clone"
-                       " | loot_at refresh_markers warp coords warp_local warp_xyz we_scan"
+                       " | loot_at refresh_markers warp coords warp_local warp_xyz warp_far we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
                        " | hp immortal exit mfg_build er_base er_version proj mem_dump mem_write mem_scan_f3 mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset spawn_cap4e80 spawn_capreg add_collision hf_probe hf_probe_present hf_sample hf_shape_probe ground_at far_relief_probe far_relief w2s_probe"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
@@ -1644,6 +1644,23 @@ namespace goblin::debug_rpc
                 std::snprintf(b, sizeof(b),
                     "ok warp_local set=(%.2f,%.2f,%.2f) readback=(%.2f,%.2f,%.2f)", x, y, z, rx, ry, rz);
                 return std::string(b);
+            }
+            // warp_far <worldX> <worldZ> — STREAMED far teleport (unified world frame): LuaWarp to
+            // the nearest DISCOVERED grace (the game's own streaming/area-load), then one
+            // ground-checked hop to the exact target. ASYNC — a load runs; poll `coords` until it
+            // answers near the target. Refused when no discovered overworld grace is within
+            // ~1200 m of the target (nothing to bridge from).
+            if (cmd == "warp_far")
+            {
+                std::string xs = next_token(rest), zs = next_token(rest);
+                if (xs.empty() || zs.empty()) return "err usage: warp_far <worldX> <worldZ>";
+                float twx, twz;
+                try { twx = std::stof(xs); twz = std::stof(zs); }
+                catch (...) { return "err bad coords"; }
+                if (!goblin::warp::request_far_teleport_world(twx, twz))
+                    return "err warp_far refused (in flight / not in-world / no discovered grace "
+                           "within 1200m of target — see [WARP] log)";
+                return "ok warp_far started (async: grace warp + ground-checked hop; poll coords)";
             }
             // warp_xyz <worldX> <worldZ> [worldY] — ABSOLUTE teleport in the unified WORLD/marker
             // frame. Converts via the CONFIRMED linear map (world = grid*256 + local): keep the

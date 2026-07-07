@@ -21,6 +21,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ## [Unreleased]
 
+### Added
+
+- Streamed far teleport: coordinate teleports beyond the streamed bubble now route through the
+  game's OWN streaming instead of being refused — fast-travel to the nearest discovered grace,
+  then one ground-checked hop to the exact target. New `warp_far <worldX> <worldZ>` RPC; the
+  virtual-map click-to-warp falls back to it automatically when a direct hop is refused.
+
 ### Fixed
 
 - Coordinate teleport (`warp_local`/`warp_xyz`, vmap click-to-warp; v2.2.0) could drop the player

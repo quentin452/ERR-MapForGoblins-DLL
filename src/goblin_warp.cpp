@@ -9,6 +9,7 @@
 #include <spdlog/spdlog.h>
 
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 
 #define WIN32_LEAN_AND_MEAN
@@ -212,5 +213,112 @@ bool teleport_coords(float x, float y, float z)
     spdlog::info("[WARP] teleport_coords ({:.2f},{:.2f},{:.2f}) ground_check={} gy={:.1f} lp={} -> {}",
                  x, y, z, gc, gy, (void *)lp, ok ? "moved" : "FAULTED");
     return ok;
+}
+
+// ── FAR teleport (streamed) ── beyond-bubble targets go through the game's own streaming:
+// LuaWarp to the nearest discovered grace (full area-load), then one ground-checked hop.
+namespace
+{
+std::atomic<int> g_far_state{0};        // 0 idle · 1 warping (load in flight) · 2 hop pending
+float g_far_wx = 0.f, g_far_wz = 0.f;   // target, unified world/marker frame
+float g_far_gwx = 0.f, g_far_gwz = 0.f; // chosen grace, same frame
+uint32_t g_far_deadline_ms = 0;
+// The hop is worth doing only when the grace actually brings the target into the streamed
+// bubble — beyond this, refuse the request outright (nothing to bridge from).
+constexpr float kFarGraceMax = 1200.0f;
+}  // namespace
+
+bool far_teleport_active() { return g_far_state.load() != 0; }
+
+bool request_far_teleport_world(float wx, float wz)
+{
+    if (g_far_state.load() != 0)
+    {
+        spdlog::warn("[WARP] far-teleport already in flight — request ignored");
+        return false;
+    }
+    float px = 0.f, py = 0.f, pz = 0.f;
+    if (!goblin::get_player_world_pos(px, py, pz))
+    {
+        spdlog::warn("[WARP] far-teleport: not in-world");
+        return false;
+    }
+    // Nearest DISCOVERED overworld/DLC-OW grace to the TARGET (their grid*256+pos is already the
+    // unified frame; folded areas would need a projection pass — v1 keeps them out of scope).
+    const goblin::LiveGrace *best = nullptr;
+    float bestd2 = 1e30f, bwx = 0.f, bwz = 0.f;
+    for (const auto &g : goblin::live_graces())
+    {
+        if (g.areaNo != 60 && g.areaNo != 61) continue;
+        if (!g.bonfireEntityId || !g.discoverFlag) continue;
+        const float gwx = g.gridXNo * 256.0f + g.posX, gwz = g.gridZNo * 256.0f + g.posZ;
+        const float dx = gwx - wx, dz = gwz - wz, d2 = dx * dx + dz * dz;
+        // distance test first — the flag read runs only for improving candidates.
+        if (d2 < bestd2 && goblin::ui::read_event_flag(static_cast<uint32_t>(g.discoverFlag)))
+        {
+            bestd2 = d2; best = &g; bwx = gwx; bwz = gwz;
+        }
+    }
+    if (!best)
+    {
+        spdlog::warn("[WARP] far-teleport: no discovered overworld grace at all");
+        return false;
+    }
+    if (bestd2 > kFarGraceMax * kFarGraceMax)
+    {
+        spdlog::warn("[WARP] far-teleport REFUSED: nearest discovered grace is {:.0f} m from the "
+                     "target ({:.0f} m max) — nothing to bridge from",
+                     std::sqrt(bestd2), kFarGraceMax);
+        return false;
+    }
+    g_far_wx = wx; g_far_wz = wz; g_far_gwx = bwx; g_far_gwz = bwz;
+    g_far_deadline_ms = GetTickCount() + 45000;
+    if (!to_grace(static_cast<int32_t>(best->bonfireEntityId), 0))
+        return false;
+    g_far_state.store(1);
+    spdlog::info("[WARP] far-teleport: grace {} ({:.0f} m from target w({:.0f},{:.0f})) — load in "
+                 "flight, hop follows", best->bonfireEntityId, std::sqrt(bestd2), wx, wz);
+    return true;
+}
+
+void tick_far_teleport()
+{
+    const int st = g_far_state.load();
+    if (st == 0) return;
+    if (GetTickCount() > g_far_deadline_ms)
+    {
+        spdlog::warn("[WARP] far-teleport timed out (load never settled) — cancelled");
+        g_far_state.store(0);
+        return;
+    }
+    int area = 0;
+    float pwx = 0.f, pwz = 0.f;
+    if (!goblin::get_player_map_pos(area, pwx, pwz))   // loading screen → wait
+        return;
+    if (st == 1)
+    {
+        const float dx = pwx - g_far_gwx, dz = pwz - g_far_gwz;
+        if (dx * dx + dz * dz > 60.0f * 60.0f) return;   // not at the grace yet
+        g_far_state.store(2);                             // arrived — settle one frame, then hop
+        return;
+    }
+    // st == 2 — the hop. Convert the unified-frame target into tile-local via the raw-pos delta
+    // (same math as warp_to_world_xz), then teleport at the CHECKED ground height + 2.
+    float lx = 0.f, ly = 0.f, lz = 0.f;
+    if (!goblin::get_player_world_pos(lx, ly, lz)) return;
+    int rarea = 0;
+    float cwx = 0.f, cwz = 0.f;
+    if (!goblin::get_player_raw_pos(rarea, cwx, cwz)) return;   // transient MapId → retry next frame
+    g_far_state.store(0);
+    const float tx = lx + (g_far_wx - cwx), tz = lz + (g_far_wz - cwz);
+    float gy = 0.f;
+    const int gc = goblin::heightfield::ground_check_sync(tx, ly, tz, &gy);
+    if (gc == 0)
+    {
+        spdlog::warn("[WARP] far-teleport: target column has NO ground — staying at the grace");
+        return;
+    }
+    const bool ok = teleport_coords(tx, gc == 1 ? gy + 2.0f : ly, tz);
+    spdlog::info("[WARP] far-teleport hop -> {}", ok ? "done" : "refused/failed (player at the grace)");
 }
 }  // namespace goblin::warp

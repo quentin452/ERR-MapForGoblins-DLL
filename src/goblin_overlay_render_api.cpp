@@ -87,17 +87,21 @@ namespace goblin::overlay_api
     void set_category_visible(int c, bool v) { goblin::ui::set_category_visible(c, v); }
     uint32_t visibility_generation() { return goblin::ui::visibility_generation(); }
 
-    // Teleport to an ABSOLUTE world XZ (unified marker frame) — same logic as the warp_xyz RPC:
-    // keep the current tile, offset the player's local pos by (target − currentRaw). Intra-region only
-    // (a far cross-map target may land in unstreamed void). Drives the ENGINE SetPos (a raw +0x6C0
-    // store snaps back — RE linux_player_pos_write_setpos). Returns false if not in-world / faulted.
+    // Teleport to an ABSOLUTE world XZ (unified marker frame) — same delta math as the warp_xyz
+    // RPC. The direct body-hop is ground-checked (teleport_coords refuses no-ground columns);
+    // when it refuses — target beyond the streamed bubble or over void — we route through the
+    // game's OWN STREAMING instead: grace-warp to the nearest discovered grace, then a
+    // ground-checked hop (async; the far-teleport state machine completes it after the load).
+    // Returns false only when neither path can start (not in-world / no grace near the target).
     bool warp_to_world_xz(float wx, float wz)
     {
         float lx, ly, lz;
         if (!goblin::get_player_world_pos(lx, ly, lz)) return false;
         int area = 0; float cwx = 0.f, cwz = 0.f;
-        if (!goblin::get_player_raw_pos(area, cwx, cwz)) return false;
-        return goblin::warp::teleport_coords(lx + (wx - cwx), ly, lz + (wz - cwz));
+        if (goblin::get_player_raw_pos(area, cwx, cwz) &&
+            goblin::warp::teleport_coords(lx + (wx - cwx), ly, lz + (wz - cwz)))
+            return true;
+        return goblin::warp::request_far_teleport_world(wx, wz);
     }
     const char *category_label(int c) { return goblin::ui::category_label(c); }
     const char *section_label(int idx) { return goblin::ui::section_label(idx); }

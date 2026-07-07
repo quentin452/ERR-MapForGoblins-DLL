@@ -52,11 +52,30 @@ Committed code + `docs/changelog.md` are the record of DONE; this file tracks WH
   position floats (the listener answers during the wedge; the streamer holds the target in memory)
   → `mem_write` a sane position → if the load completes, that struct = the hook point for an
   automatic invalid-spawn → First-Step rescue at load time.
+- **✅ "MINIMAP TOUTE PETITE" = NOT a code regression (user suspected 052af9e/88cbbf1 — cleared):**
+  both commits were already live during the 16:46 audit + the user's OK'd visual check, and
+  neither touches minimap sizing (`R = cfg::minimapSize × screenH/1080`). Root cause = this
+  box's INI carried `minimap_size = 24` (the clamp FLOOR; default 100) + `minimap_zoom = 0.1`
+  (default 2.0) — mini values presumably saved once via « Sauver dans l'INI » with the sliders
+  at minimum; the map only became VISIBLE again because the coop test ran `set show_minimap 1`.
+  Fixed the ini in place (100 / 2.0 / offsets 0 / show_minimap true). Loads next boot.
+- **✅ STREAMED FAR TELEPORT SHIPPED (user: "fix le streaming system").** Beyond-bubble targets
+  now go THROUGH the game's streaming instead of being refused: `warp::request_far_teleport_world`
+  picks the nearest DISCOVERED overworld/DLC-OW grace to the TARGET (LiveGrace.bonfireEntityId +
+  read_event_flag(discoverFlag)), LuaWarps there (full area-load, proper placement), then a
+  present-tick state machine (`tick_far_teleport`, wired next to immortal_tick) does ONE
+  ground-checked hop to the exact target (hop Y = checked ground + 2). Refused when no discovered
+  grace is within 1200 m of the target. New RPC **`warp_far <worldX> <worldZ>`** (async — poll
+  `coords`); **vmap click-to-warp falls back to it automatically** when the direct hop is refused
+  (`warp_to_world_xz`). v1 scope: overworld/DLC-OW targets (folded/underground targets need a
+  projection pass — follow-up). Both builds green, deployed. ⚠ not live-verified yet. Follow-up
+  idea: unhide the custom-marker TP button (panel_virtual_map) now that far targets work.
 - **Coop NPC-phantom test:** attempts 1+2 aborted by the incidents (v1 = the 11 km void; v2 =
-  the lake fall — never reached the corridor). v3 driver plan: `ground_at`-verified waypoints
-  (cast BEFORE each hop, detour on miss — bug-navigation around the lake via the east shore),
-  everything else as v2 (`coords`+`warp_local` deltas, per-hop verification). Retry pending a
-  relaunch with the ground-check DLL.
+  the lake fall — never reached the corridor). v3 driver READY (session scratchpad
+  `coop_test/drive_coop_test_v3.py`): `ground_at`-verified waypoints (cast BEFORE each hop,
+  detour headings ±30/60/90° on miss — bug-navigation around the lake), hop lands at checked
+  ground Y+2, everything else as v2 (`coords`+`warp_local` deltas, per-hop verification, halt
+  on anomaly). Retry pending a relaunch with the ground-check DLL.
 
 **Housekeeping (2026-07-03, done):** file had grown to 1254 lines, mostly narrative for work already
 merged, changelog'd, and in-game verified. Compacted to genuinely live/in-progress work, open
