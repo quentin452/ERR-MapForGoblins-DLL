@@ -30,6 +30,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Fixed
 
+- Death marker (bloodstain, v2.1.0) was missing from the native world map — it only drew on the
+  virtual map and the minimap. It now appears on the native map too, above the other icons,
+  projected through the game's own converter so it lands correctly on underground and DLC pages.
+
 - Coordinate teleport (`warp_local`/`warp_xyz`, vmap click-to-warp; v2.2.0) could drop the player
   where no ground exists — a transiently invalid player-MapId read mis-framed the delta into an
   11 km jump outside the map, and even a legitimate 40 m hop could land in a floorless deep-water

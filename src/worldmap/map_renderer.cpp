@@ -2213,6 +2213,42 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
                           n_iter, n_drawn, n_deferred, open_grp);
     }
 
+    // Death marker (DropSoul / bloodstain) on the NATIVE worldmap. It was drawn only on the vmap + minimap,
+    // so it vanished on the native map (bug 2026-07-07). Drawn AFTER the marker loop → above the icons; still
+    // inside the canvas clip → culled at the map edge like the rest. Project via the engine converter from the
+    // RAW (area,grid,local) when stored (group-correct on underground/DLC, like a grace), else the overworld
+    // affine. Only on the OPEN page's group. Native icon + red-disc fallback (same as the vmap/minimap block).
+    // No "sits below the player" here: the native map's player pin is ER's own, rendered UNDER our overlay.
+    {
+        float dwx, dwz; int dgrp, dsouls;
+        if (goblin::death_marker::get(dwx, dwz, dgrp, dsouls) && dgrp == open_grp)
+        {
+            float gU = 0.f, gV = 0.f; bool have = false;
+            int da, dgx, dgz; float dpx, dpz;
+            if (goblin::death_marker::get_raw(da, dgx, dgz, dpx, dpz))
+            {
+                int pg = -1;
+                have = goblin::worldmap_probe::project(da, dgx, dgz, dpx, dpz, gU, gV, pg);
+            }
+            if (!have)
+                world_to_mapspace_xy(dwx, dwz, gU, gV);   // fallback: overworld affine (manual death_mark / no raw)
+            proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
+            if (p.x >= -16 && p.y >= -16 && p.x <= realW + 16 && p.y <= realH + 16)
+            {
+                void *tex = nullptr; float u0, v0, u1, v1;
+                const float h = 11.0f * uiScale;
+                if (goblin::overlay_api::map_point_glyph_uv("MENU_MAP_DropSoul", -1, tex, u0, v0, u1, v1) && tex)
+                    fg->AddImage((ImTextureID)tex, ImVec2(p.x - h, p.y - h), ImVec2(p.x + h, p.y + h),
+                                 ImVec2(u0, v0), ImVec2(u1, v1));
+                else
+                {
+                    fg->AddCircleFilled(ImVec2(p.x, p.y), 6.0f * uiScale, IM_COL32(200, 60, 60, 235));
+                    fg->AddCircle(ImVec2(p.x, p.y), 6.0f * uiScale, IM_COL32(255, 255, 255, 235), 0, 1.5f * uiScale);
+                }
+            }
+        }
+    }
+
     // End of map-content drawing — the tooltip below follows the CURSOR, not the map,
     // so it must not be clipped to the canvas.
     if (s_canvas_clip)

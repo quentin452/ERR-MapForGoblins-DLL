@@ -48,10 +48,17 @@ GOBLIN_RENDER_API size_t count();
 namespace goblin::death_marker
 {
 // The single "you died here" marker (dropped runes / bloodstain), drawn with the native MENU_MAP_DropSoul
-// icon on the vmap + minimap. Set on death (get_player_map_pos), replaced by the next death, cleared on
-// pickup/manual. World-frame (map-space) so no chunk->world bridge needed.
-GOBLIN_RENDER_API void set(float wx, float wz, int group, int souls);
+// icon on the vmap + minimap + native worldmap. Set on death (get_player_map_pos), replaced by the next
+// death, cleared on pickup/manual. Stored in the unified WORLD frame (vmap/minimap plot that directly);
+// the raw (area,grid,local) is ALSO kept so the NATIVE map can project it through the engine converter
+// (worldmap_probe::project) group-correctly on every page — like a grace. rawArea<0 = raw unavailable
+// (e.g. the manual death_mark test) → the native map falls back to the overworld affine.
+GOBLIN_RENDER_API void set(float wx, float wz, int group, int souls,
+                           int rawArea = -1, int rawGx = 0, int rawGz = 0, float rawPx = 0.f, float rawPz = 0.f);
 GOBLIN_RENDER_API bool get(float &wx, float &wz, int &group, int &souls);   // false = none active; souls = runes waiting
+// Raw (area, grid, local) of the active marker for the native-map converter projection. false = none
+// active OR no raw coords stored (rawArea<0) → caller should fall back to the world-frame path.
+GOBLIN_RENDER_API bool get_raw(int &area, int &gx, int &gz, float &px, float &pz);
 GOBLIN_RENDER_API void clear();
 // Per-frame: reads player HP, and on the alive->dead edge records get_player_map_pos as the death spot.
 // Call every present frame (runs during gameplay, map closed). Cheap; no-op until the HP chain resolves.

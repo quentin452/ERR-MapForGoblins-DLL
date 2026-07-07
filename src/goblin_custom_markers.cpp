@@ -103,17 +103,27 @@ std::mutex g_dm_mtx;
 bool g_active = false;
 float g_wx = 0.f, g_wz = 0.f;
 int g_group = 0, g_souls = 0;
+int g_area = -1, g_gx = 0, g_gz = 0;   // raw (pre-fold) for the native-map converter; area<0 = unavailable
+float g_px = 0.f, g_pz = 0.f;
 }
-void set(float wx, float wz, int group, int souls)
+void set(float wx, float wz, int group, int souls, int rawArea, int rawGx, int rawGz, float rawPx, float rawPz)
 {
     std::lock_guard<std::mutex> lk(g_dm_mtx);
     g_active = true; g_wx = wx; g_wz = wz; g_group = group; g_souls = souls;
+    g_area = rawArea; g_gx = rawGx; g_gz = rawGz; g_px = rawPx; g_pz = rawPz;
 }
 bool get(float &wx, float &wz, int &group, int &souls)
 {
     std::lock_guard<std::mutex> lk(g_dm_mtx);
     if (!g_active) return false;
     wx = g_wx; wz = g_wz; group = g_group; souls = g_souls;
+    return true;
+}
+bool get_raw(int &area, int &gx, int &gz, float &px, float &pz)
+{
+    std::lock_guard<std::mutex> lk(g_dm_mtx);
+    if (!g_active || g_area < 0) return false;
+    area = g_area; gx = g_gx; gz = g_gz; px = g_px; pz = g_pz;
     return true;
 }
 void clear()
@@ -134,6 +144,8 @@ void tick()
     const uint8_t areaNo = (mapid >> 24) & 0xFF, gx = (mapid >> 16) & 0xFF, gz = (mapid >> 8) & 0xFF;
     int out_area = 0; float wx = 0.f, wz = 0.f;
     if (!goblin::marker_world_pos(areaNo, gx, gz, x, z, out_area, wx, wz, /*conv_underground=*/true)) return;
-    set(wx, wz, goblin::marker_group_from(areaNo, out_area), souls);
+    // Store the folded WORLD frame (vmap/minimap) AND the RAW pre-fold (area,grid,local) so the native map
+    // can run the engine converter itself — group-correct on underground/DLC pages, not just the overworld.
+    set(wx, wz, goblin::marker_group_from(areaNo, out_area), souls, areaNo, gx, gz, x, z);
 }
 } // namespace goblin::death_marker
