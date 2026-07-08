@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <string>
 #include <vector>
 
 // Inventory grant / remove primitive (Gap C GRANT + sidecar Phase-2 strip-and-reinject).
@@ -45,8 +46,18 @@ namespace goblin::inventory
     // — the inventory the SAVE serialize reads (sidecar Phase-2 strip-bracket RE target). nullptr
     // before the world loads / on fault. SEH-guarded chain walk.
     void *equip_game_data();
-    // Native persistent bloodstain ([GameDataMan+0x48]): area-local X/Y/Z, mapId, runes. souls>0 = exists.
-    bool read_bloodstain(float &x, float &y, float &z, uint32_t &mapid, int32_t &souls);
+    // Native persistent bloodstain (dropped runes on death). 2.6.2.0 layout, Ghidra-verified
+    // (docs/re/windows_bloodstain_read_drift_re_findings.md): `exists` = the flag byte
+    // GameDataMan+0x40 — the ENGINE's own icon gate, set on ANY death incl. a 0-rune one —
+    // AND souls >= 0 (the record is -1-cleared when none). blk = [GameDataMan+0x48]:
+    // X/Y/Z @ +0/+4/+8 (block-local physics frame; the engine REBASES the stored value when
+    // the streaming origin moves, so it is not stable across warps), runes @ +0x34 (0 is a
+    // VALID existing stain — do NOT gate on souls>0), mapId @ +0x38. Returns false only when
+    // the chain is unresolvable (menu/load).
+    bool read_bloodstain(bool &exists, float &x, float &y, float &z, uint32_t &mapid, int32_t &souls);
+    // One-line dump of the resolved bloodstain chain (AOB match/slot er-RVAs, gdm, blk, flag,
+    // raw record hex) — the `bloodstain_probe dbg` RPC body. RPM-guarded, safe anytime.
+    std::string bloodstain_debug();
 
     // How many of the category-encoded `item_id` the player currently HOLDS (carried inventory).
     // Read-only RPM walk of EquipInventoryData (EquipGameData+0x158) — the two-segment slot list,

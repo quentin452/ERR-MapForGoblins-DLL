@@ -144,14 +144,17 @@ void clear()
 void tick()
 {
     // A MANUAL marker (death_mark RPC) is sticky — don't let the auto-mirror below clear/overwrite it.
-    // Without this, death_mark is useless when there is no real bloodstain: read_bloodstain returns
-    // souls=0 → the clear() branch wipes the manual marker every frame before any surface draws it.
+    // Without this, death_mark is useless when there is no real bloodstain: read_bloodstain reports
+    // exists=false → the clear() branch wipes the manual marker every frame before any surface draws it.
     { std::lock_guard<std::mutex> lk(g_dm_mtx); if (g_manual) return; }
     // Mirror the game's OWN persistent bloodstain (GameDataMan+0x48) — save-backed, so it survives
     // restart + auto-clears when the runes are collected, EXACTLY like ER (no HP-edge guessing, no hook).
+    // Existence = the ENGINE's flag (GameDataMan+0x40), NOT souls>0: a 0-rune death leaves a real
+    // stain (souls=0) that ER's native map draws — gating on souls>0 hid it (2026-07-08 bug).
+    bool exists = false;
     float x = 0.f, y = 0.f, z = 0.f; uint32_t mapid = 0; int32_t souls = 0;
-    if (!goblin::inventory::read_bloodstain(x, y, z, mapid, souls)) return; // not resolvable (load/menu)
-    if (souls <= 0) { clear(); return; }                                    // none / collected
+    if (!goblin::inventory::read_bloodstain(exists, x, y, z, mapid, souls)) return; // not resolvable (load/menu)
+    if (!exists) { clear(); return; }                                               // none / collected
     // mapId = m{AA}_{BB}_{CC}_{DD} → areaNo/gridX/gridZ. Project through the SAME pipeline as real markers
     // (marker_world_pos applies WorldMapLegacyConvParam) so underground + legacy dungeon deaths land right,
     // not just the overworld. group = which map page (marker_group_from).

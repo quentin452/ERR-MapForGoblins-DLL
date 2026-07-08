@@ -3,6 +3,34 @@
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
 
+## ⇒ 2026-07-08 (Windows) — ★ bloodstain read SOLVED in Ghidra: offsets were RIGHT, the souls>0 GATE was wrong (0-rune stains); fix built+deployed, live confirm pending
+
+- **Root cause (static RE, no boot needed):** a 0-rune death leaves a REAL engine bloodstain
+  (record souls=0) and ER's icon is gated on a separate **EXISTS flag byte @ GameDataMan+0x40**
+  (death writer `er+0x5fc0c0` sets `flag = souls>=0` via setter `er+0x259060`; icon placer
+  `er+0x5fbc70` reads it via `er+0x256bc0`). The mod gated existence on `souls>0` → ER drew its
+  icon, the mod hid its marker. **Both of last night's premises were FALSE:** (1) "AOB drifted"
+  = file-offset-vs-RVA confusion (offline 0x255b90 FILE == live RVA 0x256590, .text delta +0xA00);
+  (2) "reads wrong data / player-tracking xyz" = the engine REBASES the record's block-local xyz
+  on origin change (`er+0x5fbc70` writes the converted position BACK) — a fixed world point that
+  re-expresses per warp. Slot `er+0x3d5df38` IS the true GameDataMan (serializer `er+0x257f20`
+  reads it; +0x8 PGD, +0x10 PGD array ×0xAE8, +0xA0 IGT, +0x120 death count). Full 2.6.2.0 field
+  map + all engine fn RVAs: `docs/re/windows_bloodstain_read_drift_re_findings.md` (rewritten).
+- **Fix shipped (both builds green, deployed 2026-07-08; host-only change):**
+  `read_bloodstain(bool &exists, …)` — exists = flag && souls>=0; `death_marker::tick` clears on
+  `!exists` (0-rune stains now mirror to vmap/minimap); `death_state` prints `exists=` + xyz;
+  `bloodstain_probe` prints `exists=`, and **`bloodstain_probe dbg`** dumps the resolved chain
+  (match/slot er-RVAs, gdm, flag, raw 0x40-byte record hex). Changelog Fixed entry added.
+- **★ NEXT (2 min, next boot):** the live-verify checklist in the findings doc — `mfg_build`
+  freshness, then `bloodstain_probe` → `exists=1` on the user's standing bloodstain + marker
+  visible on vmap/minimap; die-with-runes → retrieve → `exists=0`; die-with-0 → `exists=1 souls=0`
+  (the fixed case). ⚠ also re-verify once on the **Linux/Proton box** (older exe, same patch116
+  lineage — flag byte expected identical, only Ghidra-verified on 2.6.2.0).
+- **Method note (recurring trap):** never compare an offline-scan FILE offset to a live [SIG] RVA
+  without converting (+0xA00 on this exe), and never hand-compute absolute addresses from a
+  previous session's `er_base` (per-boot ASLR) — dump the mod's own resolved pointers instead
+  (that's what `bloodstain_probe dbg` is for).
+
 ## ⇒ 2026-07-07 (Windows) — ★ objects.toml greybox realizer SHIPPED (slice 1); render blocked on w2s camera-finder Windows hang
 
 New feature-monde track (user-picked): data-driven greybox worlds. `objects.toml` `[[object]]` → walkable

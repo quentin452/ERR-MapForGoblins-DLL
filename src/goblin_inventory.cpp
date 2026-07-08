@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 
 #define WIN32_LEAN_AND_MEAN
@@ -93,11 +94,16 @@ static bool give_item_seh(void *inv, void *entry, void *buffer)
     }
 }
 
-void *equip_game_data()
+namespace
 {
-    // Resolve GameDataMan static (cached), then walk the chain with RPM (guarded — nulls before
-    // the world loads). GameDataMan = *((match+7) + disp32@(match+3)).
-    static void **gdm_slot = nullptr;
+// GameDataMan static slot, resolved once from the GAME_DATA_MAN getter AOB and shared by the
+// equip chain, the bloodstain read, and the debug dump. match keeps the raw AOB hit so the
+// debug RPC can report er-relative addresses (2.6.2.0 triage: the "AOB drift" suspicion was a
+// file-offset-vs-RVA confusion; dumping the real resolved chain settles it live).
+uint8_t *g_gdm_match = nullptr;
+void **game_data_man_slot()
+{
+    static void **slot = nullptr;
     static bool tried = false;
     if (!tried)
     {
@@ -105,11 +111,21 @@ void *equip_game_data()
         if (auto *m = reinterpret_cast<uint8_t *>(
                 modutils::scan<void>({.aob = goblin::sig::GAME_DATA_MAN})))
         {
+            g_gdm_match = m;
             int32_t disp = *reinterpret_cast<int32_t *>(m + 3);
-            gdm_slot = reinterpret_cast<void **>(m + 7 + disp);
+            slot = reinterpret_cast<void **>(m + 7 + disp);
         }
-        spdlog::info("[EQUIP] GameDataMan slot={}", (void *)gdm_slot);
+        spdlog::info("[EQUIP] GameDataMan slot={}", (void *)slot);
     }
+    return slot;
+}
+}  // namespace
+
+void *equip_game_data()
+{
+    // GameDataMan slot (cached), then walk the chain with RPM (guarded — nulls before the world
+    // loads). GameDataMan = *((match+7) + disp32@(match+3)).
+    void **gdm_slot = game_data_man_slot();
     if (!gdm_slot) return nullptr;
     auto rd = [](void *p) -> void * {
         void *v = nullptr;
@@ -131,22 +147,19 @@ void *equip_game_data()
     return egd;
 }
 
-// Native persistent bloodstain (dropped runes on death) — Hexinton CT: block = [GameDataMan+0x48],
-// X/Y/Z @ +0/+4/+8 (area-local physics frame), mapId @ +0x38, runes @ +0x34. Save-backed → persists +
-// auto-clears on pickup (no hook needed, unlike DisableRuneLoss which patches the drop). souls>0 = exists.
-bool read_bloodstain(float &x, float &y, float &z, uint32_t &mapid, int32_t &souls)
+// Native persistent bloodstain (dropped runes on death) — 2.6.2.0 Ghidra-verified layout
+// (docs/re/windows_bloodstain_read_drift_re_findings.md; supersedes the Hexinton-CT note):
+// GameDataMan+0x40 (u8) = EXISTS flag — the engine's own gate (setter er+0x259060, read by the
+// icon placer er+0x5fbc70). Set on ANY death, INCLUDING a 0-rune one, restored from the save
+// (deserialize er+0x256be0 streams the flag + the 0x40-byte record verbatim). blk =
+// [GameDataMan+0x48]: X/Y/Z @ +0/+4/+8 (block-local frame, engine-REBASED on origin moves),
+// runes @ +0x34 (death writer er+0x5fc0c0 stamps PlayerGameData+0x6C there; -1 = cleared,
+// 0 = a real 0-rune stain), mapId @ +0x38. Save-backed → persists + auto-clears on pickup.
+// ⚠ exists must NOT be derived from souls>0 — that hid every 0-rune bloodstain (the 2026-07-08
+// "read is broken" symptom: ER drew its icon, the mod suppressed its marker).
+bool read_bloodstain(bool &exists, float &x, float &y, float &z, uint32_t &mapid, int32_t &souls)
 {
-    static void **gdm_slot = nullptr;
-    static bool tried = false;
-    if (!tried)
-    {
-        tried = true;
-        if (auto *m = reinterpret_cast<uint8_t *>(modutils::scan<void>({.aob = goblin::sig::GAME_DATA_MAN})))
-        {
-            int32_t disp = *reinterpret_cast<int32_t *>(m + 3);
-            gdm_slot = reinterpret_cast<void **>(m + 7 + disp);
-        }
-    }
+    void **gdm_slot = game_data_man_slot();
     if (!gdm_slot) return false;
     auto rd = [](void *p, void *out, SIZE_T n) -> bool {
         SIZE_T got = 0;
@@ -154,12 +167,60 @@ bool read_bloodstain(float &x, float &y, float &z, uint32_t &mapid, int32_t &sou
     };
     void *gdm = nullptr;
     if (!rd(gdm_slot, &gdm, sizeof(gdm)) || reinterpret_cast<uintptr_t>(gdm) < 0x10000) return false;
+    uint8_t flag = 0;
+    if (!rd(reinterpret_cast<uint8_t *>(gdm) + 0x40, &flag, 1)) return false;
     uint8_t *blk = nullptr;
     if (!rd(reinterpret_cast<uint8_t *>(gdm) + 0x48, &blk, sizeof(blk)) ||
         reinterpret_cast<uintptr_t>(blk) < 0x10000)
         return false;
-    return rd(blk + 0x0, &x, 4) && rd(blk + 0x4, &y, 4) && rd(blk + 0x8, &z, 4) &&
-           rd(blk + 0x38, &mapid, 4) && rd(blk + 0x34, &souls, 4);
+    if (!(rd(blk + 0x0, &x, 4) && rd(blk + 0x4, &y, 4) && rd(blk + 0x8, &z, 4) &&
+          rd(blk + 0x38, &mapid, 4) && rd(blk + 0x34, &souls, 4)))
+        return false;
+    exists = flag != 0 && souls >= 0;
+    return true;
+}
+
+std::string bloodstain_debug()
+{
+    void **gdm_slot = game_data_man_slot();
+    uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    char b[512];
+    if (!gdm_slot)
+    {
+        std::snprintf(b, sizeof(b), "gdm_slot UNRESOLVED (AOB miss) er=0x%llx",
+                      (unsigned long long)er);
+        return b;
+    }
+    auto rd = [](const void *p, void *out, SIZE_T n) -> bool {
+        SIZE_T got = 0;
+        return p && ReadProcessMemory(GetCurrentProcess(), p, out, n, &got) && got == n;
+    };
+    void *gdm = nullptr;
+    rd(gdm_slot, &gdm, sizeof(gdm));
+    uint8_t flag = 0;
+    int32_t aux50 = 0;
+    uint8_t *blk = nullptr;
+    uint8_t raw[0x40] = {};
+    bool blk_ok = false;
+    if (reinterpret_cast<uintptr_t>(gdm) >= 0x10000)
+    {
+        rd(reinterpret_cast<uint8_t *>(gdm) + 0x40, &flag, 1);
+        rd(reinterpret_cast<uint8_t *>(gdm) + 0x50, &aux50, 4);
+        rd(reinterpret_cast<uint8_t *>(gdm) + 0x48, &blk, sizeof(blk));
+        if (reinterpret_cast<uintptr_t>(blk) >= 0x10000) blk_ok = rd(blk, raw, sizeof(raw));
+    }
+    char hex[3 * sizeof(raw) + 1] = {};
+    for (size_t i = 0; i < sizeof(raw); ++i)
+        std::snprintf(hex + i * 3, 4, "%02x ", raw[i]);
+    auto rel = [er](const void *p) -> long long {
+        return er ? (long long)((uintptr_t)p - er) : -1;
+    };
+    std::snprintf(b, sizeof(b),
+                  "match=er+0x%llx slot=er+0x%llx gdm=%p flag40=%u aux50=%d blk=%p rec[0x40]=%s%s",
+                  (unsigned long long)rel(g_gdm_match), (unsigned long long)rel(gdm_slot), gdm,
+                  flag, aux50, (void *)blk, blk_ok ? hex : "<unreadable>",
+                  blk_ok ? "" : " (blk read failed)");
+    return b;
 }
 
 namespace

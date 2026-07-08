@@ -34,6 +34,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
   virtual map and the minimap. It now appears on the native map too, above the other icons,
   projected through the game's own converter so it lands correctly on underground and DLC pages.
 
+- Death marker (bloodstain, v2.1.0) never appeared for a death with 0 runes, even though ER's own
+  map draws its icon there — the mod treated "0 runes in the stain" as "no stain". Existence now
+  follows the engine's own bloodstain flag (set on any death, restored from the save), so the
+  mod's marker mirrors ER exactly, including 0-rune deaths.
+
 - Coordinate teleport (`warp_local`/`warp_xyz`, vmap click-to-warp; v2.2.0) could drop the player
   where no ground exists — a transiently invalid player-MapId read mis-framed the delta into an
   11 km jump outside the map, and even a legitimate 40 m hop could land in a floorless deep-water

@@ -1314,16 +1314,18 @@ namespace goblin::debug_rpc
                 bool manual = false; float dwx = 0, dwz = 0; int dgrp = 0, dsouls = 0, darea = -1, dgx = 0, dgz = 0;
                 float dpx = 0, dpz = 0;
                 bool active = goblin::death_marker::state(manual, dwx, dwz, dgrp, dsouls, darea, dgx, dgz, dpx, dpz);
+                bool bexists = false;
                 float bx = 0, by = 0, bz = 0; uint32_t bmap = 0; int32_t bsouls = 0;
-                bool bread = goblin::inventory::read_bloodstain(bx, by, bz, bmap, bsouls);
+                bool bread = goblin::inventory::read_bloodstain(bexists, bx, by, bz, bmap, bsouls);
                 int parea = 0, pgrp = -1; float pwx = 0, pwz = 0;
                 bool ppos = goblin::get_player_map_pos(parea, pwx, pwz, nullptr, nullptr, &pgrp);
-                char b[320];
+                char b[384];
                 std::snprintf(b, sizeof(b),
                               "ok death_state store[active=%d manual=%d world=(%.0f,%.0f) g%d souls=%d raw=area%d grid(%d,%d)] "
-                              "bloodstain[read=%d souls=%d map=0x%08X] player[ok=%d world=(%.0f,%.0f) g%d]",
+                              "bloodstain[read=%d exists=%d souls=%d map=0x%08X xyz=(%.1f,%.1f,%.1f)] "
+                              "player[ok=%d world=(%.0f,%.0f) g%d]",
                               (int)active, (int)manual, dwx, dwz, dgrp, dsouls, darea, dgx, dgz,
-                              (int)bread, bsouls, bmap, (int)ppos, pwx, pwz, pgrp);
+                              (int)bread, (int)bexists, bsouls, bmap, bx, by, bz, (int)ppos, pwx, pwz, pgrp);
                 return std::string(b);
             }
             if (cmd == "map_rect")
@@ -1340,11 +1342,17 @@ namespace goblin::debug_rpc
             }
             if (cmd == "bloodstain_probe")
             {
+                // `bloodstain_probe dbg` → the resolved-chain dump (match/slot er-RVAs, gdm, flag,
+                // raw 0x40-byte record hex) — the 2.6.2.0 triage lens for any future layout doubt.
+                if (next_token(rest) == "dbg")
+                    return "ok bloodstain_dbg " + goblin::inventory::bloodstain_debug();
+                bool exists = false;
                 float x = 0, y = 0, z = 0; uint32_t map = 0; int32_t souls = 0;
-                bool ok = goblin::inventory::read_bloodstain(x, y, z, map, souls);
-                char b[160];
-                std::snprintf(b, sizeof(b), "ok bloodstain xyz=(%.1f,%.1f,%.1f) map=0x%08X souls=%d read=%d",
-                              x, y, z, map, souls, (int)ok);
+                bool ok = goblin::inventory::read_bloodstain(exists, x, y, z, map, souls);
+                char b[192];
+                std::snprintf(b, sizeof(b),
+                              "ok bloodstain exists=%d xyz=(%.1f,%.1f,%.1f) map=0x%08X souls=%d read=%d",
+                              (int)exists, x, y, z, map, souls, (int)ok);
                 return std::string(b);
             }
             if (cmd == "hp_probe")

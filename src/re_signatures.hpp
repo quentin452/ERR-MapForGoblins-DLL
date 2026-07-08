@@ -59,7 +59,12 @@ namespace goblin::sig
     // serialize snapshots this). slot = match+7+*(int32*)(match+3); GameDataMan = *slot.
     // Chain: GameDataMan → +0x8 PlayerGameData → +0x2B0 EquipGameData (the inventory the serialize
     // reads — sidecar Phase-2 strip bracket target, docs/re/windows_save_function_rpm_re_findings.md).
-    // Unique on the ERR-Steam exe (offline scan 2026-07-03 @ 0x255b90).
+    // Unique on the ERR-Steam exe (offline scan 2026-07-03 @ FILE offset 0x255b90 = RVA 0x256590 —
+    // .text raw-vs-va delta is +0xA00; a live [SIG] match at er+0x256590 is the SAME site, NOT
+    // drift). Ghidra-confirmed on 2.6.2.0: the matched getter returns *(GameDataMan+0x58), slot =
+    // er+0x3d5df38, and the slot IS the true GameDataMan (its readers include the player-data
+    // serializer er+0x257f20, PlayerGameData @ +0x8, IGT-ms @ +0xA0, bloodstain flag/record @
+    // +0x40/+0x48 — docs/re/windows_bloodstain_read_drift_re_findings.md).
     inline constexpr const char *GAME_DATA_MAN =
         "48 8B 05 ?? ?? ?? ?? 48 85 C0 74 05 48 8B 40 58 C3 C3";
 
