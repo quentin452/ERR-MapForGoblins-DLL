@@ -212,13 +212,19 @@ void *build_box_shape(uintptr_t er, const float half[3])
 }
 } // namespace
 
-Result add_box(const float half[3], const float pos[3], bool force, int addMode, int actMode)
+Result add_box(const float half[3], const float pos[3], bool force, int addMode, int actMode,
+               int filterInfo)
 {
     Result r;
     if (!resolve(r)) return r;
     // -1 = the engine-flush default (the CS body flush calls addBody with 0,0).
     const int am = addMode < 0 ? 0 : addMode;
     const int cm = actMode < 0 ? 0 : actMode;
+    // collisionFilterInfo written to body+0x6c BEFORE addBody (see the write site below). layer =
+    // fi & 0x7f; CSCollisionFilter::isCollisionEnabled (er+0xc61940/c61d70/c61be0) reads body+0x6c
+    // and gates on a 128-layer matrix. Default 0x38 = layer 56 = what real placed-static map bodies
+    // use (the walkable layer the character controller collides with). -1 → default.
+    const uint32_t fi = filterInfo < 0 ? 0x38u : (uint32_t)filterInfo;
     std::memcpy(r.half, half, sizeof(r.half));
     std::memcpy(r.pos, pos, sizeof(r.pos));
     uintptr_t er = er_base();
@@ -286,7 +292,18 @@ Result add_box(const float half[3], const float pos[3], bool force, int addMode,
         return r;
     }
     r.bodyId = id;
-    spdlog::info("[ADDCOL] allocateBody OK: id=0x{:x} — calling addBody(addMode={}, actMode={})", id, am, cm);
+
+    // The body slot is now populated by allocateBody. Stamp collisionFilterInfo (body+0x6c) BEFORE
+    // addBody: addBody caches the filter into the broadphase leaf, so a post-add write is ignored by
+    // the character sweep (that's why every live mem_write to +0x6c did nothing). RE:
+    // docs/re/windows_add_collision_character_solid_re_findings.md.
+    uint64_t slot = r.bodies + (uint64_t)(id & 0xffffffu) * 0xB0;
+    {
+        SIZE_T put = 0;
+        WriteProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(slot + 0x6c), &fi, 4, &put);
+    }
+    spdlog::info("[ADDCOL] allocateBody OK: id=0x{:x} — set body+0x6c filterInfo=0x{:x} (layer {}); "
+                 "addBody(addMode={}, actMode={})", id, fi, fi & 0x7f, am, cm);
 
     auto add = reinterpret_cast<AddBodyFn>(
         goblin::sig::resolve_func_aob(goblin::sig::ADD_BODY_FN, er, ADD_BODY_RVA, "ADD_BODY"));
@@ -296,8 +313,6 @@ Result add_box(const float half[3], const float pos[3], bool force, int addMode,
         return r;
     }
 
-    // Record the new body slot (0xb0 @ bodies + (id&0xffffff)*0xb0) for the findings.
-    uint64_t slot = r.bodies + (uint64_t)(id & 0xffffffu) * 0xB0;
     uint8_t body[0xB0];
     if (rd(reinterpret_cast<void *>(slot), body, sizeof(body)))
     {

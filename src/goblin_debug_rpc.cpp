@@ -1208,22 +1208,24 @@ namespace goblin::debug_rpc
                 int nv = 0;
                 bool force = false;
                 int addMode = -1, actMode = -1;   // -1 = library default (add_box picks)
+                int filterInfo = -1;              // -1 = default 0x38 (walkable layer 56); body+0x6c
                 std::string tok = sub;
                 while (!tok.empty())
                 {
                     if (tok == "go")
                     {
                         force = true;
-                        std::string am = next_token(rest), cm = next_token(rest);
+                        std::string am = next_token(rest), cm = next_token(rest), fi = next_token(rest);
                         if (!am.empty()) { try { addMode = std::stoi(am); } catch (...) {} }
                         if (!cm.empty()) { try { actMode = std::stoi(cm); } catch (...) {} }
+                        if (!fi.empty()) { try { filterInfo = (int)std::stoul(fi, nullptr, 0); } catch (...) {} }
                         break;
                     }
-                    if (nv >= 6) return "err too many args — usage: add_collision <hx> <hy> <hz> [<x> <y> <z>] [go [addMode actMode]]";
+                    if (nv >= 6) return "err too many args — usage: add_collision <hx> <hy> <hz> [<x> <y> <z>] [go [addMode actMode filterInfo]]";
                     try { v[nv++] = std::stof(tok); } catch (...) { return "err bad number '" + tok + "'"; }
                     tok = next_token(rest);
                 }
-                if (nv != 3 && nv != 6) return "err usage: add_collision <hx> <hy> <hz> [<x> <y> <z>] [go [addMode actMode]]";
+                if (nv != 3 && nv != 6) return "err usage: add_collision <hx> <hy> <hz> [<x> <y> <z>] [go [addMode actMode filterInfo]]";
                 float half[3] = {v[0], v[1], v[2]};
                 float pos[3];
                 if (nv == 6) { pos[0] = v[3]; pos[1] = v[4]; pos[2] = v[5]; }
@@ -1233,7 +1235,7 @@ namespace goblin::debug_rpc
                     if (!goblin::get_player_world_pos(px, py, pz)) return "err not in-world (no player pos)";
                     pos[0] = px; pos[1] = py + 40.f; pos[2] = pz;   // clearly above the feet → oracle-separable
                 }
-                auto r = goblin::add_collision::add_box(half, pos, force, addMode, actMode);
+                auto r = goblin::add_collision::add_box(half, pos, force, addMode, actMode, filterInfo);
                 if (!r.ok) { std::snprintf(b, sizeof(b), "err add_collision: %s", r.err); return std::string(b); }
                 if (!force)
                     std::snprintf(b, sizeof(b), "ok add_collision DUMPED cinfo (shape=%#llx borrowed, pos %.1f %.1f %.1f) — append 'go' to add",
