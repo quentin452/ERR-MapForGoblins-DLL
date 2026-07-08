@@ -24,6 +24,21 @@ namespace
     constexpr uintptr_t VIEW_FROM_HIT = 0xE0;   // GameRend+0xF0, hit = GameRend+0x10
     constexpr uintptr_t MB_FROM_HIT   = 0x120;  // GameRend+0x130 (the identity/second block)
 
+    // ★ The REAL camera (2026-07-08, docs/re/windows_world_to_screen_camera_re_findings.md §the real
+    // camera): GameRend+0xF0 turned out to be the CAMSRC POSE (its translation == the player BODY pos,
+    // live-proven) — NOT the camera. The ACTIVE camera pose object hangs off GameRend+0x18:
+    //   camMgr   = *(er+0x3d6b880)      (static slot — the camera step mgr FUN_140766980 passes to
+    //                                    FUN_14076e7c0; scan-free)
+    //   GameRend = *(camMgr+0x10)       (the SAME object the vtable scan finds)
+    //   camObj   = *(GameRend+0x18)     (the active camera)
+    //   camObj+0x10 = 4x4 POSE (rows = X/Y/Z camera axes + T position, cam->world, BODY frame)
+    //   camObj+0x50 = lens {fovy(rad), aspect, near, far}  (live: 0.8727 / 1.7778 / 0.05 / 10000)
+    constexpr uintptr_t CAM_MGR_SLOT_RVA    = 0x3d6b880;
+    constexpr uintptr_t GAMEREND_FROM_MGR   = 0x10;
+    constexpr uintptr_t CAMOBJ_FROM_GAMEREND = 0x18;
+    constexpr uintptr_t POSE_FROM_CAMOBJ    = 0x10;
+    constexpr uintptr_t LENS_FROM_CAMOBJ    = 0x50;
+
     // Live-tunable projection interpretation. Live calibration (2026-07-05, Fable 5, Linux) confirmed:
     // VIEW@GameRend+0xF0 is a clean row-vector view matrix, FOV=0.7505, conv=2 (row-vector, +Z fwd). BUT
     // the VIEW is in a render frame RE-CENTRED near the camera (ER rebases world coords for float
@@ -248,6 +263,62 @@ namespace
         return false;
     }
 
+    // Read the ACTIVE camera POSE + lens and build the row-vector -Z-forward VIEW — the drop-in
+    // replacement for the old GameRend+0xF0 read (which was the camsrc/player pose, not the camera).
+    // Chain: static slot er+0x3d6b880 first (scan-free); fallback = the MEM_PRIVATE vtable scan's
+    // GameRend. The pose is cam->world in the BODY frame (rebase world points by the body-frame
+    // origin first — resolve_origin). VIEW = rigid inverse with the Z column NEGATED so the existing
+    // conv2 (-Z forward) projection + r3d perspNegZ pipeline work unchanged:
+    //   v·M: vx=(b-T)·X  vy=(b-T)·Y  vz=-(b-T)·Z  → fwd=-vz=(b-T)·Z.
+    bool read_camera_view(float outView[16], float &outFovy, uintptr_t *outGameRend = nullptr,
+                          uintptr_t *outCamObj = nullptr, float *outPose16 = nullptr,
+                          float *outLens4 = nullptr)
+    {
+        uintptr_t base = (uintptr_t)GetModuleHandleA("eldenring.exe");
+        if (!base) return false;
+        uintptr_t gameRend = 0, mgr = 0;
+        if (rd(base + CAM_MGR_SLOT_RVA, mgr) && mgr > 0x10000)
+        {
+            uintptr_t gr = 0;
+            if (rd(mgr + GAMEREND_FROM_MGR, gr) && gr > 0x10000) gameRend = gr;
+        }
+        if (!gameRend)
+        {
+            uintptr_t hit = find_cam_instance();
+            if (hit) gameRend = hit - 0x10;
+        }
+        if (!gameRend) return false;
+        if (outGameRend) *outGameRend = gameRend;
+        uintptr_t camObj = 0;
+        if (!rd(gameRend + CAMOBJ_FROM_GAMEREND, camObj) || camObj < 0x10000) return false;
+        if (outCamObj) *outCamObj = camObj;
+        float pose[16];
+        if (!rd(camObj + POSE_FROM_CAMOBJ, pose) || !finite16(pose)) return false;
+        if (outPose16) std::memcpy(outPose16, pose, sizeof(pose));
+        // pose sanity: rows 0..2 are unit axes, 4th column (0,0,0,1)
+        auto rowlen = [&](int r) {
+            return std::sqrt(pose[r * 4] * pose[r * 4] + pose[r * 4 + 1] * pose[r * 4 + 1] +
+                             pose[r * 4 + 2] * pose[r * 4 + 2]);
+        };
+        for (int r = 0; r < 3; ++r)
+            if (std::fabs(rowlen(r) - 1.f) > 0.05f) return false;
+        if (std::fabs(pose[15] - 1.f) > 1e-3f) return false;
+        const float *X = pose + 0, *Y = pose + 4, *Z = pose + 8, *T = pose + 12;
+        float M[16] = {
+            X[0], Y[0], -Z[0], 0.f,
+            X[1], Y[1], -Z[1], 0.f,
+            X[2], Y[2], -Z[2], 0.f,
+            -(T[0] * X[0] + T[1] * X[1] + T[2] * X[2]),
+            -(T[0] * Y[0] + T[1] * Y[1] + T[2] * Y[2]),
+            +(T[0] * Z[0] + T[1] * Z[1] + T[2] * Z[2]), 1.f};
+        std::memcpy(outView, M, sizeof(M));
+        float lens[4] = {0, 0, 0, 0};
+        bool lens_ok = rd(camObj + LENS_FROM_CAMOBJ, lens);
+        if (outLens4) std::memcpy(outLens4, lens, sizeof(lens));
+        outFovy = (lens_ok && lens[0] > 0.1f && lens[0] < 2.6f) ? lens[0] : g_fovy;
+        return true;
+    }
+
     // Resolve the render rebase origin. PRIMARY = the body-frame delta (goblin::warp::
     // body_frame_origin — tile(+0x6C0) − body(posObj+0x70)): the engine builds the VIEW from that
     // SAME havok pose (FUN_1403f0f60→FUN_14045e540 reads [[camsrc+0x190]+0x68]), so the VIEW's
@@ -288,57 +359,46 @@ namespace goblin::w2s
     {
         uintptr_t base = (uintptr_t)GetModuleHandleA("eldenring.exe");
         if (!base) return "err: eldenring.exe base not found";
-        uintptr_t hit = find_cam_instance(/*exhaustive=*/true);   // manual probe wants a full sweep, not a slice
-        if (!hit)
-        {
-            // Report the sweep coverage so we can tell a genuine no-match from a too-slow scan (next boot
-            // measurement of the MEM_PRIVATE narrowing).
-            char eb[256];
-            std::snprintf(eb, sizeof(eb),
-                          "err: no GameRendCameraSet with a valid VIEW (in-world? camera active?) — sweep %s "
-                          "after %.0f MB (MEM_PRIVATE only)%s",
-                          g_scan_done ? "COMPLETED" : "timed out mid-sweep",
-                          g_scan_bytes / (1024.0 * 1024.0),
-                          g_scan_done ? " => genuine no-match (not a speed problem)"
-                                      : " => still too slow; re-run or widen the budget");
-            return eb;
-        }
-
         float px, py, pz;
         if (!goblin::get_player_world_pos(px, py, pz)) return "err: no player world pos (in-world?)";
-
-        float m[16] = {}, m2[16] = {}, lens[8] = {};
-        rd(hit + VIEW_FROM_HIT, m);
-        rd(hit + MB_FROM_HIT, m2);
-        rd(hit - 0x10 + 0x50, lens);   // GameRend+0x50.. lens scalars (fov/near/far candidates)
-
         ImVec2 ds = ImGui::GetIO().DisplaySize;
         float W = ds.x > 0 ? ds.x : 1920.f, H = ds.y > 0 ? ds.y : 1080.f;
 
+        float m[16], pose[16] = {}, lens[4] = {}, fovy = g_fovy;
+        uintptr_t gameRend = 0, camObj = 0;
+        if (!read_camera_view(m, fovy, &gameRend, &camObj, pose, lens))
+        {
+            // static chain dead — run the exhaustive scan for the coverage diagnostic
+            uintptr_t hit = find_cam_instance(/*exhaustive=*/true);
+            char eb[288];
+            std::snprintf(eb, sizeof(eb),
+                          "err: camera unresolved — static chain (er+0x3d6b880) dead AND vtable sweep %s "
+                          "after %.0f MB (MEM_PRIVATE), hit=%#llx (in-world? camera active?)",
+                          g_scan_done ? "COMPLETED" : "timed out mid-sweep",
+                          g_scan_bytes / (1024.0 * 1024.0), (unsigned long long)hit);
+            return eb;
+        }
+
         std::string out;
         char b[512];
-        std::snprintf(b, sizeof(b), "ok w2s cam GameRend=%#llx player=(%.2f,%.2f,%.2f) view=%.0fx%.0f conv=%d fovy=%.4f dot=%d found_after=%.0fMB(MEM_PRIVATE)\n",
-                      (unsigned long long)(hit - 0x10), px, py, pz, W, H, g_conv, g_fovy, (int)g_dot,
-                      g_scan_bytes / (1024.0 * 1024.0));
+        std::snprintf(b, sizeof(b),
+                      "ok w2s cam chain er+0x3d6b880 -> GameRend=%#llx -> camObj=%#llx player=(%.2f,%.2f,%.2f) view=%.0fx%.0f dot=%d\n",
+                      (unsigned long long)gameRend, (unsigned long long)camObj, px, py, pz, W, H, (int)g_dot);
         out += b;
-        std::snprintf(b, sizeof(b), "VIEW@+0xF0:\n [%.4f %.4f %.4f %.4f]\n [%.4f %.4f %.4f %.4f]\n [%.4f %.4f %.4f %.4f]\n [%.4f %.4f %.4f %.4f]\n",
-                      m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11], m[12], m[13], m[14], m[15]);
+        std::snprintf(b, sizeof(b),
+                      "CAMERA pose@camObj+0x10: X=[%.4f %.4f %.4f] Y=[%.4f %.4f %.4f] Z=[%.4f %.4f %.4f] T=(%.2f,%.2f,%.2f)\n"
+                      "lens@+0x50: fovy=%.5f aspect=%.5f near=%.3f far=%.0f (using fovy=%.5f)\n",
+                      pose[0], pose[1], pose[2], pose[4], pose[5], pose[6], pose[8], pose[9], pose[10],
+                      pose[12], pose[13], pose[14], lens[0], lens[1], lens[2], lens[3], fovy);
         out += b;
-        std::snprintf(b, sizeof(b), "+0x130: [%.3f %.3f %.3f %.3f ...]  lens@+0x50: %.4f %.4f %.4f %.4f %.4f %.4f\n",
-                      m2[0], m2[1], m2[2], m2[3], lens[0], lens[1], lens[2], lens[3], lens[4], lens[5]);
-        out += b;
-        // report every interpretation WITHOUT rebase (origin off) — shows the raw off-screen result
-        bool save_ho = g_have_origin; g_have_origin = false;
-        for (int c = 0; c < 4; ++c)
+        // the old +0xF0 block, kept for the record: it is the CAMSRC (player/freecam) POSE, not the camera
+        float f0[16] = {};
+        if (rd(gameRend + 0xF0, f0))
         {
-            float vx, vy, vz, fwd; to_view(m, px, py, pz, c, vx, vy, vz, fwd);
-            float sx = -1, sy = -1; bool vis = project(m, px, py, pz, c, g_fovy, W, H, sx, sy);
-            std::snprintf(b, sizeof(b), " conv%d(no-rebase): view=(%.2f,%.2f,%.2f) fwd=%.2f -> px=(%.0f,%.0f) %s\n",
-                          c, vx, vy, vz, fwd, sx, sy, vis ? "" : "(behind)");
+            std::snprintf(b, sizeof(b), "camsrc-pose@GameRend+0xF0 trans=(%.2f,%.2f,%.2f) (player body — NOT the camera)\n",
+                          f0[12], f0[13], f0[14]);
             out += b;
         }
-        g_have_origin = save_ho;
-        // the body-frame origin (primary, exact by construction) — report it alongside the scan
         {
             float o[3];
             if (goblin::warp::body_frame_origin(o[0], o[1], o[2]))
@@ -350,20 +410,24 @@ namespace goblin::w2s
             else
                 out += "BODY-FRAME origin: unresolved (chain null — mid-load?)\n";
         }
-        // resolve as the render would (body-frame primary, scan fallback) and project conv2 WITH it
-        if (resolve_origin(hit - 0x10, m, px, py, pz, W, H))
+        // resolve as the render would (body-frame primary, scan fallback) and project the player
+        if (resolve_origin(gameRend, m, px, py, pz, W, H))
         {
-            float sx, sy; bool vis = project(m, px, py, pz, 2, g_fovy, W, H, sx, sy);
+            float sx, sy;
+            bool vis = project(m, px, py, pz, 2, fovy, W, H, sx, sy);
+            float sx2, sy2;
+            bool vis2 = project(m, px, py + 1.7f, pz, 2, fovy, W, H, sx2, sy2);
             char srcbuf[40];
             if (g_origin_src == 1) std::snprintf(srcbuf, sizeof(srcbuf), "body-frame");
             else std::snprintf(srcbuf, sizeof(srcbuf), "GameRend-scan@%+ld", g_origin_off);
             std::snprintf(b, sizeof(b),
-                          "REBASE origin=(%.2f,%.2f,%.2f) src=%s -> conv2 px=(%.0f,%.0f) %s <== w2s3d\n",
-                          g_origin[0], g_origin[1], g_origin[2], srcbuf, sx, sy, vis ? "LOCKED" : "?");
+                          "REBASE origin=(%.2f,%.2f,%.2f) src=%s -> player FEET px=(%.0f,%.0f)%s HEAD px=(%.0f,%.0f)%s <== w2s3d\n",
+                          g_origin[0], g_origin[1], g_origin[2], srcbuf,
+                          sx, sy, vis ? "" : "(behind)", sx2, sy2, vis2 ? "" : "(behind)");
             out += b;
         }
         else
-            out += "REBASE origin: NOT FOUND (body chain null + GameRend[-0x40..+0x600] scan miss)\n";
+            out += "REBASE origin: NOT FOUND (body chain null + GameRend scan miss)\n";
         spdlog::info("[W2S] {}", out);
         return out;
     }
@@ -371,19 +435,18 @@ namespace goblin::w2s
     void draw_present()
     {
         if (!g_dot) return;
-        uintptr_t hit = find_cam_instance();
-        if (!hit) return;
+        float m[16], fovy = g_fovy;
+        uintptr_t gameRend = 0;
+        if (!read_camera_view(m, fovy, &gameRend)) return;
         float px, py, pz;
         if (!goblin::get_player_world_pos(px, py, pz)) return;
-        float m[16];
-        if (!rd(hit + VIEW_FROM_HIT, m) || !looks_like_view(m)) return;
         ImVec2 ds = ImGui::GetIO().DisplaySize;
         float W = ds.x, H = ds.y; if (!(W > 0 && H > 0)) return;
         // ER renders camera-relative: rebase the global player pos before the VIEW. Re-resolve the origin
         // each frame (cheap, same-frame) so it tracks as the render frame re-centres while the player moves.
-        resolve_origin(hit - 0x10, m, px, py, pz, W, H);
+        resolve_origin(gameRend, m, px, py, pz, W, H);
         float sx, sy;
-        if (!project(m, px, py, pz, g_conv, g_fovy, W, H, sx, sy)) return;
+        if (!project(m, px, py, pz, g_conv, fovy, W, H, sx, sy)) return;
         ImDrawList *dl = ImGui::GetForegroundDrawList();
         dl->AddCircle(ImVec2(sx, sy), 10.f, IM_COL32(255, 40, 40, 255), 16, 2.5f);
         dl->AddLine(ImVec2(sx - 14, sy), ImVec2(sx + 14, sy), IM_COL32(255, 40, 40, 200), 1.f);
@@ -401,31 +464,32 @@ namespace goblin::w2s
         return project(view, x, y, z, 2 /*conv2 forward=-vz*/, fovy, W, H, sx, sy);
     }
 
-    // Live ER camera for the 3D backend (goblin_r3d): the render-local VIEW matrix (GameRend+0xF0, row-vector
-    // v*M, conv2 forward=-vz) + the per-frame REBASE origin (subtract from a world point before the VIEW) +
-    // the vertical FOV. Re-finds the origin each call (the render re-centres per frame). false if the camera/
-    // origin can't be resolved (menu / not in-world). Present-thread only.
+    // Live ER camera for the 3D backend (goblin_r3d): the REAL camera VIEW (built from the active
+    // camera POSE at [[[er+0x3d6b880]+0x10]+0x18]+0x10 — row-vector v*M, conv2 forward=-vz, drop-in
+    // for the old +0xF0 read which was the camsrc pose) + the per-frame REBASE origin (body-frame
+    // delta; subtract from a world point before the VIEW) + the LIVE vertical FOV (lens@camObj+0x50).
+    // Re-resolves everything each call (cheap: 4 guarded reads). false if the camera/origin can't be
+    // resolved (menu / not in-world). Present-thread only.
     bool get_camera(float outView[16], float outOrigin[3], float &outFovy, float vpW, float vpH)
     {
-        uintptr_t hit = find_cam_instance();
-        if (!hit) return false;
-        float m[16];
-        if (!rd(hit + VIEW_FROM_HIT, m) || !looks_like_view(m)) return false;
+        float m[16], fovy = g_fovy;
+        uintptr_t gameRend = 0;
+        if (!read_camera_view(m, fovy, &gameRend)) return false;
         float px, py, pz;
         if (!goblin::get_player_world_pos(px, py, pz)) return false;
         if (!(vpW > 0 && vpH > 0)) return false;
-        if (!resolve_origin(hit - 0x10, m, px, py, pz, vpW, vpH)) return false;
+        if (!resolve_origin(gameRend, m, px, py, pz, vpW, vpH)) return false;
         static int s_logged_src = -1;
         if (g_origin_src != s_logged_src)
         {
             s_logged_src = g_origin_src;
-            spdlog::info("[W2S] origin source -> {} origin=({:.2f},{:.2f},{:.2f})",
+            spdlog::info("[W2S] origin source -> {} origin=({:.2f},{:.2f},{:.2f}) fovy={:.4f}",
                          g_origin_src == 1 ? "body-frame (exact)" : "GameRend scan (fallback)",
-                         g_origin[0], g_origin[1], g_origin[2]);
+                         g_origin[0], g_origin[1], g_origin[2], fovy);
         }
         for (int i = 0; i < 16; ++i) outView[i] = m[i];
         outOrigin[0] = g_origin[0]; outOrigin[1] = g_origin[1]; outOrigin[2] = g_origin[2];
-        outFovy = g_fovy;
+        outFovy = fovy;
         return true;
     }
 }

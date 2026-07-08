@@ -207,8 +207,43 @@ wrong scan pick had Y=2/Z=2000, hence the floating dot).
 PRIMARY (accepted when the player projects with fwd>0), old GameRend scan kept as FALLBACK for a build
 where the body chain shifts. `w2s_probe` prints `BODY-FRAME origin=…` AND the resolved
 `REBASE origin=… src=body-frame|GameRend-scan@±off`; `get_camera` logs `[W2S] origin source -> …` on
-change. **Live confirm pending (next boot, in-world):** `w2s_probe dot on` → the dot must sit at the
-player's feet and STAY there while moving/turning; then `objects render on` + 3 boxes → correct
-positions. If the dot is still off with `src=body-frame`, the residual delta is camera-vs-player pose
-(the camsrc chain uses the FREECAM object when `DAT_143d66198 != 0`) — compare probe px against
-screen-centre first.
+change. ✅ LIVE-CONFIRMED same night: `BODY-FRAME origin=(0.00, 88.00, -80.00)` — round block values,
+exactly the predicted delta.
+
+## ★★ 2026-07-08 (same night, LIVE) — THE REAL CAMERA FOUND: GameRend+0xF0 is the CAMSRC POSE, the true camera hangs off GameRend+0x18
+
+**Live disproof of the +0xF0 read:** with the body-frame origin live, the probe showed VIEW@+0xF0's
+translation row == the player BODY position EXACTLY (`(-7.2758, 5.9629, -3.9158)` vs tile
+`(-7.28, 93.96, -83.92)` − origin `(0,88,-80)`). So +0xF0 is the **camsrc (player/freecam) POSE**
+written by `FUN_140b019b0` — NOT the camera view. This is also why the 2026-07-05 Linux calibration
+never landed a dot (its "tiny translation" was the player's body pos there too, and its 0.7505
+"fovy" @GameRend+0x54 is not the camera lens either).
+
+**The REAL camera chain (2.6.2.0, live-verified end-to-end):**
+```
+camMgr   = *(er+0x3d6b880)     // static slot — FUN_140766980 (camera-system step) passes it to
+                               // FUN_14076e7c0 (the per-camera step). Assert-guarded global.
+GameRend = *(camMgr+0x10)      // the SAME object the GameRendCameraSet vtable scan finds
+camObj   = *(GameRend+0x18)    // the ACTIVE camera pose object   ← 8 bytes past the vtable subobject!
+camObj+0x10 = 4×4 POSE  — rows = camera X/Y/Z axes + T position; cam→world, BODY frame
+                          (live: T=(-7.99,9.36,-6.46) ≈ player body + (−0.7,+3.4,−2.5) = a 3rd-person
+                           camera; Z row has PITCH, unlike the yaw-only player pose)
+camObj+0x50 = lens {fovy, aspect, near, far}   (live: 0.87266 rad = 50.0°, 1.77778 = 16:9, 0.05, 10000)
+```
+Discovery path: `FUN_1400a5300` ("CSCam" assert getter, slot er+0x3d71838 → FD4 reflection statics, a
+dead end) → the camera STEP caller `FUN_140766980` passes **`DAT_143d6b880`** (er+0x3d6b880) to
+`FUN_14076e7c0`, which reads the matrix via `[[mgr+0x10]+0x18]+0x10..0x5F` — the chain above.
+
+**Math validated live in Python before coding** (RPC mem_dump of the pose + atomic coords):
+`view = R^T·(p_body − T)`, fwd=+Z, focal=(H/2)/tan(fovy/2) with the LIVE fovy 0.8727 → the player
+projected to px=(959, 906) feet / (959, 464) head — dead-centre X, lower-half Y, matching the
+on-screen third-person framing (screenshot cross-check; small Y delta = the player was walking
+between read and capture).
+
+**Implemented (2026-07-08, commit pending live confirm):** `read_camera_view()` in `goblin_w2s.cpp` —
+static chain first, vtable-scan GameRend as fallback, builds the row-vector **−Z-forward** VIEW
+(rigid inverse with negated Z column) so the whole existing pipeline (conv2 projection,
+`project_world`, r3d `perspNegZ`) works unchanged; live fovy from the lens replaces the hardcoded
+0.7505 (g_fovy is now only the fallback). `w2s_probe` prints the chain + pose + lens + player
+feet/head px. **Final confirm (needs a restart to load the host DLL): `w2s_probe dot on` → dot at
+the feet while moving/turning; `objects render on` → boxes at correct offsets.**

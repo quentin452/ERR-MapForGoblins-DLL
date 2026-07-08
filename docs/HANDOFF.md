@@ -27,9 +27,12 @@ Committed code + `docs/changelog.md` are the record of DONE; this file tracks WH
   (heap gdm — the "static gdm / code at +0x48" manual read was an aiming artifact); `death_state`
   store active=1; **DropSoul sprite visible on the minimap at the stain spot** ~5 m from the
   player (screenshot @ minimap_zoom 8, restored to 2). The fixed case is proven end-to-end.
-- **residual (cheap, opportunistic):** (1) watch the retrieve→`exists=0` flip + a die-WITH-runes
-  case during normal play; (2) one re-run of the checklist on the **Linux/Proton box** (older
-  exe, same patch116 lineage — flag byte expected identical, only Ghidra-verified on 2.6.2.0).
+- **✅ retrieve-flip CONFIRMED (2026-07-08 02:37, live watch):** user picked the 0-rune stain up →
+  `exists=0 souls=-1` (the exact -1 "cleared" value the RE predicted) + the marker store went
+  `active=0` (marker auto-vanished). Full lifecycle proven: 0-rune death → exists=1/souls=0 +
+  marker → retrieve → cleared. **residual (cheap, opportunistic):** (1) a die-WITH-runes case
+  during normal play (souls>0 path); (2) one re-run of the checklist on the **Linux/Proton box**
+  (older exe, same patch116 lineage — flag byte expected identical, only Ghidra-verified on 2.6.2.0).
 - **Method note (recurring trap):** never compare an offline-scan FILE offset to a live [SIG] RVA
   without converting (+0xA00 on this exe), and never hand-compute absolute addresses from a
   previous session's `er_base` (per-boot ASLR) — dump the mod's own resolved pointers instead
@@ -86,20 +89,26 @@ step 3.
   walk that never finished), ~1.4 s exhaustive. `objects render on` → `[OBJECTS-RENDER] first draw: 3 boxes,
   36 edges, cam ok` — the render pipeline runs END-TO-END, **no freeze** (~30 fps, frame advancing). The hang
   AND the scan-speed block are both DEAD.
-- **✅ PROJECTION ACCURACY SOLVED ON PAPER + IMPLEMENTED 2026-07-08 (was: the LAST piece) — pending ONE
-  live confirm.** The wrong-origin bug (`find_origin` locked `(0,2,2000)` @GameRend+0x1E0, dot floats in
-  the field) is fixed by DERIVING the origin instead of scanning: **the VIEW's render frame IS the havok
-  body frame** (the engine builds VIEW@+0xF0 from the pose object `[[camsrc+0x190]+0x68]` — the SAME
-  posObj the teleport writes), so **origin = tile(+0x6C0) − body(posObj+0x70)**, exact by construction.
-  Cross-check on the 23:31 dump: VIEW trans `(-5.70,5.39,-0.14)` vs player tile `(-5.70,93.39,-80.14)` →
-  origin ≈ `(0,88,-80)` (the scan's Y=2/Z=2000 was garbage). New `goblin::warp::body_frame_origin()`
-  (host) + `w2s resolve_origin()`: body-frame PRIMARY (gated on player fwd>0), GameRend scan kept as
-  FALLBACK; `w2s_probe` prints both (`BODY-FRAME origin=` + `src=body-frame|GameRend-scan`); `get_camera`
-  logs the source on change. Both builds green, deployed. **★ NEXT (next boot, 1 min): `w2s_probe dot on`
-  → dot at the FEET and stays while moving/turning; `objects render on` → boxes at correct offsets.**
-  RE: `windows_world_to_screen_camera_re_findings.md` §2026-07-08. (Historical context of the wrong pick:
-  VIEW dump @ 23:31:30 in `dll/offline/logs/MapForGoblins.log`; the Y row of the VIEW rot is identity, so
-  origin Y/Z dominate vertical placement — why Z=2000 wrecked it.)
+- **✅✅ PROJECTION FULLY SOLVED 2026-07-08 (origin AND camera) — implemented, pending the dot confirm
+  after the next restart.** TWO stacked causes, both found + fixed the same night:
+  1. **Origin (solved + LIVE-CONFIRMED):** the render frame IS the havok body frame → **origin =
+     tile(+0x6C0) − body(posObj+0x70)**, exact by construction (`goblin::warp::body_frame_origin()`,
+     PRIMARY; old GameRend scan = fallback). Live: `BODY-FRAME origin=(0.00, 88.00, -80.00)` — round
+     block values, as predicted from the 23:31 dump.
+  2. **Camera (the deeper bug, found LIVE + Ghidra):** with the origin right, VIEW@+0xF0's translation
+     == the player BODY pos EXACTLY ⇒ **GameRend+0xF0 is the CAMSRC (player) POSE, not the camera** —
+     why no dot ever landed, on Linux 07-05 too. **The REAL camera:** `camMgr=*(er+0x3d6b880)` (static,
+     scan-free; the camera-step arg of FUN_140766980) → `GameRend=*(camMgr+0x10)` (same object the
+     vtable scan finds) → **`camObj=*(GameRend+0x18)`** → pose 4×4 @+0x10 (cam→world, BODY frame,
+     3rd-person T ≈ player+(−0.7,+3.4,−2.5) with pitch) + **lens @+0x50 = {fovy 0.87266 (=50.0°!),
+     aspect 1.7778, near 0.05, far 10000}** — the hardcoded 0.7505 "fovy" was wrong (another +0xF0-era
+     artifact). Math validated in Python against the live game BEFORE coding: player → px (959,906)
+     feet / (959,464) head = dead-centre X, correct 3rd-person framing (screenshot cross-check).
+     `read_camera_view()` builds the −Z-fwd row-vector VIEW from the pose (existing conv2/perspNegZ
+     pipeline unchanged); live fovy replaces g_fovy (now fallback-only). Both builds green; **deploy
+     blocked by the running game** → after the next restart: `w2s_probe dot on` → dot at the FEET
+     while moving/turning; `objects render on` → boxes at correct offsets. RE:
+     `windows_world_to_screen_camera_re_findings.md` §§2026-07-08 (origin + real camera).
 - **Scan-FREE path DEFERRED (murky — needs live iteration).** RE'd the VIEW-builder chain that fills
   GameRend+0xF0 (`FUN_140b019b0`: `buf=FUN_1403f0f60(FUN_140507ff0(WCM),&local)` → copy buf→GameRend+0xF0;
   `FUN_14045e540` builds the 4×4 from a pose object's **pos(+0x70)+quaternion(+0x60)**). Two problems for a
