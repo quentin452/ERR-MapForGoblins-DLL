@@ -32,9 +32,11 @@ GOBLIN_RENDER_API Result recon();
 // BuildCfg map are invested in), so `half` is recorded/logged but not yet honored. `pos` is the Havok
 // BLOCK-LOCAL frame — the same frame hf_probe casts in (brief §7).
 //   force=false → resolve + build + DUMP the filled cinfo only; NO alloc, no world mutation.
-//   force=true  → allocateBody (FUN_1418aabf0) + addBody (FUN_1418a9ff0, addMode/actMode 0,0 like the
-//                 CS flush). Present-thread first attempt (brief §4) — the freeze watchdog covers a
-//                 stall; fall back to a FUN_140c72c20-mirror game-thread hook if it does.
+//   force=true  → allocateBody (FUN_1418aabf0) + addBody (FUN_1418a9ff0). addMode/actMode gate that
+//                 engine addBody — the "solid vs ray-only" broadphase behaviour; -1 = the engine-flush
+//                 default (0,0, like the CS flush). Present-thread first attempt (brief §4) — the freeze
+//                 watchdog covers a stall; fall back to a FUN_140c72c20-mirror game-thread hook if it does.
 // Verify with hf_probe_present at pos: a down-ray hit at the body's top = it is live in the broadphase.
-GOBLIN_RENDER_API Result add_box(const float half[3], const float pos[3], bool force);
+GOBLIN_RENDER_API Result add_box(const float half[3], const float pos[3], bool force,
+                                 int addMode = -1, int actMode = -1);
 } // namespace goblin::add_collision

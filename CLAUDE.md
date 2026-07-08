@@ -85,5 +85,9 @@ restart** (watcher auto-swaps ~1.3s, or the `reload_overlay` RPC). Loop + tasks:
   - ⚠️ Re-lectures : `goblin_debug_rpc.cpp` x4, `HANDOFF.md` x2, `goblin_w2s.cpp` x2, `goblin_warp.hpp` x2 → Utiliser des line ranges ciblés
   - ⚠️ 17 outputs > 10 KB (3.4 Mo total) → pipe dans head/tail ou filtrer avec rtk
   - ⚠️ 2/150 cmds sans `rtk` (1%) → Toujours préfixer `rtk`
+- **Session 2026-07-08 16:33** — 9.2 MB, 38% tool outputs, 630 turns
+  - ⚠️ 13 commandes stdout > 10 KB (3293 KB) → `| head -n 50` ou `rtk`
+  - ℹ️ rtk utilisé sur 99% des commandes éligibles (2 manqués)
+
 <!-- /auto-optimizations -->
 

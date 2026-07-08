@@ -212,10 +212,13 @@ void *build_box_shape(uintptr_t er, const float half[3])
 }
 } // namespace
 
-Result add_box(const float half[3], const float pos[3], bool force)
+Result add_box(const float half[3], const float pos[3], bool force, int addMode, int actMode)
 {
     Result r;
     if (!resolve(r)) return r;
+    // -1 = the engine-flush default (the CS body flush calls addBody with 0,0).
+    const int am = addMode < 0 ? 0 : addMode;
+    const int cm = actMode < 0 ? 0 : actMode;
     std::memcpy(r.half, half, sizeof(r.half));
     std::memcpy(r.pos, pos, sizeof(r.pos));
     uintptr_t er = er_base();
@@ -283,11 +286,11 @@ Result add_box(const float half[3], const float pos[3], bool force)
         return r;
     }
     r.bodyId = id;
-    spdlog::info("[ADDCOL] allocateBody OK: id=0x{:x} — calling addBody(addMode=0, actMode=0)", id);
+    spdlog::info("[ADDCOL] allocateBody OK: id=0x{:x} — calling addBody(addMode={}, actMode={})", id, am, cm);
 
     auto add = reinterpret_cast<AddBodyFn>(
         goblin::sig::resolve_func_aob(goblin::sig::ADD_BODY_FN, er, ADD_BODY_RVA, "ADD_BODY"));
-    if (!call_add_body(add, reinterpret_cast<void *>(r.bodyMgr), &id, 1, 0, 0))
+    if (!call_add_body(add, reinterpret_cast<void *>(r.bodyMgr), &id, 1, am, cm))
     {
         std::snprintf(r.err, sizeof(r.err), "addBody FAULTED (id=0x%x allocated but not added)", id);
         return r;
