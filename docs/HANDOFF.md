@@ -114,6 +114,15 @@ step 3.
      `[OBJECTS-RENDER] first draw: 3 boxes, 36 edges, cam ok`. **w2s3d + the greybox 3D render are
      DONE end-to-end.** Remaining polish (non-blocking): decide the `objects render` default
      (still OFF), and eyeball dot/boxes stability while running/turning during normal play.
+  4. **Motion-sync added (user-observed micro latency during camera motion, `eb4c1ca`, deployed) —
+     pending the live A/B.** Same phenomenon as the minimap's 1-frame view delay: the game thread
+     runs ~1 present ahead of the displayed image, so a fresh camera sample makes the boxes LEAD
+     the world while the camera moves. `camera_for_render()` snapshots the resolved set
+     (view+origin+fovy) once per frame into a 4-ring and serves `ring[now−lag]` (dot + boxes share
+     it; globals follow the served snapshot for project_world coherence). Default lag=1,
+     **hot-tunable: `w2s_probe lag <0..3>`**; probe prints `MOTION-SYNC … fresh vs served camT dT=`
+     (measured latency while panning). Next boot: A/B `lag 0` (old, leads) vs `lag 1` (should
+     stick); escalate to 2 only if the GPU pipeline buffers deeper.
 - **Scan-FREE path DEFERRED (murky — needs live iteration).** RE'd the VIEW-builder chain that fills
   GameRend+0xF0 (`FUN_140b019b0`: `buf=FUN_1403f0f60(FUN_140507ff0(WCM),&local)` → copy buf→GameRend+0xF0;
   `FUN_14045e540` builds the 4×4 from a pose object's **pos(+0x70)+quaternion(+0x60)**). Two problems for a
