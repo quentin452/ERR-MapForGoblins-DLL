@@ -38,6 +38,14 @@ namespace goblin::warp
     // null / the write faulted. RE: docs/re/linux_player_pos_write_setpos_re_findings.md.
     bool teleport_coords(float x, float y, float z);
 
+    // The per-block frame ORIGIN separating the tile-local frame (LocalPlayer+0x6C0) from the
+    // havok/body frame (posObj+0x70): origin = tile_now - body_now. This is ALSO the render
+    // rebase origin — the engine builds the VIEW matrix from the SAME havok pose object
+    // (FUN_1403f0f60 → FUN_14045e540 reads [[camsrc+0x190]+0x68]+0x60/+0x70), so "world → render
+    // frame" is exactly `p - origin`. Consumed by goblin_w2s (greybox 3D render); exact by
+    // construction, no scan/heuristic. SEH-guarded; false when not in-world / chain null.
+    bool body_frame_origin(float &ox, float &oy, float &oz);
+
     // FAR teleport — reach a target BEYOND the streamed bubble by driving the game's OWN
     // streaming instead of refusing: LuaWarp to the nearest DISCOVERED grace (full area-load,
     // proper placement), then one short ground-checked body hop to the exact target. Async —

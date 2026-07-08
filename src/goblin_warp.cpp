@@ -170,6 +170,29 @@ static bool teleport_body_seh(uint8_t *lp, float tx, float ty, float tz)
     return ok;
 }
 
+// The tile-local ↔ body frame origin (see hpp): origin = tile(+0x6C0) - body(posObj+0x70). Same
+// noinline+SEH shape as the teleport reads (the chain is null mid-load).
+__declspec(noinline) static void body_frame_origin_body(uint8_t *lp, float *o, bool *ok)
+{
+    uint8_t *vec = resolve_body_vec(lp);
+    if (!vec) return;
+    o[0] = *reinterpret_cast<float *>(lp + 0x6C0) - reinterpret_cast<float *>(vec)[0];
+    o[1] = *reinterpret_cast<float *>(lp + 0x6C4) - reinterpret_cast<float *>(vec)[1];
+    o[2] = *reinterpret_cast<float *>(lp + 0x6C8) - reinterpret_cast<float *>(vec)[2];
+    *ok = true;
+}
+bool body_frame_origin(float &ox, float &oy, float &oz)
+{
+    auto *lp = reinterpret_cast<uint8_t *>(goblin::get_local_player_ptr());
+    if (!lp) return false;
+    float o[3] = {0, 0, 0};
+    bool ok = false;
+    __try { body_frame_origin_body(lp, o, &ok); }
+    __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
+    if (ok) { ox = o[0]; oy = o[1]; oz = o[2]; }
+    return ok;
+}
+
 bool teleport_coords(float x, float y, float z)
 {
     // LocalPlayer is null during a load / at the menu — the not-in-world + re-entrancy guard.

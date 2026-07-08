@@ -182,3 +182,33 @@ stored view it could just copy:
   **MEM_PRIVATE** heap regions (the instance is an FD4-heap alloc). See
   `windows_w2s_camera_finder_present_hang_findings.md`. Revisit the scan-free deref only if the narrowed scan
   still can't resolve the camera (the `w2s_probe` coverage diagnostic will say which).
+
+## ★ 2026-07-08 — the REBASE ORIGIN SOLVED on paper: it is the tile↔body FRAME DELTA (no scan)
+The 2026-07-07 session's last blocker was `find_origin` locking a WRONG origin ((0,2,2000)
+@GameRend+0x1E0 — satisfies the loose "player projects on-screen" heuristic, isn't the real origin →
+boxes/dot render off-position). The answer was already in this file + the teleport RE, unconnected:
+
+- This doc (§FUN_14045e540): the VIEW@GameRend+0xF0 is built from the **havok pose object**
+  `[[camsrc+0x190]+0x68]` — quat @+0x60, position @+0x70.
+- The teleport RE (`linux_player_pos_write_setpos_re_findings.md` + `goblin_warp.cpp`): that SAME
+  `posObj+0x70` position lives in the **havok/block-local frame**, offset from the tile-local frame
+  (`LocalPlayer+0x6C0`) by a per-block translation; the teleport already computes it as
+  `origin = tile_now − body_now`.
+
+⇒ **The VIEW's render frame IS the havok body frame, by construction** (the engine feeds the pose
+position straight into the VIEW translation row). So the rebase origin the render needs is EXACTLY
+`tile(+0x6C0) − body(posObj+0x70)` — two reads the mod already does, exact per-frame, zero scan.
+Cross-check with the 2026-07-07 23:31 live dump: VIEW trans `(-5.70, 5.39, -0.14)` vs player tile
+`(-5.70, 93.39, -80.14)` → component-wise difference `(0, 88, -80)` = a plausible block origin (the
+wrong scan pick had Y=2/Z=2000, hence the floating dot).
+
+**Implemented (2026-07-08, both builds green, deployed):** `goblin::warp::body_frame_origin(ox,oy,oz)`
+(host, SEH-guarded, reuses `resolve_body_vec`) + `goblin_w2s.cpp resolve_origin()` = body-frame origin
+PRIMARY (accepted when the player projects with fwd>0), old GameRend scan kept as FALLBACK for a build
+where the body chain shifts. `w2s_probe` prints `BODY-FRAME origin=…` AND the resolved
+`REBASE origin=… src=body-frame|GameRend-scan@±off`; `get_camera` logs `[W2S] origin source -> …` on
+change. **Live confirm pending (next boot, in-world):** `w2s_probe dot on` → the dot must sit at the
+player's feet and STAY there while moving/turning; then `objects render on` + 3 boxes → correct
+positions. If the dot is still off with `src=body-frame`, the residual delta is camera-vs-player pose
+(the camsrc chain uses the FREECAM object when `DAT_143d66198 != 0`) — compare probe px against
+screen-centre first.

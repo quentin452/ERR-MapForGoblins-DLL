@@ -12,6 +12,7 @@
 #include <spdlog/spdlog.h>
 
 #include "goblin_inject.hpp"   // get_player_world_pos
+#include "goblin_warp.hpp"     // body_frame_origin — the render rebase origin, no scan
 
 namespace
 {
@@ -34,6 +35,7 @@ namespace
     float g_origin[3] = {0, 0, 0};   // render rebase origin (world); subtracted before VIEW when g_have_origin
     bool  g_have_origin = false;
     long  g_origin_off = 0;          // offset of g_origin within GameRend where it was found (diagnostic)
+    int   g_origin_src = 0;          // 0 = none, 1 = body-frame delta (exact), 2 = GameRend scan (fallback)
 
     // find_cam_instance scan diagnostics — surfaced by w2s_probe so the next boot MEASURES whether the
     // MEM_PRIVATE-restricted sweep now completes in the budget (vs the old 8 GB all-committed walk that
@@ -245,6 +247,37 @@ namespace
         g_have_origin = save_have; g_origin[0] = save_o[0]; g_origin[1] = save_o[1]; g_origin[2] = save_o[2];
         return false;
     }
+
+    // Resolve the render rebase origin. PRIMARY = the body-frame delta (goblin::warp::
+    // body_frame_origin — tile(+0x6C0) − body(posObj+0x70)): the engine builds the VIEW from that
+    // SAME havok pose (FUN_1403f0f60→FUN_14045e540 reads [[camsrc+0x190]+0x68]), so the VIEW's
+    // frame IS the body frame and the origin is exact by construction — no scan. Accepted when the
+    // player projects in FRONT of the camera (fwd>0, the cheap sanity for a torn read mid-load).
+    // FALLBACK = the old GameRend float3 scan heuristic (it picked (0,2,2000) on 2.6.2.0 — wrong,
+    // hence the off-position boxes — but it is kept for a build where the body chain shifts).
+    bool resolve_origin(uintptr_t gr, const float *m, float px, float py, float pz, float W, float H)
+    {
+        float o[3];
+        if (goblin::warp::body_frame_origin(o[0], o[1], o[2]))
+        {
+            float save_o[3] = {g_origin[0], g_origin[1], g_origin[2]};
+            bool save_have = g_have_origin;
+            g_origin[0] = o[0]; g_origin[1] = o[1]; g_origin[2] = o[2];
+            g_have_origin = true;
+            float vx, vy, vz, fwd;
+            to_view(m, px, py, pz, 2, vx, vy, vz, fwd);
+            if (fwd > 0.01f)
+            {
+                g_origin_src = 1; g_origin_off = 0;
+                return true;
+            }
+            g_have_origin = save_have;
+            g_origin[0] = save_o[0]; g_origin[1] = save_o[1]; g_origin[2] = save_o[2];
+        }
+        if (find_origin(gr, m, px, py, pz, W, H)) { g_origin_src = 2; return true; }
+        g_origin_src = 0;
+        return false;
+    }
 }
 
 namespace goblin::w2s
@@ -305,16 +338,32 @@ namespace goblin::w2s
             out += b;
         }
         g_have_origin = save_ho;
-        // auto-find the render rebase origin, then project conv2 WITH it (the real answer)
-        if (find_origin(hit - 0x10, m, px, py, pz, W, H))
+        // the body-frame origin (primary, exact by construction) — report it alongside the scan
+        {
+            float o[3];
+            if (goblin::warp::body_frame_origin(o[0], o[1], o[2]))
+            {
+                std::snprintf(b, sizeof(b), "BODY-FRAME origin=(%.2f,%.2f,%.2f) (tile+0x6C0 - body+0x70)\n",
+                              o[0], o[1], o[2]);
+                out += b;
+            }
+            else
+                out += "BODY-FRAME origin: unresolved (chain null — mid-load?)\n";
+        }
+        // resolve as the render would (body-frame primary, scan fallback) and project conv2 WITH it
+        if (resolve_origin(hit - 0x10, m, px, py, pz, W, H))
         {
             float sx, sy; bool vis = project(m, px, py, pz, 2, g_fovy, W, H, sx, sy);
-            std::snprintf(b, sizeof(b), "REBASE origin=(%.2f,%.2f,%.2f) @GameRend%+ld -> conv2 px=(%.0f,%.0f) %s <== w2s3d\n",
-                          g_origin[0], g_origin[1], g_origin[2], g_origin_off, sx, sy, vis ? "LOCKED" : "?");
+            char srcbuf[40];
+            if (g_origin_src == 1) std::snprintf(srcbuf, sizeof(srcbuf), "body-frame");
+            else std::snprintf(srcbuf, sizeof(srcbuf), "GameRend-scan@%+ld", g_origin_off);
+            std::snprintf(b, sizeof(b),
+                          "REBASE origin=(%.2f,%.2f,%.2f) src=%s -> conv2 px=(%.0f,%.0f) %s <== w2s3d\n",
+                          g_origin[0], g_origin[1], g_origin[2], srcbuf, sx, sy, vis ? "LOCKED" : "?");
             out += b;
         }
         else
-            out += "REBASE origin: NOT FOUND in GameRend[-0x40..+0x600] — widen the window or the origin is elsewhere\n";
+            out += "REBASE origin: NOT FOUND (body chain null + GameRend[-0x40..+0x600] scan miss)\n";
         spdlog::info("[W2S] {}", out);
         return out;
     }
@@ -330,9 +379,9 @@ namespace goblin::w2s
         if (!rd(hit + VIEW_FROM_HIT, m) || !looks_like_view(m)) return;
         ImVec2 ds = ImGui::GetIO().DisplaySize;
         float W = ds.x, H = ds.y; if (!(W > 0 && H > 0)) return;
-        // ER renders camera-relative: rebase the global player pos before the VIEW. Re-find the origin
+        // ER renders camera-relative: rebase the global player pos before the VIEW. Re-resolve the origin
         // each frame (cheap, same-frame) so it tracks as the render frame re-centres while the player moves.
-        find_origin(hit - 0x10, m, px, py, pz, W, H);
+        resolve_origin(hit - 0x10, m, px, py, pz, W, H);
         float sx, sy;
         if (!project(m, px, py, pz, g_conv, g_fovy, W, H, sx, sy)) return;
         ImDrawList *dl = ImGui::GetForegroundDrawList();
@@ -365,7 +414,15 @@ namespace goblin::w2s
         float px, py, pz;
         if (!goblin::get_player_world_pos(px, py, pz)) return false;
         if (!(vpW > 0 && vpH > 0)) return false;
-        if (!find_origin(hit - 0x10, m, px, py, pz, vpW, vpH)) return false;
+        if (!resolve_origin(hit - 0x10, m, px, py, pz, vpW, vpH)) return false;
+        static int s_logged_src = -1;
+        if (g_origin_src != s_logged_src)
+        {
+            s_logged_src = g_origin_src;
+            spdlog::info("[W2S] origin source -> {} origin=({:.2f},{:.2f},{:.2f})",
+                         g_origin_src == 1 ? "body-frame (exact)" : "GameRend scan (fallback)",
+                         g_origin[0], g_origin[1], g_origin[2]);
+        }
         for (int i = 0; i < 16; ++i) outView[i] = m[i];
         outOrigin[0] = g_origin[0]; outOrigin[1] = g_origin[1]; outOrigin[2] = g_origin[2];
         outFovy = g_fovy;

@@ -86,17 +86,20 @@ step 3.
   walk that never finished), ~1.4 s exhaustive. `objects render on` → `[OBJECTS-RENDER] first draw: 3 boxes,
   36 edges, cam ok` — the render pipeline runs END-TO-END, **no freeze** (~30 fps, frame advancing). The hang
   AND the scan-speed block are both DEAD.
-- **★ NEXT — the LAST piece is PROJECTION ACCURACY (the render rebase origin), NOT the scan/camera.** The
-  debug dot (`w2s_probe dot on`) + the boxes render but land OFF-position: `find_origin` picked a WRONG
-  rebase origin **`(0, 2, 2000)` @GameRend+0x1E0** while the player was at `(-5.70, 93.39, -80.14)` — Y (2 vs
-  ~93) and Z (2000 vs ~-80) are far off. It satisfies the finder's loose heuristic (player projects on-screen
-  at px (1312,474), "LOCKED") but isn't the true origin, so the dot floats in the field instead of the feet.
-  The VIEW itself is clean (Y-rotation, row-vector, conv2, fovy 0.7505 — all as Linux). ⇒ Fix `find_origin`
-  for this build: tighten the heuristic (the current ±3000 m gate lets Z=2080-off win), or RE the true
-  render-origin FIELD in GameRend (a specific offset, not a scan). VIEW dump @ 23:31:30 in
-  `dll/offline/logs/MapForGoblins.log`: rot `[0.9673 0 0.2538 / 0 1 0 / -0.2538 0 0.9673]`, trans
-  `(-5.7040, 5.3913, -0.1362)` — note the **Y row is identity** (pass-through), so the origin's Y/Z dominate
-  the vertical placement, which is why a wrong Z wrecks it.
+- **✅ PROJECTION ACCURACY SOLVED ON PAPER + IMPLEMENTED 2026-07-08 (was: the LAST piece) — pending ONE
+  live confirm.** The wrong-origin bug (`find_origin` locked `(0,2,2000)` @GameRend+0x1E0, dot floats in
+  the field) is fixed by DERIVING the origin instead of scanning: **the VIEW's render frame IS the havok
+  body frame** (the engine builds VIEW@+0xF0 from the pose object `[[camsrc+0x190]+0x68]` — the SAME
+  posObj the teleport writes), so **origin = tile(+0x6C0) − body(posObj+0x70)**, exact by construction.
+  Cross-check on the 23:31 dump: VIEW trans `(-5.70,5.39,-0.14)` vs player tile `(-5.70,93.39,-80.14)` →
+  origin ≈ `(0,88,-80)` (the scan's Y=2/Z=2000 was garbage). New `goblin::warp::body_frame_origin()`
+  (host) + `w2s resolve_origin()`: body-frame PRIMARY (gated on player fwd>0), GameRend scan kept as
+  FALLBACK; `w2s_probe` prints both (`BODY-FRAME origin=` + `src=body-frame|GameRend-scan`); `get_camera`
+  logs the source on change. Both builds green, deployed. **★ NEXT (next boot, 1 min): `w2s_probe dot on`
+  → dot at the FEET and stays while moving/turning; `objects render on` → boxes at correct offsets.**
+  RE: `windows_world_to_screen_camera_re_findings.md` §2026-07-08. (Historical context of the wrong pick:
+  VIEW dump @ 23:31:30 in `dll/offline/logs/MapForGoblins.log`; the Y row of the VIEW rot is identity, so
+  origin Y/Z dominate vertical placement — why Z=2000 wrecked it.)
 - **Scan-FREE path DEFERRED (murky — needs live iteration).** RE'd the VIEW-builder chain that fills
   GameRend+0xF0 (`FUN_140b019b0`: `buf=FUN_1403f0f60(FUN_140507ff0(WCM),&local)` → copy buf→GameRend+0xF0;
   `FUN_14045e540` builds the 4×4 from a pose object's **pos(+0x70)+quaternion(+0x60)**). Two problems for a
