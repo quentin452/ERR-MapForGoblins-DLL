@@ -681,6 +681,13 @@ namespace goblin::debug_rpc
                     try { goblin::w2s::set_fovy(std::stof(next_token(rest))); } catch (...) { return "err usage: w2s_probe fovy <radians>"; }
                     return goblin::w2s::probe();
                 }
+                // motion-sync: how many presents to delay the camera snapshot used by the 3D render
+                // (0 = fresh; 1 = default, rides the presented image like the minimap view delay).
+                if (sub == "lag")
+                {
+                    try { goblin::w2s::set_cam_lag(std::stoi(next_token(rest))); } catch (...) { return "err usage: w2s_probe lag <0..3>"; }
+                    return goblin::w2s::probe();
+                }
                 return goblin::w2s::probe();
             }
             // maptile_probe [rel_base] [maxProbe] [nameFilter] — endgame phase-1a sub-slice 1b: read the

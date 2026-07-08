@@ -319,6 +319,27 @@ namespace
         return true;
     }
 
+    // ── Motion-sync (camera lag ring) ────────────────────────────────────────────────────────────
+    // The game thread runs ~1 frame ahead of the image being PRESENTED (same phenomenon as the
+    // native GFx map layer — map_renderer.cpp "Motion sync" delays the projected view by 1 frame).
+    // Sampling the camera at Present time therefore LEADS the on-screen world during camera motion:
+    // the greyboxes/dot visibly swim ahead, then re-stick when the camera stops (user-observed
+    // 2026-07-08). Fix: snapshot the fully-RESOLVED camera (view+origin+fovy — one coherent set)
+    // once per present into a small ring and serve the snapshot from `g_cam_lag` presents ago.
+    // Default 1 (the minimap-proven value); RPC-tunable LIVE via `w2s_probe lag <0..3>` so the
+    // right value is measured in-game, not guessed.
+    struct CamSnap
+    {
+        float view[16];
+        float origin[3];
+        float poseT[3];   // raw camera position (pose row 4) — probe diagnostics (fresh-vs-served delta)
+        float fovy;
+        bool valid;
+    };
+    CamSnap g_cam_ring[4] = {};
+    unsigned g_cam_ring_head = 0;   // count of pushed snapshots; write slot = head & 3
+    int g_cam_lag = 1;
+
     // Resolve the render rebase origin. PRIMARY = the body-frame delta (goblin::warp::
     // body_frame_origin — tile(+0x6C0) − body(posObj+0x70)): the engine builds the VIEW from that
     // SAME havok pose (FUN_1403f0f60→FUN_14045e540 reads [[camsrc+0x190]+0x68]), so the VIEW's
@@ -348,6 +369,51 @@ namespace
         if (find_origin(gr, m, px, py, pz, W, H)) { g_origin_src = 2; return true; }
         g_origin_src = 0;
         return false;
+    }
+
+    // The camera the 3D render should use THIS present: resolve fresh once per ImGui frame, push
+    // into the ring, serve the snapshot `g_cam_lag` presents back (clamped to available history;
+    // falls back to the freshest valid snapshot when the lagged slot is invalid, e.g. right after
+    // a load). Present-thread only (single caller set), so the statics need no lock.
+    bool camera_for_render(float outView[16], float outOrigin[3], float &outFovy, float vpW, float vpH)
+    {
+        const int fc = ImGui::GetFrameCount();
+        static int s_last_fc = -1;
+        if (fc != s_last_fc)
+        {
+            s_last_fc = fc;
+            CamSnap s{};
+            float m[16], pose[16] = {}, fovy = g_fovy;
+            uintptr_t gameRend = 0;
+            float px = 0, py = 0, pz = 0;
+            if (read_camera_view(m, fovy, &gameRend, nullptr, pose) &&
+                goblin::get_player_world_pos(px, py, pz) &&
+                resolve_origin(gameRend, m, px, py, pz, vpW > 0 ? vpW : 1920.f, vpH > 0 ? vpH : 1080.f))
+            {
+                std::memcpy(s.view, m, sizeof(m));
+                s.origin[0] = g_origin[0]; s.origin[1] = g_origin[1]; s.origin[2] = g_origin[2];
+                s.poseT[0] = pose[12]; s.poseT[1] = pose[13]; s.poseT[2] = pose[14];
+                s.fovy = fovy;
+                s.valid = true;
+            }
+            g_cam_ring[g_cam_ring_head & 3] = s;
+            ++g_cam_ring_head;
+        }
+        if (!g_cam_ring_head) return false;
+        const unsigned avail = g_cam_ring_head < 4 ? g_cam_ring_head : 4;
+        unsigned lag = (unsigned)(g_cam_lag < 0 ? 0 : (g_cam_lag > 3 ? 3 : g_cam_lag));
+        if (lag >= avail) lag = avail - 1;
+        const CamSnap *s = &g_cam_ring[(g_cam_ring_head - 1 - lag) & 3];
+        if (!s->valid) s = &g_cam_ring[(g_cam_ring_head - 1) & 3];   // freshest as fallback
+        if (!s->valid) return false;
+        std::memcpy(outView, s->view, sizeof(s->view));
+        outOrigin[0] = s->origin[0]; outOrigin[1] = s->origin[1]; outOrigin[2] = s->origin[2];
+        outFovy = s->fovy;
+        // Keep the GLOBALS on the SERVED snapshot so the conv2 rebase inside project()/project_world
+        // (which reads g_origin, not the returned array) projects with the same coherent camera set.
+        g_origin[0] = s->origin[0]; g_origin[1] = s->origin[1]; g_origin[2] = s->origin[2];
+        g_have_origin = true;
+        return true;
     }
 }
 
@@ -410,6 +476,27 @@ namespace goblin::w2s
             else
                 out += "BODY-FRAME origin: unresolved (chain null — mid-load?)\n";
         }
+        // motion-sync: fresh camera vs the ring snapshot actually served to the render. While the
+        // camera moves, |dT| ≈ camera speed × lag presents — the measured render latency.
+        if (g_cam_ring_head)
+        {
+            const unsigned avail = g_cam_ring_head < 4 ? g_cam_ring_head : 4;
+            unsigned lag = (unsigned)(g_cam_lag < 0 ? 0 : (g_cam_lag > 3 ? 3 : g_cam_lag));
+            if (lag >= avail) lag = avail - 1;
+            const CamSnap &s = g_cam_ring[(g_cam_ring_head - 1 - lag) & 3];
+            if (s.valid)
+            {
+                std::snprintf(b, sizeof(b),
+                              "MOTION-SYNC lag=%d fresh camT=(%.3f,%.3f,%.3f) served camT=(%.3f,%.3f,%.3f) dT=(%.3f,%.3f,%.3f)\n",
+                              g_cam_lag, pose[12], pose[13], pose[14], s.poseT[0], s.poseT[1], s.poseT[2],
+                              pose[12] - s.poseT[0], pose[13] - s.poseT[1], pose[14] - s.poseT[2]);
+                out += b;
+            }
+            else
+                std::snprintf(b, sizeof(b), "MOTION-SYNC lag=%d (ring slot not valid yet)\n", g_cam_lag), out += b;
+        }
+        else
+            std::snprintf(b, sizeof(b), "MOTION-SYNC lag=%d (ring empty — render not running yet)\n", g_cam_lag), out += b;
         // resolve as the render would (body-frame primary, scan fallback) and project the player
         if (resolve_origin(gameRend, m, px, py, pz, W, H))
         {
@@ -435,16 +522,14 @@ namespace goblin::w2s
     void draw_present()
     {
         if (!g_dot) return;
-        float m[16], fovy = g_fovy;
-        uintptr_t gameRend = 0;
-        if (!read_camera_view(m, fovy, &gameRend)) return;
-        float px, py, pz;
-        if (!goblin::get_player_world_pos(px, py, pz)) return;
         ImVec2 ds = ImGui::GetIO().DisplaySize;
         float W = ds.x, H = ds.y; if (!(W > 0 && H > 0)) return;
-        // ER renders camera-relative: rebase the global player pos before the VIEW. Re-resolve the origin
-        // each frame (cheap, same-frame) so it tracks as the render frame re-centres while the player moves.
-        resolve_origin(gameRend, m, px, py, pz, W, H);
+        // Same motion-synced camera set as the box render (camera_for_render serves the lagged
+        // snapshot and points g_origin at it), so the dot and the greyboxes stay coherent.
+        float m[16], o[3], fovy = g_fovy;
+        if (!camera_for_render(m, o, fovy, W, H)) return;
+        float px, py, pz;
+        if (!goblin::get_player_world_pos(px, py, pz)) return;
         float sx, sy;
         if (!project(m, px, py, pz, g_conv, fovy, W, H, sx, sy)) return;
         ImDrawList *dl = ImGui::GetForegroundDrawList();
@@ -453,9 +538,10 @@ namespace goblin::w2s
         dl->AddLine(ImVec2(sx, sy - 14), ImVec2(sx, sy + 14), IM_COL32(255, 40, 40, 200), 1.f);
     }
 
-    // exposed for the RPC verb to tweak convention/fov live
+    // exposed for the RPC verb to tweak convention/fov/motion-sync live
     void set_conv(int c) { g_conv = c; }
     void set_fovy(float f) { g_fovy = f; }
+    void set_cam_lag(int n) { g_cam_lag = n < 0 ? 0 : (n > 3 ? 3 : n); }
 
     // Public world->screen for the ImGui object-box render (uses g_origin set by the last get_camera).
     bool project_world(const float view[16], float fovy, float x, float y, float z,
@@ -472,24 +558,16 @@ namespace goblin::w2s
     // resolved (menu / not in-world). Present-thread only.
     bool get_camera(float outView[16], float outOrigin[3], float &outFovy, float vpW, float vpH)
     {
-        float m[16], fovy = g_fovy;
-        uintptr_t gameRend = 0;
-        if (!read_camera_view(m, fovy, &gameRend)) return false;
-        float px, py, pz;
-        if (!goblin::get_player_world_pos(px, py, pz)) return false;
         if (!(vpW > 0 && vpH > 0)) return false;
-        if (!resolve_origin(gameRend, m, px, py, pz, vpW, vpH)) return false;
+        if (!camera_for_render(outView, outOrigin, outFovy, vpW, vpH)) return false;
         static int s_logged_src = -1;
         if (g_origin_src != s_logged_src)
         {
             s_logged_src = g_origin_src;
-            spdlog::info("[W2S] origin source -> {} origin=({:.2f},{:.2f},{:.2f}) fovy={:.4f}",
+            spdlog::info("[W2S] origin source -> {} origin=({:.2f},{:.2f},{:.2f}) fovy={:.4f} lag={}",
                          g_origin_src == 1 ? "body-frame (exact)" : "GameRend scan (fallback)",
-                         g_origin[0], g_origin[1], g_origin[2], fovy);
+                         outOrigin[0], outOrigin[1], outOrigin[2], outFovy, g_cam_lag);
         }
-        for (int i = 0; i < 16; ++i) outView[i] = m[i];
-        outOrigin[0] = g_origin[0]; outOrigin[1] = g_origin[1]; outOrigin[2] = g_origin[2];
-        outFovy = fovy;
         return true;
     }
 }

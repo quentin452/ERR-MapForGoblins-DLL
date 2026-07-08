@@ -24,6 +24,11 @@ namespace goblin::w2s
     // Live-tune the projection while calibrating (`w2s_probe conv <0..3>` / `fovy <rad>`).
     void set_conv(int c);
     void set_fovy(float f);
+    // Motion-sync: serve the camera snapshot from N presents ago to the 3D render (`w2s_probe
+    // lag <0..3>`, default 1). The game thread runs ~1 frame ahead of the presented image, so a
+    // FRESH camera sample makes the greyboxes lead the world during camera motion — the same
+    // phenomenon (and the same 1-frame cure) as the native map layer's marker motion-sync.
+    void set_cam_lag(int n);
 
     // Called once per present frame from the overlay; draws the debug dot at the projected player
     // pixel when enabled. No-op when disabled or the camera can't be resolved.
