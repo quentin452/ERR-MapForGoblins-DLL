@@ -21,6 +21,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ## [Unreleased]
 
+_Nothing yet — the next cycle's entries go here._
+
+## [v2.3.0] - 2026-07-08
+
 ### Added
 
 - Streamed far teleport: coordinate teleports beyond the streamed bubble now route through the
