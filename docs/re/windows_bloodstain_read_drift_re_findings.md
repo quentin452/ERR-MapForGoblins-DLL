@@ -1,6 +1,13 @@
 # Bloodstain read on 2.6.2.0 — SOLVED: offsets were RIGHT, the existence GATE was wrong (2026-07-08)
 
-**Status: root-caused in Ghidra + fix shipped; one live confirm pending (next boot).**
+**Status: root-caused in Ghidra + fix shipped + ✅ LIVE-VERIFIED 2026-07-08 (~02:15, user boot).**
+`bloodstain_probe` → `exists=1 souls=0 map=0x3C2A2400` — the user's standing stain IS the
+predicted 0-rune case; `bloodstain_probe dbg` record hex matched this doc's field map byte-exact
+(xyz @ +0/4/8, souls=0 @ +0x34, mapId m60_42_36 @ +0x38, flag40=1, heap gdm — the "static
+gdm/code at +0x48" manual read is definitively an aiming artifact); `death_state` store went
+active=1 and the DropSoul sprite rendered on the minimap at the stain spot ~5 m from the player
+(screenshot, minimap_zoom 8). Remaining (gameplay/other-box): the retrieve→`exists=0` flip and
+the die-with-runes case; one re-run on the Linux/Proton box.
 Supersedes the 2026-07-08 first pass of this file — its two premises (AOB drift, stale offsets)
 were both WRONG; kept below under "Corrected premises" because the *way* they were wrong is a
 recurring trap.

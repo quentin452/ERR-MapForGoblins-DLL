@@ -3,7 +3,7 @@
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
 
-## ⇒ 2026-07-08 (Windows) — ★ bloodstain read SOLVED in Ghidra: offsets were RIGHT, the souls>0 GATE was wrong (0-rune stains); fix built+deployed, live confirm pending
+## ⇒ 2026-07-08 (Windows) — ★ bloodstain read SOLVED in Ghidra + ✅ LIVE-VERIFIED same night: offsets were RIGHT, the souls>0 GATE was wrong (0-rune stains)
 
 - **Root cause (static RE, no boot needed):** a 0-rune death leaves a REAL engine bloodstain
   (record souls=0) and ER's icon is gated on a separate **EXISTS flag byte @ GameDataMan+0x40**
@@ -21,11 +21,15 @@ Committed code + `docs/changelog.md` are the record of DONE; this file tracks WH
   `!exists` (0-rune stains now mirror to vmap/minimap); `death_state` prints `exists=` + xyz;
   `bloodstain_probe` prints `exists=`, and **`bloodstain_probe dbg`** dumps the resolved chain
   (match/slot er-RVAs, gdm, flag, raw 0x40-byte record hex). Changelog Fixed entry added.
-- **★ NEXT (2 min, next boot):** the live-verify checklist in the findings doc — `mfg_build`
-  freshness, then `bloodstain_probe` → `exists=1` on the user's standing bloodstain + marker
-  visible on vmap/minimap; die-with-runes → retrieve → `exists=0`; die-with-0 → `exists=1 souls=0`
-  (the fixed case). ⚠ also re-verify once on the **Linux/Proton box** (older exe, same patch116
-  lineage — flag byte expected identical, only Ghidra-verified on 2.6.2.0).
+- **✅ LIVE-VERIFIED (2026-07-08 ~02:15, user boot):** fresh DLL confirmed (`mfg_build` + the new
+  `dbg` verb answering); `bloodstain_probe` → **`exists=1 souls=0 map=0x3C2A2400`** — the user's
+  standing stain IS the predicted 0-rune case; `dbg` record hex byte-exact vs the field map
+  (heap gdm — the "static gdm / code at +0x48" manual read was an aiming artifact); `death_state`
+  store active=1; **DropSoul sprite visible on the minimap at the stain spot** ~5 m from the
+  player (screenshot @ minimap_zoom 8, restored to 2). The fixed case is proven end-to-end.
+- **residual (cheap, opportunistic):** (1) watch the retrieve→`exists=0` flip + a die-WITH-runes
+  case during normal play; (2) one re-run of the checklist on the **Linux/Proton box** (older
+  exe, same patch116 lineage — flag byte expected identical, only Ghidra-verified on 2.6.2.0).
 - **Method note (recurring trap):** never compare an offline-scan FILE offset to a live [SIG] RVA
   without converting (+0xA00 on this exe), and never hand-compute absolute addresses from a
   previous session's `er_base` (per-boot ASLR) — dump the mod's own resolved pointers instead
