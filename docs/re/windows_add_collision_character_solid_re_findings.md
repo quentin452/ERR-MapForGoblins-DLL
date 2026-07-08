@@ -1,8 +1,13 @@
 # add_collision — making the injected box CHARACTER-solid (not just raycast-hit)
 
-**Status:** root-caused in Ghidra + live-instrumented on 2.6.2.0 (2026-07-08). Fix shipped in
-`goblin_add_collision.cpp` (`add_box` stamps `collisionFilterInfo` before `addBody`); **live walk/fall
-confirm pending a game restart** (host DLL change).
+**Status (2026-07-08):** collision-filter mechanism fully root-caused in Ghidra + live-instrumented on
+2.6.2.0. `add_box` now stamps `collisionFilterInfo` at `body+0x6c` before `addBody` (RPC-tunable). **RESULT:
+NECESSARY BUT NOT SUFFICIENT — the box remains raycast-collidable but is NOT character-solid at ANY layer**
+(verified live, incl. a zero-velocity embed test that rules out CCD tunneling). The character controller
+does not collide with our dynamically-added convex `hknpBody`, regardless of `filterInfo`. Leading open
+lead: the `addBody` broadphase-path split on `body+0x44 & 2` (see "Still open" below). The `filterInfo`
+stamp is kept because it is the *correct* way to set the filter (matches real bodies) and is a live-tunable
+lever for further experiments — it just isn't the whole fix.
 
 ## Problem
 
@@ -64,9 +69,39 @@ engine down-ray cast         FUN_140c70360 (ctx, u32 filter, start[4], dir[4], o
 addBody                      FUN_1418a9ff0 (bodyMgr, ids, count, addMode, actMode)
 ```
 
-## Live-verify checklist (next boot)
-1. `mfg.py rpc mfg_build` fresh; in-world.
-2. `add_collision 3 1 3 go` (default filter 0x38) at player+40 → `hf_probe_present` still hits (broadphase OK).
-3. Warp above a `go`-added box at the feet and drop → **rests on the box top** (was: fell through).
-4. If layer 56 isn't the character's, sweep `filterInfo`: `add_collision 3 1 3 <x> <y> <z> go 0 0 <fi>` for
-   `fi` in candidate layers, fall-test each. Read a body the player demonstrably stands on for its `+0x6c`.
+## What the character query actually is (Ghidra + live, 2026-07-08)
+The character controller's collision uses the **same world, filter and shape-tag codec** as the mod's
+raycast — the only difference is the query `filterInfo`:
+```
+FUN_1418da590 (checkSupport/ground cast) & FUN_1418a3c50 (integrate/cast):
+  desc+0x00 = world+0xb00 (shape-tag codec)   desc+0x08 = world+0x4d0 (collision filter)
+  desc+0x14 = *(proxy+0x3c)  <- the CHARACTER's query filterInfo (mod raycast uses 0x5e)
+  desc+0x20 = 2   desc+0x24 = 0xfb   (identical to the mod's raycast descriptor)
+  cast: FUN_14187daa0 / FUN_14187d9f0 (world, &desc, proxy+0x50, collector)   collector = hknpCollisionQueryCollector
+```
+Live: the player `hknpCharacterProxy` (vtable `er+0x2ee97b8`) at `proxy+0x3c` = `0x8801cdf7`
+(**layer 119**, group 3). So a body needs `matrix[119][bodyLayer]=1` to be hit by the character.
+
+## RESULT — filterInfo layer is NOT the fix (live, reliable)
+Swept the box `body+0x6c` layer; the character **falls through for every layer tested** (clean single-box
+fall tests + a **zero-velocity embed test** = no eject, so not a CCD/tunneling artifact). Setting the
+filter correctly (even to real walkable-body values) does **not** make the box character-solid.
+- Trap that produced a false "all-solid" sweep: (a) boxes accumulate (no remove RPC) and (b) fall polls
+  that early-exit on a mid-fall hitch report a phantom rest ~3 m above the box. Always poll to a genuine
+  stable Y (Δ<0.02 over 6 reads) and test each box at a fresh, un-piled spot.
+
+## Still open — leading hypothesis: the broadphase-path split
+`addBody` (`FUN_1418a9ff0`) branches on `body+0x44 & 2`:
+- **bit1 clear** (our box, and real bodies at layer 56) → `FUN_141920b80` insert.
+- **bit1 set** (real templates `real0/1/2` = `+0x44` `0x106`, and `real15000` = `0xe`) → `FUN_141922f80`
+  insert via `*(body+0x40)*0x80 + *(world+0x180)` (a motion/second structure).
+The character may query the structure the **bit1-set** path populates, which our box never enters. Next test:
+route our body down that path (set the motion/quality so `addBody` takes the `FUN_141922f80` branch) and
+re-run the embed test. Alternative angle: the character might only collide with the **baked static-map
+compound** (terrain mesh w/ per-triangle shape tags), in which case a dynamically-added convex `hknpBody`
+can't be made character-solid at all via this route, and Route D is raycast-only.
+
+## Bottom line for the mod
+`add_collision` produces a body that is **raycast/probe-collidable** (usable for ground/height queries,
+`hf_probe`, projectiles) but **NOT walkable/blocking for the player**. Do not advertise Route D greyboxes
+as walkable until the `+0x44` path (or the static-compound route) is resolved.

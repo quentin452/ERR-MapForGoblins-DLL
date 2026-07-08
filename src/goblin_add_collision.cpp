@@ -221,9 +221,10 @@ Result add_box(const float half[3], const float pos[3], bool force, int addMode,
     const int am = addMode < 0 ? 0 : addMode;
     const int cm = actMode < 0 ? 0 : actMode;
     // collisionFilterInfo written to body+0x6c BEFORE addBody (see the write site below). layer =
-    // fi & 0x7f; CSCollisionFilter::isCollisionEnabled (er+0xc61940/c61d70/c61be0) reads body+0x6c
-    // and gates on a 128-layer matrix. Default 0x38 = layer 56 = what real placed-static map bodies
-    // use (the walkable layer the character controller collides with). -1 → default.
+    // fi & 0x7f; isCollisionEnabled (er+0xc61940/c61d70/c61be0) reads body+0x6c and gates on a
+    // 128-layer matrix. Default 0x38 = layer 56 = a real placed-static value. NOTE: this correctly sets
+    // the filter but does NOT make the box character-solid on its own (player passes through at any
+    // layer — findings "Still open"); kept as a live-tunable lever. -1 → default.
     const uint32_t fi = filterInfo < 0 ? 0x38u : (uint32_t)filterInfo;
     std::memcpy(r.half, half, sizeof(r.half));
     std::memcpy(r.pos, pos, sizeof(r.pos));

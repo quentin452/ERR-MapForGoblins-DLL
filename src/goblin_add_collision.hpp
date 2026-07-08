@@ -37,11 +37,12 @@ GOBLIN_RENDER_API Result recon();
 //                 default (0,0, like the CS flush). Present-thread first attempt (brief §4) — the freeze
 //                 watchdog covers a stall; fall back to a FUN_140c72c20-mirror game-thread hook if it does.
 // Verify with hf_probe_present at pos: a down-ray hit at the body's top = it is live in the broadphase.
-// filterInfo is stamped at body+0x6c BEFORE addBody so the CHARACTER controller collides (not just
-// raycasts): layer = filterInfo & 0x7f, gated by the 128-layer CSCollisionFilter matrix
-// (er+0xc61940/c61d70/c61be0). -1 => 0x38 (layer 56 = the walkable static-map layer). A post-add write
-// is ignored — addBody caches the filter into the broadphase leaf. RPC-tunable via
-// `add_collision ... go <addMode> <actMode> <filterInfo>`.
+// filterInfo is stamped at body+0x6c BEFORE addBody: layer = filterInfo & 0x7f, gated by the 128-layer
+// collision matrix (er+0xc61940/c61d70/c61be0); a post-add write is ignored (addBody caches the filter
+// into the broadphase leaf). NOTE: this sets the filter CORRECTLY (matches real bodies) but does NOT by
+// itself make the box character-solid — the player still passes through at ANY layer (raycast-collidable
+// only; see docs/re/windows_add_collision_character_solid_re_findings.md, "Still open"). Kept as the right
+// way to set the filter + a live-tunable lever. -1 => 0x38. RPC: `add_collision ... go <addMode> <actMode> <filterInfo>`.
 GOBLIN_RENDER_API Result add_box(const float half[3], const float pos[3], bool force,
                                  int addMode = -1, int actMode = -1, int filterInfo = -1);
 } // namespace goblin::add_collision
