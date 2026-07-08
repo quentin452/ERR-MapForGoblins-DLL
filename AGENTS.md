@@ -55,6 +55,7 @@ Single memory store (important):
   Serena memories, `~/.claude` memory, or imported tar/rar dumps. The old separate Linux + Windows
   memories were merged into this repo on 2026-06-29 and must not diverge again.
 - Write durable notes to the matching `docs/memory/{features,bugs,tooling,process}/` file and commit.
+- **Token economy (Session Recovery):** When converting raw conversation transcripts (.jsonl) into Markdown recovered session logs, filter and truncate large `base64` strings (replace with `[Base64 Image Truncated]`) and deduplicate repeated system attachments (`deferred_tools_delta`, `skill_listing`) to avoid multi-MB logs. Session recovery notice blocks in `CLAUDE.md` must stay under 8 lines by nesting detailed subagent listings and technical summaries inside the main Markdown recovery file.
 
 Platform rule:
 
