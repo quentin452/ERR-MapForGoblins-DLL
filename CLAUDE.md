@@ -32,6 +32,15 @@ Claude Code auto-loads this file. The full agent handoff lives in `AGENTS.md`, i
 - On any completed task that changes durable state, update the right `docs/memory/` file (+ `changelog.md`
   if it adds a feature or fixes a bug) and commit — never stash it in a side memory.
 
+## Prefer refactor over duplicated code
+
+- **Prefer a refactor over adding duplicated code.** Before pasting a variant of an existing function,
+  block, RPC verb, or struct, look for the existing one and reuse/extend it (shared helper, extra param,
+  small generalization) instead of copy-pasting.
+- **If you spot duplication (existing or about to be introduced), STOP and ASK the user first** whether
+  they want it deduplicated/refactored — do NOT start the refactor unilaterally. Point at the duplicated
+  spots (`file:line`), propose the shared form, and wait for a go-ahead before touching it.
+
 ## Overlay hot-reload split — keep BOTH DLLs linking (avoid drift)
 
 The mod builds two ways from the SAME sources: the shipped **single DLL** (`build-linux`, default) and a
