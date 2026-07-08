@@ -155,13 +155,15 @@ int realize()
             ++made;
         }
 
-        // Experimental walkable collision (off by default). Borrowed shape + havok frame ≠ r3d frame,
-        // so it may be mis-sized/mis-placed — a slice-2 job (box-builder + frame conversion).
+        // Walkable collision (off by default). Frame LIVE-PROVEN correct 2026-07-08: the hknp
+        // broadphase eats the SAME tile-local frame as wpos (hf_probe_present hit an injected body
+        // at player+40 exactly), and add_box now builds a REAL hknpBoxShape at the TOML half-extents
+        // (engine in-place ctor er+0x1916c30; borrowed-shape only as fallback). ⚠ bodies persist
+        // until an area reload (no remove path yet).
         if (try_coll && o.has_collision && o.coll_shape == "box")
         {
             auto res = goblin::add_collision::add_box(o.coll_half, wpos, /*force=*/true);
-            spdlog::info("[OBJECTS] '{}' EXPERIMENTAL collision add_box -> {} (⚠ borrowed shape + havok "
-                         "frame; alignment is slice-2)", o.id, res.ok ? "ok" : "FAILED");
+            spdlog::info("[OBJECTS] '{}' collision add_box -> {}", o.id, res.ok ? "ok" : "FAILED");
         }
 
         spdlog::info("[OBJECTS] realized '{}' kind={} wpos=({:.1f},{:.1f},{:.1f}) half=({:.2f},{:.2f},{:.2f}) "

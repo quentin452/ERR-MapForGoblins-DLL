@@ -19,10 +19,19 @@ constexpr uintptr_t PHYSWORLD_RVA     = 0x3d76060;  // CS::PhysWorld FD4Singleto
 constexpr uintptr_t CINFO_INIT_RVA    = 0x1911210;  // hknpBodyCinfo init (defaults)
 constexpr uintptr_t ALLOCATE_BODY_RVA = 0x18aabf0;  // hknpBodyManager::allocateBody(bodyMgr, &outId, &cinfo)
 constexpr uintptr_t ADD_BODY_RVA      = 0x18a9ff0;  // addBody(bodyMgr, ids, count, addMode, actMode)
+// The DIMENSIONED box-shape builder (in-place ctor; Ghidra 2026-07-08):
+//   FUN_141916c30(self, float aabb[8]{min.xyzw,max.xyzw}, float convexRadius, BuildCfg*)
+// self = caller-provided 0x1C0 bytes (its ONLY engine caller FUN_141881880 allocates 0x1C0 and
+// stamps *(u16*)(shape+0x10) = 0x1C0 after). BuildCfg bytes that gate builder branches (all safe
+// at 0 for a static box): +0x04 shrink-by-radius, +0x11 mass-properties (reads +0x34/+0x38 floats
+// + the +0x40 transform when set), +0x40 transform ptr (0 = identity default), +0x4d finalize pass.
+constexpr uintptr_t BOX_BUILD_RVA     = 0x1916c30;
+constexpr size_t    BOX_SHAPE_SIZE    = 0x1C0;
 
 using CinfoInitFn = void (*)(void *cinfo);
 using AllocBodyFn = uint32_t *(*)(void *bodyMgr, uint32_t *outId, void *cinfo);
 using AddBodyFn   = void (*)(void *bodyMgr, uint32_t *ids, uint32_t count, int addMode, int actMode);
+using BoxBuildFn  = void *(*)(void *self, const float *aabb8, float convexRadius, void *cfg);
 
 bool rd(const void *addr, void *out, size_t n)
 {
@@ -48,6 +57,13 @@ __declspec(noinline) static bool call_add_body(AddBodyFn fn, void *mgr, uint32_t
                                                int addMode, int actMode)
 {
     __try { fn(mgr, ids, n, addMode, actMode); return true; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+__declspec(noinline) static bool call_box_build(BoxBuildFn fn, void *self, const float *aabb8,
+                                                float radius, void *cfg)
+{
+    __try { fn(self, aabb8, radius, cfg); return true; }
     __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
@@ -169,6 +185,33 @@ void *find_live_shape(const Result &r, uintptr_t er, uintptr_t &vt_rva_out)
 }
 } // namespace
 
+namespace
+{
+// Shape pool: bodies persist until an area reload and Havok keeps referencing the shape memory,
+// so each built box needs storage that outlives the call. Fixed pool, never reused (dev tool;
+// 64 × 0x1C0 = 28 KB). Exhaustion falls back to the borrowed-shape path.
+alignas(16) uint8_t g_shape_pool[64][BOX_SHAPE_SIZE];
+int g_shape_pool_n = 0;
+
+// Build a REAL hknpBoxShape with the requested half-extents via the engine's dimensioned in-place
+// ctor (BOX_BUILD_RVA). Returns nullptr on fault/pool-exhaustion (caller falls back to borrowing).
+void *build_box_shape(uintptr_t er, const float half[3])
+{
+    if (g_shape_pool_n >= 64) return nullptr;
+    auto build = reinterpret_cast<BoxBuildFn>(er + BOX_BUILD_RVA);
+    alignas(16) float aabb[8] = {-half[0], -half[1], -half[2], 0.f,
+                                 half[0],  half[1],  half[2], 0.f};
+    alignas(16) uint8_t cfg[0x60] = {};   // all-zero BuildCfg = static box, no shrink/mass/finalize
+    uint8_t *mem = g_shape_pool[g_shape_pool_n];
+    std::memset(mem, 0, BOX_SHAPE_SIZE);
+    if (!call_box_build(build, mem, aabb, /*convexRadius=*/0.05f, cfg)) return nullptr;
+    ++g_shape_pool_n;
+    // The engine caller stamps the memSizeAndFlags u16 after the ctor — mirror it.
+    *reinterpret_cast<uint16_t *>(mem + 0x10) = (uint16_t)BOX_SHAPE_SIZE;
+    return mem;
+}
+} // namespace
+
 Result add_box(const float half[3], const float pos[3], bool force)
 {
     Result r;
@@ -177,14 +220,21 @@ Result add_box(const float half[3], const float pos[3], bool force)
     std::memcpy(r.pos, pos, sizeof(r.pos));
     uintptr_t er = er_base();
 
-    // First-probe shortcut (findings §6): borrow a live body's shape instead of building the box —
-    // no refcount bump (the source body outlives a probe; the real box builder replaces this).
+    // REAL box shape at the requested half-extents (engine in-place ctor). Falls back to the
+    // first-probe borrowed-shape shortcut (findings §6) if the builder faults or the pool is full.
+    bool built = true;
     uintptr_t shape_vt_rva = 0;
-    void *shape = find_live_shape(r, er, shape_vt_rva);
+    void *shape = build_box_shape(er, half);
     if (!shape)
     {
-        std::snprintf(r.err, sizeof(r.err), "no borrowable hknp shape in body array (scanned %u)", r.count);
-        return r;
+        built = false;
+        shape = find_live_shape(r, er, shape_vt_rva);
+        if (!shape)
+        {
+            std::snprintf(r.err, sizeof(r.err),
+                          "box build faulted/pool-full AND no borrowable shape (scanned %u)", r.count);
+            return r;
+        }
     }
     r.shape = reinterpret_cast<uint64_t>(shape);
 
@@ -202,9 +252,14 @@ Result add_box(const float half[3], const float pos[3], bool force)
     std::memcpy(cinfo + 0x00, &shape, 8);
     std::memcpy(cinfo + 0x30, pos, 12);
 
-    spdlog::info("[ADDCOL] add_box: shape={} (vt er+0x{:x}, BORROWED — half=({:.0f},{:.0f},{:.0f}) "
-                 "informational until the box builder) pos=({:.1f},{:.1f},{:.1f}) motion=STATIC",
-                 shape, shape_vt_rva, half[0], half[1], half[2], pos[0], pos[1], pos[2]);
+    if (built)
+        spdlog::info("[ADDCOL] add_box: shape={} BUILT hknpBoxShape half=({:.2f},{:.2f},{:.2f}) "
+                     "pos=({:.1f},{:.1f},{:.1f}) motion=STATIC",
+                     shape, half[0], half[1], half[2], pos[0], pos[1], pos[2]);
+    else
+        spdlog::info("[ADDCOL] add_box: shape={} (vt er+0x{:x}, BORROWED fallback — half=({:.0f},{:.0f},{:.0f}) "
+                     "informational) pos=({:.1f},{:.1f},{:.1f}) motion=STATIC",
+                     shape, shape_vt_rva, half[0], half[1], half[2], pos[0], pos[1], pos[2]);
     hexdump("cinfo.filled", cinfo, 0xA0, 0);
 
     if (!force)
