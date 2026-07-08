@@ -240,10 +240,18 @@ projected to px=(959, 906) feet / (959, 464) head — dead-centre X, lower-half 
 on-screen third-person framing (screenshot cross-check; small Y delta = the player was walking
 between read and capture).
 
-**Implemented (2026-07-08, commit pending live confirm):** `read_camera_view()` in `goblin_w2s.cpp` —
+**Implemented (2026-07-08):** `read_camera_view()` in `goblin_w2s.cpp` —
 static chain first, vtable-scan GameRend as fallback, builds the row-vector **−Z-forward** VIEW
 (rigid inverse with negated Z column) so the whole existing pipeline (conv2 projection,
 `project_world`, r3d `perspNegZ`) works unchanged; live fovy from the lens replaces the hardcoded
 0.7505 (g_fovy is now only the fallback). `w2s_probe` prints the chain + pose + lens + player
-feet/head px. **Final confirm (needs a restart to load the host DLL): `w2s_probe dot on` → dot at
-the feet while moving/turning; `objects render on` → boxes at correct offsets.**
+feet/head px.
+
+**✅✅ LIVE-CONFIRMED 2026-07-08 02:53 (user boot, fresh DLL by behavior):** probe predicted player
+FEET px=(960,1020) HEAD px=(960,457) — dead-centre X; `w2s_probe dot on` → **the debug dot rendered
+EXACTLY between the player's boots at the predicted pixel** (screenshot). Then `objects render on` +
+`objects realize` → `[OBJECTS-RENDER] first draw: 3 boxes, 36 edges, cam ok` and **all three
+objects.toml greyboxes drew at their defined player-relative offsets with correct perspective**
+(platform flat on the ground plane, pillar vertical at (0,1,6), beacon high-right at (3,2,6)),
+~31 fps. The probe's camsrc-pose line kept proving the old read live (`GameRend+0xF0 trans ==
+player body`). **w2s3d is DONE end-to-end: TOML → realize → real camera → projected render.**

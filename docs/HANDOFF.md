@@ -105,10 +105,15 @@ step 3.
      artifact). Math validated in Python against the live game BEFORE coding: player → px (959,906)
      feet / (959,464) head = dead-centre X, correct 3rd-person framing (screenshot cross-check).
      `read_camera_view()` builds the −Z-fwd row-vector VIEW from the pose (existing conv2/perspNegZ
-     pipeline unchanged); live fovy replaces g_fovy (now fallback-only). Both builds green; **deploy
-     blocked by the running game** → after the next restart: `w2s_probe dot on` → dot at the FEET
-     while moving/turning; `objects render on` → boxes at correct offsets. RE:
+     pipeline unchanged); live fovy replaces g_fovy (now fallback-only). RE:
      `windows_world_to_screen_camera_re_findings.md` §§2026-07-08 (origin + real camera).
+  3. **✅✅ LIVE-CONFIRMED 2026-07-08 02:53 (user boot):** probe predicted FEET px=(960,1020) → the
+     debug dot rendered EXACTLY between the player's boots (screenshot); `objects render on` +
+     realize → **all 3 objects.toml greyboxes at their defined player-relative offsets, correct
+     perspective** (platform flat on the ground, pillar vertical, beacon high-right), ~31 fps,
+     `[OBJECTS-RENDER] first draw: 3 boxes, 36 edges, cam ok`. **w2s3d + the greybox 3D render are
+     DONE end-to-end.** Remaining polish (non-blocking): decide the `objects render` default
+     (still OFF), and eyeball dot/boxes stability while running/turning during normal play.
 - **Scan-FREE path DEFERRED (murky — needs live iteration).** RE'd the VIEW-builder chain that fills
   GameRend+0xF0 (`FUN_140b019b0`: `buf=FUN_1403f0f60(FUN_140507ff0(WCM),&local)` → copy buf→GameRend+0xF0;
   `FUN_14045e540` builds the 4×4 from a pose object's **pos(+0x70)+quaternion(+0x60)**). Two problems for a

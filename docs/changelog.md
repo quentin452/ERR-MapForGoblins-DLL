@@ -21,7 +21,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ## [Unreleased]
 
-_Nothing yet — the next cycle's entries go here._
+### Added
+
+- 3D greybox render (objects.toml) now projects correctly end-to-end: the mod reads the game's REAL
+  camera (position/orientation pose + live FOV/aspect lens) through a static, scan-free chain, plus
+  an exact per-frame rebase origin — TOML-defined boxes draw at their world positions with correct
+  perspective. (`objects render on` to enable; the previous camera read was the player's own pose,
+  which put every box off-position.)
 
 ## [v2.3.0] - 2026-07-08
 
