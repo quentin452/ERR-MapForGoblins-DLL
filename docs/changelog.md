@@ -32,8 +32,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
   enemy drops + farmables; bosses, pieces, kindling and landmarks keep their names) and **Aggressive**
   (a full "blackout" for blind randomizer runs — every marker except graces shows "?", positions only).
   Bosses stay distinguishable in aggressive: an anonymized boss draws a bigger red-tinted "?" disc so a
-  threat still reads without naming it. NPCs/merchants get a **blue "?"** (vs gray loot). New INI
-  `anonymous_loot_aggressive`; radio in F1 settings.
+  threat still reads without naming it. In aggressive the anonymized "?" is colour-coded by type so the
+  map stays readable without any names: **boss = red**, **NPC/merchant = blue**, **POI/landmark = green**,
+  **service = amber**, **loot/collectible = gray**. New INI `anonymous_loot_aggressive`; radio in F1.
 - Virtual World Map **marker extractor** (dev): toggle "Extract region", left-drag a box on the map, and
   every marker inside is logged (`[VMEXTRACT]` in `logs/MapForGoblins.log`) with an off-map flag
   (origin0 / OOB / ok) — a debug aid for markers that land off the map artwork.

@@ -793,17 +793,25 @@ static void draw_marker_impl(ImDrawList *fg, const Marker &m, ImVec2 p, const Ic
     // Collected ones still gray; category gate unchanged.
     if ((*goblin::overlay_api::cfg_anonymousLoot_ptr()) && anonymous_marker(m))
     {
-        // Anonymized markers keep a coarse TYPE cue without naming the thing: bosses = bigger red "?",
-        // NPCs/merchants = blue "?" (aggressive blackout), everything else neutral gray "?" (user 2026-07-23).
+        // Anonymized markers keep a coarse TYPE cue without naming the thing (user 2026-07-23): bosses =
+        // bigger red "?", NPCs/merchants = blue, POI/landmarks = green, Services = amber, loot/collectibles
+        // = neutral gray. Priority boss > npc > section, so an NPC (in the POI section) stays blue.
+        constexpr int SEC_POI = 7, SEC_SERVICES = 8;   // Section enum order (goblin_section_visibility.cpp)
         const bool boss = anonymous_is_boss(m);
-        const bool npc = !boss && anonymous_is_npc(m);
+        const bool npc  = !boss && anonymous_is_npc(m);
+        const int  sec  = (boss || npc) ? -1 : goblin::overlay_api::category_section(m.category);
+        const bool poi  = sec == SEC_POI;
+        const bool serv = sec == SEC_SERVICES;
+        const bool tinted = boss || npc || poi || serv;   // has a distinct type colour → bolder ring
         const float cr = half * (boss ? 0.8f : 0.5f);
         ImU32 fill, txt;
-        if (boss)     { fill = done ? IM_COL32(120, 70, 70, 130)   : IM_COL32(205, 70, 70, 225);  txt = IM_COL32(250, 245, 245, done ? 150 : 255); }
-        else if (npc) { fill = done ? IM_COL32(70, 90, 130, 130)   : IM_COL32(70, 120, 210, 225); txt = IM_COL32(245, 248, 255, done ? 150 : 255); }
-        else          { fill = done ? IM_COL32(120, 120, 120, 120) : IM_COL32(155, 155, 160, 215); txt = IM_COL32(25, 25, 30, done ? 150 : 255); }
+        if (boss)      { fill = done ? IM_COL32(120, 70, 70, 130)   : IM_COL32(205, 70, 70, 225);  txt = IM_COL32(250, 245, 245, done ? 150 : 255); }
+        else if (npc)  { fill = done ? IM_COL32(70, 90, 130, 130)   : IM_COL32(70, 120, 210, 225); txt = IM_COL32(245, 248, 255, done ? 150 : 255); }
+        else if (poi)  { fill = done ? IM_COL32(70, 120, 80, 130)   : IM_COL32(80, 180, 100, 225); txt = IM_COL32(245, 255, 248, done ? 150 : 255); }
+        else if (serv) { fill = done ? IM_COL32(130, 110, 60, 130)  : IM_COL32(220, 175, 70, 225); txt = IM_COL32(255, 252, 240, done ? 150 : 255); }
+        else           { fill = done ? IM_COL32(120, 120, 120, 120) : IM_COL32(155, 155, 160, 215); txt = IM_COL32(25, 25, 30, done ? 150 : 255); }
         fg->AddCircleFilled(p, cr, fill);
-        fg->AddCircle(p, cr, IM_COL32(0, 0, 0, done ? 120 : ((boss || npc) ? 235 : 220)), 0, boss ? 2.0f : 1.5f);
+        fg->AddCircle(p, cr, IM_COL32(0, 0, 0, done ? 120 : (tinted ? 235 : 220)), 0, boss ? 2.0f : 1.5f);
         const char *q = "?";
         ImVec2 ts = ImGui::CalcTextSize(q);
         fg->AddText(ImVec2(p.x - ts.x * 0.5f, p.y - ts.y * 0.5f), txt, q);

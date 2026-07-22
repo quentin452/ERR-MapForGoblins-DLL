@@ -35,9 +35,12 @@ SSOT predicate = `goblin::worldmap::marker_is_anonymized(m)` (`map_renderer.hpp/
   kindling and landmarks KEEP their names.
 - **AGGRESSIVE "blackout"**: `!m.discover_flag` — EVERY marker except graces → "?" (`discover_flag` is
   grace-only; graces stay named/warpable). Positions only; for a blind randomizer run.
-- Bosses stay distinguishable in aggressive: `draw_marker`'s anon branch draws a **bigger, red-tinted
-  "?" disc** for `anonymous_is_boss(m)` (WorldBosses); **NPCs/merchants** (`anonymous_is_npc`:
-  WorldHostileNPC/WorldQuestNPC/WorldMerchant) get a **blue "?"**; everything else neutral gray "?".
+- Aggressive "?" is **colour-coded by type** so the map reads without names. `draw_marker`'s anon branch,
+  priority **boss > npc > section**: boss (`anonymous_is_boss`, WorldBosses) = bigger **red**;
+  NPC/merchant (`anonymous_is_npc`: WorldHostileNPC/QuestNPC/Merchant) = **blue**; else by
+  `overlay_api::category_section(m.category)` — **POI (7) = green**, **Services (8) = amber**, everything
+  else (World collectibles + item sections) = neutral **gray**. (Section indices hardcoded 7/8 with a
+  comment pointing at the `Section` enum order.)
 - **Virtual-map tooltip fix (ask 2):** the vmap builds its OWN tooltip (`panel_virtual_map.cpp` ~2090)
   and used to bypass the spoiler check → leaked the real name on hover. Now it captures
   `hoverAnon = marker_is_anonymized(*m)` at each hover site and shows "?" (name + category line both
