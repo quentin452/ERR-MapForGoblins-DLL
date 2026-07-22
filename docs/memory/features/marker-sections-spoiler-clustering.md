@@ -41,6 +41,13 @@ SSOT predicate = `goblin::worldmap::marker_is_anonymized(m)` (`map_renderer.hpp/
   `overlay_api::category_section(m.category)` — **POI (7) = green**, **Services (8) = amber**, everything
   else (World collectibles + item sections) = neutral **gray**. (Section indices hardcoded 7/8 with a
   comment pointing at the `Section` enum order.)
+- **SSOT** for the type: `enum AnonKind { Item, Npc, Poi, Service, Boss }` + `anonymized_kind(int
+  category)` / `anonymized_kind_label(AnonKind)` in `map_renderer`. Both the disc-colour switch
+  (`draw_marker`) AND the tooltips (native `marker_label` + the vmap hover tooltip) route through it, so
+  the "?" colour and its tooltip word (Boss/NPC/POI/Service/Item) always agree. Replaced the old
+  `anonymous_is_boss`/`anonymous_is_npc` helpers. `category_section` is a stable table lookup — the anon
+  colour has **no** altitude/Y input (ruled out for the "colour changes with Y" report; suspect stacked/
+  cluster rep or perception — the tooltip type label is the diagnostic).
 - **Virtual-map tooltip fix (ask 2):** the vmap builds its OWN tooltip (`panel_virtual_map.cpp` ~2090)
   and used to bypass the spoiler check → leaked the real name on hover. Now it captures
   `hoverAnon = marker_is_anonymized(*m)` at each hover site and shows "?" (name + category line both

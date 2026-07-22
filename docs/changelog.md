@@ -34,10 +34,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
   Bosses stay distinguishable in aggressive: an anonymized boss draws a bigger red-tinted "?" disc so a
   threat still reads without naming it. In aggressive the anonymized "?" is colour-coded by type so the
   map stays readable without any names: **boss = red**, **NPC/merchant = blue**, **POI/landmark = green**,
-  **service = amber**, **loot/collectible = gray**. New INI `anonymous_loot_aggressive`; radio in F1.
+  **service = amber**, **loot/collectible = gray**. Hovering an anonymized "?" now shows its **coarse type**
+  (Boss / NPC / POI / Service / Item) matching the colour, instead of a bare "?". New INI
+  `anonymous_loot_aggressive`; radio in F1.
 - Virtual World Map **marker extractor** (dev): toggle "Extract region", left-drag a box on the map, and
   every marker inside is logged (`[VMEXTRACT]` in `logs/MapForGoblins.log`) with an off-map flag
-  (origin0 / OOB / ok) — a debug aid for markers that land off the map artwork.
+  (origin0 / near0 / OOB / ok) — `near0` catches projection failures that pile markers a few units from
+  the origin (the real off-map case). A debug aid for markers that land off the map artwork.
 - 3D greybox render (objects.toml) now projects correctly end-to-end: the mod reads the game's REAL
   camera (position/orientation pose + live FOV/aspect lens) through a static, scan-free chain, plus
   an exact per-frame rebase origin — TOML-defined boxes draw at their world positions with correct
