@@ -9,6 +9,7 @@ into a single current-truth entry. Status reflects the **current code**, not the
   open-freeze, live-refresh and phantom-marker problems at once → [overlay-rendered-markers](overlay-rendered-markers.md)
 - **In-game settings overlay** [shipped] — DXGI-Present hook, F1 toggle, live toggles, save-to-INI → [thread6-overlay](thread6-overlay.md)
 - **Per-section icon toggle** [shipped] — flips injected rows' `areaNo` 99/restore, no param rebuild → [thread3-grace-toggle](thread3-grace-toggle.md)
+- **Sections split + spoiler coverage + vmap cluster toggle** [shipped] — World→World/POI/Services (data-driven), spoiler now hides bosses/pieces/kindling, vmap grouping obeys `enableClustering` → [marker-sections-spoiler-clustering](marker-sections-spoiler-clustering.md)
 - **Item/object search bar** [shipped] — name search + locate/pan inside the hooked map step → [overlay-item-search-bar](overlay-item-search-bar.md)
 - **Minimap HUD** [shipped] — player-centred corner minimap, reuses the marker/atlas chain → [minimap-future-feature](minimap-future-feature.md)
 - **Unicode font** [shipped] — embedded DejaVu Sans TTF over ImGui's Latin-1 default → [imgui-unicode-font](imgui-unicode-font.md)

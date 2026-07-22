@@ -23,11 +23,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Added
 
+- Marker sections split: the crowded **World** group is now three — **World** (collectibles: maps,
+  paintings, imp statues, kindling, interactables), **POI** (discovery landmarks: churches, ruins,
+  forts, castles, dungeons, towers, evergaols, …) and **Services** (graces, merchants, elevators,
+  lifts, smithing, summoning pools). Data-driven via `data/categories.json`; each section has its own
+  in-game visibility toggle (`section_poi` / `section_services`).
+- Spoiler-free mode now also anonymizes **bosses**, **rune/ember pieces**, **material nodes** and
+  **kindling spirits** (previously only lot-backed loot + farmables). Bosses stay distinguishable: an
+  anonymized boss draws a bigger red-tinted "?" disc so a threat still reads without naming it.
 - 3D greybox render (objects.toml) now projects correctly end-to-end: the mod reads the game's REAL
   camera (position/orientation pose + live FOV/aspect lens) through a static, scan-free chain, plus
   an exact per-frame rebase origin — TOML-defined boxes draw at their world positions with correct
   perspective. (`objects render on` to enable; the previous camera read was the player's own pose,
   which put every box off-position.)
+
+### Fixed
+
+- Spoiler-free mode: the **Virtual World Map tooltip** was still leaking the real item/boss name on
+  hover (it built its own tooltip, bypassing the spoiler check). It now shows "?" like the native map.
+- Marker grouping: the **"Enable clustering" toggle + "Cluster size"** now control the Virtual World
+  Map. It previously had an always-on zoom-based clustering that ignored the setting — grouping off now
+  really shows every marker, and the size threshold gates how many markers a pile needs.
 
 ## [v2.3.0] - 2026-07-08
 
