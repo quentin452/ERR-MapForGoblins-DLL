@@ -48,6 +48,11 @@ Complex bugs — resolved and open — with the durable root-cause/fix takeaway.
   not ours; only investigate when `fault_module` is MapForGoblins.dll. → [er-shutdown-crash-noise](er-shutdown-crash-noise.md)
 
 ## Open
+- **Off-map markers: ERR area 45 has no dungeon→overworld anchor** [open, root-caused] — dungeon area 45
+  (ERR-added content, name_ids `900xxx`) is absent from `data/dungeon_to_world.json` (anchors only for
+  10/11/12/14/16/30/31/32/34/39) → its markers keep block-local coords and pile near the origin. Found via
+  the vmap marker extractor (`near0` flag). Fix = add an `m45_XX` anchor (needs the area's overworld
+  entrance coords). → [offmap-area45-missing-anchor](offmap-area45-missing-anchor.md)
 - **Warp to a non-grace id strands the player at (0,0,0)** [open, low — recoverable] — `warp <id>` with an
   id that isn't a real/unlocked grace teleports to a void cell instead of no-op (`ok` ≠ valid dest). Fixed
   by a valid warp. id-validation NOT feasible yet: the working warp id `1042362951` matches neither the
