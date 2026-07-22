@@ -82,21 +82,7 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
         ImGui::Checkbox(tr("Require map fragments (hide an area's icons until its fragment is found)"),
                         goblin::overlay_api::cfg_requireMapFragments_ptr());
 
-    // DIAG: draw ONLY the no-bake residual (Baked-source markers; disk/live twins already
-    // deduped away). Fly the world + eyeball each spot — real loot the live pass misses
-    // (coverage gap) vs a phantom the bake invented (bake bug). See nobake_scoreboard.md.
-    // Dev-gated behind Verbose logging (same pattern as "Locate debug (dev)") — a bake/live
-    // triage tool, not a user preference, so it stays out of the default settings list.
-    if ((*goblin::overlay_api::cfg_debugLogging_ptr()) && f.match("baked only diag no-bake residual"))
-    {
-        ImGui::Checkbox("Baked-only (diag: show just the no-bake residual)",
-                        goblin::overlay_api::cfg_bakedOnly_ptr());
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Hides every marker the live disk/memory passes already cover,\n"
-                              "leaving only the markers still coming from the static bake.\n"
-                              "Use it to judge each leftover: real loot we fail to source live\n"
-                              "(coverage miss) vs a stale/invented spot (bake bug).");
-    }
+    // ("Baked-only" diag moved to the Dev tab — it's a bake/live triage tool, not a user preference.)
 
     // Collected/cleared graying (overlay map; live, persists via "Save to INI").
     // On = dim looted items / killed bosses (cleared bosses get a checkmark);

@@ -28,6 +28,44 @@ void draw_dev_tools_danger(Filter &f)
         ImGui::Separator();
     }
 
+    // Gamepad diagnostic (user 2026-07-23): does ImGui actually receive the controller? HasGamepad=0 → the
+    // pad isn't reaching ImGui at all; HasGamepad=1 but analog stays 0 while you move a stick → the feed is
+    // broken. Triage for "the pad doesn't drive the Virtual Map" (the vmap reads these SAME ImGui keys).
+    if (f.match("gamepad pad controller diagnostic diag input readout"))
+    {
+        ImGuiIO &gio = ImGui::GetIO();
+        auto ga = [&gio](ImGuiKey k) { return gio.KeysData[k - ImGuiKey_KeysData_OFFSET].AnalogValue; };
+        ImGui::TextDisabled("Gamepad: HasGamepad=%d NavEnableGamepad=%d",
+                            (gio.BackendFlags & ImGuiBackendFlags_HasGamepad) ? 1 : 0,
+                            (gio.ConfigFlags & ImGuiConfigFlags_NavEnableGamepad) ? 1 : 0);
+        ImGui::TextDisabled("  LS(%.2f,%.2f) RS(%.2f,%.2f) L2=%.2f R2=%.2f  X=%d Y=%d A=%d B=%d",
+                            ga(ImGuiKey_GamepadLStickRight) - ga(ImGuiKey_GamepadLStickLeft),
+                            ga(ImGuiKey_GamepadLStickDown) - ga(ImGuiKey_GamepadLStickUp),
+                            ga(ImGuiKey_GamepadRStickRight) - ga(ImGuiKey_GamepadRStickLeft),
+                            ga(ImGuiKey_GamepadRStickDown) - ga(ImGuiKey_GamepadRStickUp),
+                            ga(ImGuiKey_GamepadL2), ga(ImGuiKey_GamepadR2),
+                            ImGui::IsKeyDown(ImGuiKey_GamepadFaceLeft) ? 1 : 0,
+                            ImGui::IsKeyDown(ImGuiKey_GamepadFaceUp) ? 1 : 0,
+                            ImGui::IsKeyDown(ImGuiKey_GamepadFaceDown) ? 1 : 0,
+                            ImGui::IsKeyDown(ImGuiKey_GamepadFaceRight) ? 1 : 0);
+        ImGui::Separator();
+    }
+
+    // Baked-only diag (moved from Display, user 2026-07-23): show ONLY the no-bake residual (Baked-source
+    // markers; disk/live twins already deduped). Real loot the live pass misses (coverage gap) vs a phantom
+    // the bake invented (bake bug). A bake/live triage tool, not a user preference.
+    if (f.match("baked only diag no-bake residual"))
+    {
+        ImGui::Checkbox("Baked-only (diag: show just the no-bake residual)",
+                        goblin::overlay_api::cfg_bakedOnly_ptr());
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Hides every marker the live disk/memory passes already cover,\n"
+                              "leaving only the markers still coming from the static bake.\n"
+                              "Use it to judge each leftover: real loot we fail to source live\n"
+                              "(coverage miss) vs a stale/invented spot (bake bug).");
+        ImGui::Separator();
+    }
+
     const bool show_devtools = f.match("dev tools save restart event-flag item-grant hook "
                                        "cursor probe marker dump hotkey verbose logging "
                                        "flag capture npc death");

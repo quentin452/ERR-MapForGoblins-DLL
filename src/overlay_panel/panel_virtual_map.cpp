@@ -481,6 +481,34 @@ int dump_markers_csv(const char *path)
     return n;
 }
 
+// Marker extractor: log every marker whose world XZ falls inside [wminx..wmaxx]×[wminz..wmaxz], each line
+// tagged with a crude off-map flag (origin0 = piled at 0,0 / OOB = |coord|>40000 / ok). A debug aid to
+// triage markers that land off the map artwork (user 2026-07-23). Reuses the dump_markers_csv columns and
+// the offmap_probe crude test; goes to logs/MapForGoblins.log via spdlog. Returns the count logged.
+int extract_region_log(float wminx, float wmaxx, float wminz, float wmaxz)
+{
+    spdlog::info("[VMEXTRACT] region worldX[{:.0f}..{:.0f}] worldZ[{:.0f}..{:.0f}] — cols: offmap,group,category,srcArea,raw_area,worldX,worldZ,name_id",
+                 wminx, wmaxx, wminz, wmaxz);
+    int n = 0, off = 0;
+    for (auto *L : overlay_layers())
+    {
+        if (!L) continue;
+        for (const goblin::worldmap::Marker &m : L->markers())
+        {
+            if (m.worldX < wminx || m.worldX > wmaxx || m.worldZ < wminz || m.worldZ > wmaxz) continue;
+            const bool o0 = (m.worldX == 0.0f && m.worldZ == 0.0f);
+            const bool oob = (m.worldX < -40000.f || m.worldX > 40000.f || m.worldZ < -40000.f || m.worldZ > 40000.f);
+            const char *flag = o0 ? "origin0" : (oob ? "OOB" : "ok");
+            if (o0 || oob) ++off;
+            spdlog::info("[VMEXTRACT] {},{},{},{},{},{:.1f},{:.1f},{}",
+                         flag, m.group, m.category, m.srcArea, m.raw_area, m.worldX, m.worldZ, m.name_id);
+            ++n;
+        }
+    }
+    spdlog::info("[VMEXTRACT] done: {} markers in region ({} flagged off-map)", n, off);
+    return n;
+}
+
 // Harvest the LIVE resident WorldMapTile rects (position only — textures deferred) and draw them as
 // outlined cells at the engine's OWN positions (region-walk applied). This is the authoritative alignment:
 // the engine already positioned these, so they overlay the markers exactly. Confirms the calibration + is
@@ -871,30 +899,43 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     ImGui::SameLine();
     ImGui::Checkbox(tr("Items"), &s_show_item_search);  // A9: search + locate items on the vmap itself
     ImGui::SameLine();
-    // 1024u extent = the ACCURATE zone: the world→cast-local transform is a translation captured at the
-    // player, valid only near the player's physics chunk (ER recenters the frame across tiles) — 1024u
-    // holds ~75% hits vs ~36% at 2048u where far cells cast in the wrong frame. Full coverage = accumulate
-    // as the player moves (D2.4). res 48 → ~21u cells, dense.
-    if (ImGui::SmallButton(tr("Sample terrain")))  // cast a grid around the player (map must be CLOSED)
+    // Dev/calibration strip — hidden from normal users, shown only with Verbose logging on (same gate as
+    // "Baked-only"): terrain sampling, ER-tile loaders, orientation flips + the marker extractor. These
+    // are RE/debug controls, not map features (user 2026-07-23). Extract state persists across frames.
+    static bool s_extract_mode = false, s_extract_dragging = false;
+    static ImVec2 s_extract_a{}, s_extract_b{};
+    if (*goblin::overlay_api::cfg_debugLogging_ptr())
     {
-        goblin::overlay_api::heightfield_request_sample(1024.f, 48);
-        s_show_relief = true;   // so the result is visible even if Relief was toggled off
+        // 1024u extent = the ACCURATE zone: the world→cast-local transform is a translation captured at the
+        // player, valid only near the player's physics chunk. res 48 → ~21u cells, dense.
+        if (ImGui::SmallButton(tr("Sample terrain")))  // cast a grid around the player (map must be CLOSED)
+        {
+            goblin::overlay_api::heightfield_request_sample(1024.f, 48);
+            s_show_relief = true;   // so the result is visible even if Relief was toggled off
+        }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(90.0f);                                // dev: tune the warp id offset live
+        ImGui::DragInt(tr("warp off"), &s_warp_offset, 10.0f, -100000, 100000);  // double-click a grace to test
+        ImGui::SameLine();
+        if (ImGui::SmallButton(tr("Load ER map tiles"))) virtual_map_load_lod(0, 3, 240);
+        ImGui::SameLine();
+        if (ImGui::SmallButton(tr("Resident cells"))) virtual_map_load_resident();  // engine positions (aligned)
+        ImGui::SameLine();
+        if (ImGui::SmallButton(tr("Clear tiles"))) virtual_map_clear_tiles();
+        ImGui::SameLine();
+        if (ImGui::SmallButton(tr("Flip X"))) s_sx = -s_sx;   // orientation calibration vs native map
+        ImGui::SameLine();
+        if (ImGui::SmallButton(tr("Flip Z"))) s_sz = -s_sz;
+        // Marker extractor (user 2026-07-23): toggle, then left-drag a box on the canvas → every marker
+        // inside is logged ([VMEXTRACT]) with an off-map flag, to debug markers landing off the map.
+        ImGui::SameLine();
+        if (ImGui::SmallButton(s_extract_mode ? tr("Extract: drag a box") : tr("Extract region")))
+        { s_extract_mode = !s_extract_mode; s_extract_dragging = false; }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", tr("Toggle, then left-drag a rectangle on the map. Every marker inside is\n"
+                                       "logged ([VMEXTRACT] in logs/MapForGoblins.log) with an off-map flag\n"
+                                       "(origin0 / OOB / ok) — a debug aid for markers that land off the map."));
     }
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(90.0f);                                // dev: tune the warp id offset live
-    ImGui::DragInt(tr("warp off"), &s_warp_offset, 10.0f, -100000, 100000);  // double-click a grace to test
-    // Load ER's real map ART tiles (WIP — see below). Needs the game map OPEN + you moving on it a
-    // moment (so the projection resolves). Loads overworld coarse tiles around the marker area.
-    ImGui::SameLine();
-    if (ImGui::SmallButton(tr("Load ER map tiles"))) virtual_map_load_lod(0, 3, 240);
-    ImGui::SameLine();
-    if (ImGui::SmallButton(tr("Resident cells"))) virtual_map_load_resident();  // engine positions (aligned)
-    ImGui::SameLine();
-    if (ImGui::SmallButton(tr("Clear tiles"))) virtual_map_clear_tiles();
-    ImGui::SameLine();
-    if (ImGui::SmallButton(tr("Flip X"))) s_sx = -s_sx;   // orientation calibration vs native map
-    ImGui::SameLine();
-    if (ImGui::SmallButton(tr("Flip Z"))) s_sz = -s_sz;
     // World selector: "Base ER" (id 0 → live ER markers by group) or a custom virtual world (its own
     // markers). The active world is framework state (goblin::vworld), shared with the RPC.
     ImGui::SameLine();
@@ -1348,8 +1389,24 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         wz = s_cam_z + (s.y - center.y) / (s_sz * s_zoom);
     };
 
-    // Pan: dragging moves the camera opposite the mouse delta (in world units).
-    if (hovered && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f))
+    // Extract mode (dev): left-drag draws a selection box instead of panning; on release, dump every marker
+    // inside it to the log. Takes over the left-drag while active, so panning is suspended.
+    if (hovered && s_extract_mode)
+    {
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) { s_extract_a = io.MousePos; s_extract_b = io.MousePos; s_extract_dragging = true; }
+        if (s_extract_dragging && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f)) s_extract_b = io.MousePos;
+        if (s_extract_dragging && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+        {
+            s_extract_dragging = false;
+            float ax, az, bx, bz;
+            s2w(s_extract_a, ax, az); s2w(s_extract_b, bx, bz);
+            const int got = extract_region_log((std::min)(ax, bx), (std::max)(ax, bx),
+                                               (std::min)(az, bz), (std::max)(az, bz));
+            s_tile_status = "extracted " + std::to_string(got) + " markers to log ([VMEXTRACT])";
+        }
+    }
+    // Pan: dragging moves the camera opposite the mouse delta (in world units). Suspended in extract mode.
+    else if (hovered && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f))
     {
         s_cam_x -= io.MouseDelta.x / (s_sx * s_zoom);
         s_cam_z -= io.MouseDelta.y / (s_sz * s_zoom);   // axis signs (s_sx/s_sz) keep drag correct on flip
@@ -2391,6 +2448,13 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     char legend[64];
     std::snprintf(legend, sizeof(legend), "%s: %.0f u", tr("grid"), step);
     dl->AddText(ImVec2(origin.x + 6, canvas_end.y - 18), IM_COL32(150, 158, 172, 255), legend);
+
+    // Marker-extractor selection box (dev) — drawn ON TOP while dragging so the user sees the region.
+    if (s_extract_mode && s_extract_dragging)
+    {
+        dl->AddRectFilled(s_extract_a, s_extract_b, IM_COL32(90, 200, 255, 45));
+        dl->AddRect(s_extract_a, s_extract_b, IM_COL32(130, 210, 255, 230), 0, 0, 1.5f * uiScale);
+    }
 
     // Gamepad virtual cursor (M4) — a reticle drawn ON TOP so the player sees what the RIGHT stick is
     // aiming at. Shown only in pad-mode (hidden once a real mouse move takes over). Dark halo for contrast.
