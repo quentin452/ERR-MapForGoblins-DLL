@@ -29,6 +29,13 @@ bool marker_is_done(const Marker &m);
 // on exactly which markers are anonymized (loot, pieces/kindling, farmables, bosses).
 bool marker_is_anonymized(const Marker &m);
 
+// Coarse marker "type" used to colour-code the anonymized "?" (aggressive spoiler-free) AND to label its
+// tooltip, so the disc colour and the tooltip word always agree (SSOT). boss=red, npc=blue, poi=green,
+// service=amber, item=gray (see draw_marker). anonymized_kind() takes a Category int.
+enum class AnonKind { Item, Npc, Poi, Service, Boss };
+AnonKind anonymized_kind(int category);
+const char *anonymized_kind_label(AnonKind k);
+
 // Draw all visible layers' markers for the currently open map page. Call once per
 // frame the overlay builds (from the Present hook). Must run inside an ImGui frame.
 // atlas_texture = the category-icon atlas's ImGui texture id (GPU descriptor handle),

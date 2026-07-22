@@ -2162,10 +2162,16 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         std::string nm = !hoverV.empty() ? hoverV
                          : (hoverName > 0 ? goblin::overlay_api::lookup_text_utf8(hoverName) : std::string());
         const char *clab = hoverCat >= 0 ? goblin::overlay_api::category_label(hoverCat) : nullptr;
-        // Spoiler-free: hide BOTH the item/boss name and the category line (the category can itself be
-        // the identity, e.g. "Rune Pieces"). Same "?" the native map tooltip shows. Graces are never
-        // anonymized (hoverAnon false), so their warp label is unaffected.
-        if (hoverAnon) { nm = "?"; clab = nullptr; }
+        // Spoiler-free: hide the item/boss name. Instead of the exact category (which can be the identity,
+        // e.g. "Rune Pieces") show only the COARSE type that matches the disc colour — Boss/NPC/POI/Service/
+        // Item — so a red "?" reads "Boss" etc. without naming it. Graces are never anonymized (hoverAnon
+        // false), so their warp label is unaffected.
+        if (hoverAnon)
+        {
+            nm = "?";
+            clab = (hoverCat >= 0) ? goblin::worldmap::anonymized_kind_label(goblin::worldmap::anonymized_kind(hoverCat))
+                                   : nullptr;
+        }
         if (!nm.empty() || clab || hoverGrace)
         {
             ImGui::BeginTooltip();

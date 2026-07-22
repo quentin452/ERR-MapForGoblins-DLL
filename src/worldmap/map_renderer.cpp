@@ -504,21 +504,8 @@ static inline bool anonymous_marker(const goblin::worldmap::Marker &m)
     return m.lot_backed || c == Cat::WorldFarmableCollectible;
 }
 
-// Anonymized markers that must stay visually distinct from generic loot: bosses keep a bigger,
-// red-tinted "?" disc so the map still signals "a boss is here" without leaking which one.
-static inline bool anonymous_is_boss(const goblin::worldmap::Marker &m)
-{
-    return m.category == static_cast<int>(goblin::generated::Category::WorldBosses);
-}
-
-// NPCs/merchants keep a coarse TYPE cue when anonymized (aggressive blackout): a blue "?" so a friendly
-// pin still reads apart from generic loot, without naming the NPC (user 2026-07-23).
-static inline bool anonymous_is_npc(const goblin::worldmap::Marker &m)
-{
-    using Cat = goblin::generated::Category;
-    const Cat c = static_cast<Cat>(m.category);
-    return c == Cat::WorldHostileNPC || c == Cat::WorldQuestNPC || c == Cat::WorldMerchant;
-}
+// (anonymized_kind / anonymized_kind_label are free functions — defined below, outside this anonymous
+// namespace, so the virtual-map tooltip can call them too. draw_marker_impl uses them via the header decl.)
 
 // Is a single loot member collected? Same predicate as marker_done's loot branch (event flag +
 // geom/kindling tracking), factored so an item-stack can test each absorbed member.
@@ -796,20 +783,19 @@ static void draw_marker_impl(ImDrawList *fg, const Marker &m, ImVec2 p, const Ic
         // Anonymized markers keep a coarse TYPE cue without naming the thing (user 2026-07-23): bosses =
         // bigger red "?", NPCs/merchants = blue, POI/landmarks = green, Services = amber, loot/collectibles
         // = neutral gray. Priority boss > npc > section, so an NPC (in the POI section) stays blue.
-        constexpr int SEC_POI = 7, SEC_SERVICES = 8;   // Section enum order (goblin_section_visibility.cpp)
-        const bool boss = anonymous_is_boss(m);
-        const bool npc  = !boss && anonymous_is_npc(m);
-        const int  sec  = (boss || npc) ? -1 : goblin::overlay_api::category_section(m.category);
-        const bool poi  = sec == SEC_POI;
-        const bool serv = sec == SEC_SERVICES;
-        const bool tinted = boss || npc || poi || serv;   // has a distinct type colour → bolder ring
+        const AnonKind kind = anonymized_kind(m.category);   // SSOT: same classification the tooltip labels
+        const bool boss = kind == AnonKind::Boss;
+        const bool tinted = kind != AnonKind::Item;           // has a distinct type colour → bolder ring
         const float cr = half * (boss ? 0.8f : 0.5f);
         ImU32 fill, txt;
-        if (boss)      { fill = done ? IM_COL32(120, 70, 70, 130)   : IM_COL32(205, 70, 70, 225);  txt = IM_COL32(250, 245, 245, done ? 150 : 255); }
-        else if (npc)  { fill = done ? IM_COL32(70, 90, 130, 130)   : IM_COL32(70, 120, 210, 225); txt = IM_COL32(245, 248, 255, done ? 150 : 255); }
-        else if (poi)  { fill = done ? IM_COL32(70, 120, 80, 130)   : IM_COL32(80, 180, 100, 225); txt = IM_COL32(245, 255, 248, done ? 150 : 255); }
-        else if (serv) { fill = done ? IM_COL32(130, 110, 60, 130)  : IM_COL32(220, 175, 70, 225); txt = IM_COL32(255, 252, 240, done ? 150 : 255); }
-        else           { fill = done ? IM_COL32(120, 120, 120, 120) : IM_COL32(155, 155, 160, 215); txt = IM_COL32(25, 25, 30, done ? 150 : 255); }
+        switch (kind)
+        {
+        case AnonKind::Boss:    fill = done ? IM_COL32(120, 70, 70, 130)   : IM_COL32(205, 70, 70, 225);  txt = IM_COL32(250, 245, 245, done ? 150 : 255); break;
+        case AnonKind::Npc:     fill = done ? IM_COL32(70, 90, 130, 130)   : IM_COL32(70, 120, 210, 225); txt = IM_COL32(245, 248, 255, done ? 150 : 255); break;
+        case AnonKind::Poi:     fill = done ? IM_COL32(70, 120, 80, 130)   : IM_COL32(80, 180, 100, 225); txt = IM_COL32(245, 255, 248, done ? 150 : 255); break;
+        case AnonKind::Service: fill = done ? IM_COL32(130, 110, 60, 130)  : IM_COL32(220, 175, 70, 225); txt = IM_COL32(255, 252, 240, done ? 150 : 255); break;
+        default:                fill = done ? IM_COL32(120, 120, 120, 120) : IM_COL32(155, 155, 160, 215); txt = IM_COL32(25, 25, 30, done ? 150 : 255); break;
+        }
         fg->AddCircleFilled(p, cr, fill);
         fg->AddCircle(p, cr, IM_COL32(0, 0, 0, done ? 120 : (tinted ? 235 : 220)), 0, boss ? 2.0f : 1.5f);
         const char *q = "?";
@@ -1002,7 +988,12 @@ std::string marker_label(const Marker &m)
     // Spoiler-free: don't leak the item name — just "?" (+ its location, like native). Quantity is
     // not an identity spoiler, so it still shows.
     if ((*goblin::overlay_api::cfg_anonymousLoot_ptr()) && anonymous_marker(m))
-        return loc.empty() ? ("?" + qty) : ("?" + qty + "\n" + loc);
+    {
+        // Coarse type in parens (matches the disc colour) instead of the exact name/category.
+        std::string t = "?" + qty + " (" + anonymized_kind_label(anonymized_kind(m.category)) + ")";
+        if (!loc.empty()) t += "\n" + loc;
+        return t;
+    }
     std::string name = goblin::overlay_api::lookup_text_utf8(m.name_id);
     // Quest-NPC pin (QuestNpcLayer): NPC name + "quest — current step" + coarse zone.
     if (m.tip_quest)
@@ -1759,6 +1750,31 @@ bool marker_is_done(const Marker &m) { bool co = false; return marker_done(m, co
 bool marker_is_anonymized(const Marker &m)
 {
     return (*goblin::overlay_api::cfg_anonymousLoot_ptr()) && anonymous_marker(m);
+}
+
+// Coarse marker "type" for the anonymized "?" — colour (draw_marker) + tooltip label agree via this SSOT.
+AnonKind anonymized_kind(int category)
+{
+    using Cat = goblin::generated::Category;
+    const Cat c = static_cast<Cat>(category);
+    if (c == Cat::WorldBosses) return AnonKind::Boss;
+    if (c == Cat::WorldHostileNPC || c == Cat::WorldQuestNPC || c == Cat::WorldMerchant) return AnonKind::Npc;
+    const int sec = goblin::overlay_api::category_section(category);
+    if (sec == 7) return AnonKind::Poi;       // Section::POI      (goblin_section_visibility.cpp enum order)
+    if (sec == 8) return AnonKind::Service;   // Section::Services
+    return AnonKind::Item;
+}
+
+const char *anonymized_kind_label(AnonKind k)
+{
+    switch (k)
+    {
+    case AnonKind::Boss:    return "Boss";
+    case AnonKind::Npc:     return "NPC / merchant";
+    case AnonKind::Poi:     return "POI / landmark";
+    case AnonKind::Service: return "Service";
+    default:                return "Item";
+    }
 }
 
 // Region on/off toggle — shared read/set so the Virtual World Map's region labels drive the SAME
