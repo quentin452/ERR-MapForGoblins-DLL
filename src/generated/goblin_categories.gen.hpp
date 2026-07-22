@@ -53,50 +53,50 @@ inline constexpr CategoryMetaRow CATEGORY_META[] = {
     {"Loot - Utilities"             , "Loot"},  // LootUtilities
     {"Loot - Stat Boosts"           , "Loot"},  // LootStatBoosts
     {"Reforged - Fortunes"          , "Reforged"},  // ReforgedFortunes
-    {"World - Hostile NPC"          , "World"},  // WorldHostileNPC
-    {"World - Quest NPC"            , "World"},  // WorldQuestNPC
+    {"World - Hostile NPC"          , "POI"},  // WorldHostileNPC
+    {"World - Quest NPC"            , "POI"},  // WorldQuestNPC
     {"Magic - Incantations"         , "Magic"},  // MagicIncantations
     {"Magic - Memory Stones"        , "Magic"},  // MagicMemoryStones
     {"Magic - Prayerbooks"          , "Magic"},  // MagicPrayerbooks
     {"Magic - Sorceries"            , "Magic"},  // MagicSorceries
-    {"World - Bosses"               , "World"},  // WorldBosses
+    {"World - Bosses"               , "POI"},  // WorldBosses
     {"Quest - Deathroot"            , "Quest"},  // QuestDeathroot
     {"Quest - Progression"          , "Quest"},  // QuestProgression
     {"Quest - Seedbed Curses"       , "Quest"},  // QuestSeedbedCurses
     {"Reforged - Ember Pieces"      , "Reforged"},  // ReforgedEmberPieces
     {"Reforged - Items"             , "Reforged"},  // ReforgedItemsAndChanges
     {"Reforged - Rune Pieces"       , "Reforged"},  // ReforgedRunePieces
-    {"World - Graces"               , "World"},  // WorldGraces
+    {"World - Graces"               , "Services"},  // WorldGraces
     {"World - Imp Statues"          , "World"},  // WorldImpStatues
     {"World - Maps"                 , "World"},  // WorldMaps
     {"World - Paintings"            , "World"},  // WorldPaintings
-    {"World - Spirit Springs"       , "World"},  // WorldSpiritSprings
-    {"World - Spiritspring Hawks"   , "World"},  // WorldSpiritspringHawks
-    {"World - Stakes of Marika"     , "World"},  // WorldStakesOfMarika
-    {"World - Summoning Pools"      , "World"},  // WorldSummoningPools
+    {"World - Spirit Springs"       , "POI"},  // WorldSpiritSprings
+    {"World - Spiritspring Hawks"   , "POI"},  // WorldSpiritspringHawks
+    {"World - Stakes of Marika"     , "POI"},  // WorldStakesOfMarika
+    {"World - Summoning Pools"      , "Services"},  // WorldSummoningPools
     {"World - Kindling Spirits"     , "World"},  // WorldKindlingSpirits
     {"World - Interactables"        , "World"},  // WorldInteractables
-    {"World - Divine Towers"        , "World"},  // WorldDivineTower
-    {"World - Evergaols"            , "World"},  // WorldEvergaol
-    {"World - Minor Erdtrees"       , "World"},  // WorldMinorErdtree
-    {"World - Grand Lifts"          , "World"},  // WorldGrandLift
-    {"World - Dungeons"             , "World"},  // WorldDungeon
-    {"World - Legacy Dungeons"      , "World"},  // WorldLegacyDungeon
-    {"World - Miquella's Cross"     , "World"},  // WorldMiquellaCross
-    {"World - Churches"             , "World"},  // WorldChurch
-    {"World - Ruins"                , "World"},  // WorldRuins
-    {"World - Rises & Towers"       , "World"},  // WorldRiseTower
-    {"World - Shacks"               , "World"},  // WorldShack
-    {"World - Forts"                , "World"},  // WorldFort
-    {"World - Castles"              , "World"},  // WorldCastle
-    {"World - Towns & Villages"     , "World"},  // WorldTownVillage
-    {"World - Colosseums"           , "World"},  // WorldColosseum
-    {"World - Unique Sites"         , "World"},  // WorldUniqueSite
-    {"World - Portals"              , "World"},  // WorldPortal
-    {"World - Elevators"            , "World"},  // WorldElevator
-    {"World - Smithing Tables"      , "World"},  // WorldSmithingTable
+    {"World - Divine Towers"        , "POI"},  // WorldDivineTower
+    {"World - Evergaols"            , "POI"},  // WorldEvergaol
+    {"World - Minor Erdtrees"       , "POI"},  // WorldMinorErdtree
+    {"World - Grand Lifts"          , "Services"},  // WorldGrandLift
+    {"World - Dungeons"             , "POI"},  // WorldDungeon
+    {"World - Legacy Dungeons"      , "POI"},  // WorldLegacyDungeon
+    {"World - Miquella's Cross"     , "POI"},  // WorldMiquellaCross
+    {"World - Churches"             , "POI"},  // WorldChurch
+    {"World - Ruins"                , "POI"},  // WorldRuins
+    {"World - Rises & Towers"       , "POI"},  // WorldRiseTower
+    {"World - Shacks"               , "POI"},  // WorldShack
+    {"World - Forts"                , "POI"},  // WorldFort
+    {"World - Castles"              , "POI"},  // WorldCastle
+    {"World - Towns & Villages"     , "POI"},  // WorldTownVillage
+    {"World - Colosseums"           , "POI"},  // WorldColosseum
+    {"World - Unique Sites"         , "POI"},  // WorldUniqueSite
+    {"World - Portals"              , "POI"},  // WorldPortal
+    {"World - Elevators"            , "Services"},  // WorldElevator
+    {"World - Smithing Tables"      , "Services"},  // WorldSmithingTable
     {"Loot - Farmable Drops"        , "Loot"},  // WorldFarmableCollectible
-    {"World - Merchants"            , "World"},  // WorldMerchant
+    {"World - Merchants"            , "Services"},  // WorldMerchant
     {"Loot - Other"                 , "Loot"},  // Uncategorised
 };
 

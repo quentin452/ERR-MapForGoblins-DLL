@@ -305,7 +305,7 @@ namespace goblin
         // bools are the persisted runtime state, driven live by the overlay menu
         // (F1) and written back on Save. See goblin_config_schema [Display Sections].
         extern GOBLIN_RENDER_API bool sectionEquipment, sectionKeyItems, sectionLoot, sectionMagic,
-                    sectionQuest, sectionReforged, sectionWorld;
+                    sectionQuest, sectionReforged, sectionWorld, sectionPOI, sectionServices;
 
         // Marker clustering (v1). See goblin_config_schema [Clustering].
         extern GOBLIN_RENDER_API bool enableClustering;

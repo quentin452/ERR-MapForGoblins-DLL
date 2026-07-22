@@ -118,11 +118,11 @@ namespace goblin::config
     float minimapOffsetX = 0.0f;      // px offset from the anchored corner
     float minimapOffsetY = 0.0f;
 
-    // In-game per-section visibility (the 7 display groups). Persisted so an
+    // In-game per-section visibility (the 9 display groups). Persisted so an
     // in-game toggle survives relaunch. Default all-visible = no behaviour change.
     bool sectionEquipment = true, sectionKeyItems = true, sectionLoot = true,
          sectionMagic = true, sectionQuest = true, sectionReforged = true,
-         sectionWorld = true;
+         sectionWorld = true, sectionPOI = true, sectionServices = true;
 
     // Marker clustering (v1, density-triggered, static). Collapses dense marker
     // piles into one cluster icon to cut the per-page map-open cost. Opt-in.
@@ -302,6 +302,8 @@ namespace
                 B("section_quest",     sectionQuest,     "true", "Show the Quest group's icons."),
                 B("section_reforged",  sectionReforged,  "true", "Show the Reforged group's icons."),
                 B("section_world",     sectionWorld,     "true", "Show the World group's icons."),
+                B("section_poi",       sectionPOI,       "true", "Show the POI group's icons (landmarks/places)."),
+                B("section_services",  sectionServices,  "true", "Show the Services group's icons (graces/merchants/lifts)."),
             }},
 
             {"Quest Browser",

@@ -55,7 +55,7 @@ using Category = goblin::generated::Category;
 // pieces use) on the live expanded blob — no param rebuild, no pointer swap.
 enum class Section : uint8_t
 {
-    Equipment, KeyItems, Loot, Magic, Quest, Reforged, World, COUNT
+    Equipment, KeyItems, Loot, Magic, Quest, Reforged, World, POI, Services, COUNT
 };
 static constexpr int SECTION_COUNT = static_cast<int>(Section::COUNT);
 
@@ -70,6 +70,8 @@ static const char *section_name(Section s)
     case Section::Quest:     return "Quest";
     case Section::Reforged:  return "Reforged";
     case Section::World:     return "World";
+    case Section::POI:       return "POI";
+    case Section::Services:  return "Services";
     default:                 return "?";
     }
 }
@@ -85,6 +87,8 @@ static Section section_from_name(const char *s)
     if (!std::strcmp(s, "Magic"))     return Section::Magic;
     if (!std::strcmp(s, "Quest"))     return Section::Quest;
     if (!std::strcmp(s, "Reforged"))  return Section::Reforged;
+    if (!std::strcmp(s, "POI"))       return Section::POI;
+    if (!std::strcmp(s, "Services"))  return Section::Services;
     return Section::World;
 }
 
@@ -339,7 +343,8 @@ void goblin::seed_runtime_gates()
         goblin::config::sectionEquipment, goblin::config::sectionKeyItems,
         goblin::config::sectionLoot,      goblin::config::sectionMagic,
         goblin::config::sectionQuest,     goblin::config::sectionReforged,
-        goblin::config::sectionWorld,
+        goblin::config::sectionWorld,     goblin::config::sectionPOI,
+        goblin::config::sectionServices,
     };
     for (int s = 0; s < SECTION_COUNT; s++)
         g_section_visible[s].store(sec_cfg[s]);
@@ -570,6 +575,8 @@ void persist_settings()
     goblin::config::sectionQuest     = g_section_visible[4].load();
     goblin::config::sectionReforged  = g_section_visible[5].load();
     goblin::config::sectionWorld     = g_section_visible[6].load();
+    goblin::config::sectionPOI       = g_section_visible[7].load();
+    goblin::config::sectionServices  = g_section_visible[8].load();
 
     goblin::config::showAll = false;
     for (int c = 0; c < NUM_CATEGORIES; c++)
