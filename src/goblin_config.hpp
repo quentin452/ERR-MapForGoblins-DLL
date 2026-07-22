@@ -108,6 +108,9 @@ namespace goblin
         extern GOBLIN_RENDER_API bool anonymousLoot;  // spoiler-free mode: every loot marker shows a
                                     // gray "?" icon + a generic localized label instead
                                     // of the real item (blind randomizer runs).
+        extern GOBLIN_RENDER_API bool anonymousLootAggressive;  // spoiler-free LEVEL: false = light
+                                    // (randomized loot only); true = aggressive "blackout" (every
+                                    // marker except graces → "?", for a blind randomizer run).
 
         // ── Loot source (experimental) ──────────────────────────────────
         // When true, derive the TREASURE loot slice from the ACTIVE mod's REAL

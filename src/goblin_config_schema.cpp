@@ -61,6 +61,7 @@ namespace goblin::config
     // map's param rewriters, deleted with native injection.
     bool liveLootLabels = false;
     bool anonymousLoot = false;  // opt-in spoiler-free mode (all profiles default off)
+    bool anonymousLootAggressive = false;  // spoiler-free level: false = light (loot only), true = blackout
 
     // loot{FromDiskMsb,Collectibles,EnemyDrops,EmevdDrops} + worldFeaturesFromDisk are now
     // compile-time `true` constants in goblin_config.hpp (bake retired → always-on, no INI key).
@@ -516,6 +517,8 @@ namespace
                   "Relabel each loot marker with the item its lot currently gives, so names match\nthe randomizer. Uses more memory (copies item names into the map's name table)."),
                 B("anonymous_loot", anonymousLoot, "false",
                   "Spoiler-free: every loot marker shows a gray \"?\" and a generic label instead\nof the real item. Overrides live_loot_labels; markers still hide on pickup."),
+                B("anonymous_loot_aggressive", anonymousLootAggressive, "false",
+                  "Spoiler-free LEVEL (needs anonymous_loot=true). false = light: only randomized\nloot (treasure/enemy drops + farmables) is hidden. true = aggressive \"blackout\":\nEVERY marker except graces shows \"?\" (bosses/pieces/kindling/POI/landmarks) — for\na fully blind randomizer run. Bosses keep a bigger red \"?\" so a threat still reads."),
             }},
 
             {"Markers",

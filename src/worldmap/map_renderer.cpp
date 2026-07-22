@@ -484,26 +484,24 @@ unsigned int dim_color(unsigned int abgr)
     return ((unsigned)a << 24) | ((unsigned)b << 16) | ((unsigned)g << 8) | (unsigned)r;
 }
 
-// Spoiler-free coverage: markers whose tooltip/icon reveals a SPECIFIC item or named boss.
-// Lot-backed rows (treasure/enemy/EMEVD drops) + the non-lot Farmable Drops markers, PLUS
-// pieces/kindling/material nodes and bosses (user 2026-07-23: hide those names too — a boss's
-// name is itself a spoiler). Bosses still render distinctly (see draw_marker) so a threat reads
-// without naming it.
+// Spoiler-free coverage — two levels (anonymousLootAggressive):
+//  · LIGHT (default): only markers that leak a RANDOMIZED item — lot-backed drops + Farmable Drops.
+//  · AGGRESSIVE "blackout": every marker except graces loses its identity → "?".
+// Master gate (anonymousLoot) is applied by the callers (draw_marker / marker_label / the public
+// marker_is_anonymized). Bosses always render a distinct red "?" when anonymized (see draw_marker).
 static inline bool anonymous_marker(const goblin::worldmap::Marker &m)
 {
     using Cat = goblin::generated::Category;
-    switch (static_cast<Cat>(m.category))
-    {
-    case Cat::WorldFarmableCollectible:
-    case Cat::ReforgedRunePieces:
-    case Cat::ReforgedEmberPieces:
-    case Cat::LootMaterialNodes:
-    case Cat::WorldKindlingSpirits:
-    case Cat::WorldBosses:
-        return true;
-    default:
-        return m.lot_backed;
-    }
+    const Cat c = static_cast<Cat>(m.category);
+    // AGGRESSIVE "blackout" (anonymousLootAggressive): every marker loses its identity → "?", EXCEPT
+    // graces (fast-travel anchors — not a spoiler and needed to warp). Positions only; bosses still get
+    // the distinct red "?" via anonymous_is_boss. (user 2026-07-23)
+    if (*goblin::overlay_api::cfg_anonymousLootAggressive_ptr())
+        return !m.discover_flag;   // discover_flag is set ONLY on graces (see marker_label)
+    // LIGHT (default): hide only markers whose identity leaks a RANDOMIZED item — lot-backed drops
+    // (treasure/enemy/EMEVD) + the non-lot Farmable Drops markers. Bosses, pieces/kindling, material
+    // nodes and world features KEEP their identity in this milder mode.
+    return m.lot_backed || c == Cat::WorldFarmableCollectible;
 }
 
 // Anonymized markers that must stay visually distinct from generic loot: bosses keep a bigger,

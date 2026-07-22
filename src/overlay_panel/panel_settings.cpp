@@ -160,6 +160,26 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
             ImGui::SetTooltip("%s", tr("Every loot marker shows a gray \"?\" and only its location,\n"
                                        "hiding the real item (useful with randomizers). Markers still\n"
                                        "gray out when collected; category show/hide is unaffected."));
+        // Level sub-option (only meaningful with spoiler-free on): light hides just the randomized
+        // loot; aggressive is a full "blackout" for a blind randomizer run.
+        if (*goblin::overlay_api::cfg_anonymousLoot_ptr())
+        {
+            bool *aggr = goblin::overlay_api::cfg_anonymousLootAggressive_ptr();
+            ImGui::Indent();
+            if (ImGui::RadioButton(tr("Light — randomized loot only"), !*aggr))
+                *aggr = false;
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s", tr("Hide only markers whose identity is randomized:\n"
+                                           "treasure/enemy drops + farmable drops. Bosses,\n"
+                                           "pieces, kindling and landmarks keep their names."));
+            if (ImGui::RadioButton(tr("Aggressive — blackout (for randomizers)"), *aggr))
+                *aggr = true;
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s", tr("Full blackout: EVERY marker except graces shows \"?\"\n"
+                                           "(bosses, pieces, kindling, POI/landmarks). Positions only.\n"
+                                           "Bosses keep a bigger red \"?\" so a threat still reads."));
+            ImGui::Unindent();
+        }
     }
 
     // Gamepad overlay-toggle combo (dx-bugs-backlog PR C item 3). Recorder arms the

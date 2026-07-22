@@ -37,7 +37,7 @@ namespace goblin::overlay_api
 #define GOBLIN_CFG_BOOL_LIST(X) \
     X(requireMapFragments) X(bakedOnly) X(collectedGraying) X(hideCollected) X(stackIdenticalItems) \
     X(clusterDebugRadius) X(clusterDebugMarkers) X(showRegionLabels) X(vmapOnMapKey) X(nativeItemIcons) X(diagLootFlags) \
-    X(diagLootPos) X(debugLogging) X(anonymousLoot) X(dropMerchantPhantoms) X(redifyBossIcons) \
+    X(diagLootPos) X(debugLogging) X(anonymousLoot) X(anonymousLootAggressive) X(dropMerchantPhantoms) X(redifyBossIcons) \
     X(enableMarkerDump) X(debugEventFlags) \
     X(debugItemGrants) X(debugFlagCapture) X(debugWorldmapProbe) X(dumpIconTextures) \
     X(iconLegibility) X(altitudeCue) X(debugClusterAnchors) X(debugRegionVolumes) \

@@ -25,13 +25,18 @@ The classification is data only — re-tag rows in `categories.json` + regen to 
 ## 2 · Spoiler-free (`anonymousLoot`) — single predicate, wider coverage
 
 SSOT predicate = `goblin::worldmap::marker_is_anonymized(m)` (`map_renderer.hpp/.cpp`) =
-`cfg_anonymousLoot && anonymous_marker(m)`. `anonymous_marker()` now covers, **by category**:
-lot-backed loot, `WorldFarmableCollectible`, **`ReforgedRunePieces` / `ReforgedEmberPieces` /
-`LootMaterialNodes` / `WorldKindlingSpirits`** (user ask 5 — previously excluded to "keep identity"),
-and **`WorldBosses`** (user ask 4).
+`cfg_anonymousLoot && anonymous_marker(m)`. `anonymousLoot` = master on/off; **`anonymousLootAggressive`**
+= level (config bool, INI `anonymous_loot_aggressive`, default **false** = light; radio in F1 settings).
 
-- Bosses stay distinguishable while anonymized: `draw_marker`'s anon branch draws a **bigger,
-  red-tinted "?" disc** for `anonymous_is_boss(m)`, neutral gray "?" for everything else.
+`anonymous_marker()` is **two-level** (user 2026-07-23):
+
+- **LIGHT** (default): `m.lot_backed || category == WorldFarmableCollectible` — only markers whose
+  identity is randomized (treasure/enemy drops + farmables). Bosses, rune/ember pieces, material nodes,
+  kindling and landmarks KEEP their names.
+- **AGGRESSIVE "blackout"**: `!m.discover_flag` — EVERY marker except graces → "?" (`discover_flag` is
+  grace-only; graces stay named/warpable). Positions only; for a blind randomizer run.
+- Bosses stay distinguishable in aggressive: `draw_marker`'s anon branch draws a **bigger, red-tinted
+  "?" disc** for `anonymous_is_boss(m)` (WorldBosses), neutral gray "?" for everything else.
 - **Virtual-map tooltip fix (ask 2):** the vmap builds its OWN tooltip (`panel_virtual_map.cpp` ~2090)
   and used to bypass the spoiler check → leaked the real name on hover. Now it captures
   `hoverAnon = marker_is_anonymized(*m)` at each hover site and shows "?" (name + category line both

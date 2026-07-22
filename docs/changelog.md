@@ -28,9 +28,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
   forts, castles, dungeons, towers, evergaols, …) and **Services** (graces, merchants, elevators,
   lifts, smithing, summoning pools). Data-driven via `data/categories.json`; each section has its own
   in-game visibility toggle (`section_poi` / `section_services`).
-- Spoiler-free mode now also anonymizes **bosses**, **rune/ember pieces**, **material nodes** and
-  **kindling spirits** (previously only lot-backed loot + farmables). Bosses stay distinguishable: an
-  anonymized boss draws a bigger red-tinted "?" disc so a threat still reads without naming it.
+- Spoiler-free mode now has **two levels**: **Light** (default — hides only randomized loot: treasure/
+  enemy drops + farmables; bosses, pieces, kindling and landmarks keep their names) and **Aggressive**
+  (a full "blackout" for blind randomizer runs — every marker except graces shows "?", positions only).
+  Bosses stay distinguishable in aggressive: an anonymized boss draws a bigger red-tinted "?" disc so a
+  threat still reads without naming it. New INI `anonymous_loot_aggressive`; radio in F1 settings.
 - 3D greybox render (objects.toml) now projects correctly end-to-end: the mod reads the game's REAL
   camera (position/orientation pose + live FOV/aspect lens) through a static, scan-free chain, plus
   an exact per-frame rebase origin — TOML-defined boxes draw at their world positions with correct
