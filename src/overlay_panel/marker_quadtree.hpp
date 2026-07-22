@@ -55,13 +55,16 @@ public:
         return true;
     }
 
-    // Query the visible world rect. Nodes smaller than clusterWorld collapse into a Pile; sparse leaf
-    // markers in view are appended to `singles`. clusterWorld = min-pile-px / zoom (px per world unit).
+    // Query the visible world rect. A node collapses into a Pile only when it is both smaller than
+    // clusterWorld on screen AND holds at least minCount markers; sparse/below-threshold leaf markers
+    // in view are appended to `singles`. clusterWorld = min-pile-px / zoom (px per world unit); pass
+    // clusterWorld < 0 to disable collapsing entirely (manual grouping off → every marker individual).
+    // minCount = the manual "cluster size" threshold (>=2).
     void query(float vMinX, float vMinZ, float vMaxX, float vMaxZ, float clusterWorld,
-               std::vector<Pile> &piles, std::vector<const Marker *> &singles) const
+               std::vector<Pile> &piles, std::vector<const Marker *> &singles, int minCount = 2) const
     {
         if (!m_nodes.empty())
-            collect(0, vMinX, vMinZ, vMaxX, vMaxZ, clusterWorld, piles, singles);
+            collect(0, vMinX, vMinZ, vMaxX, vMaxZ, clusterWorld, piles, singles, minCount);
     }
 
     // Enumerate a pile's member markers (subtree walk from pl.node). On-demand — call only for the ONE
@@ -149,13 +152,13 @@ private:
     }
 
     void collect(int ni, float vMinX, float vMinZ, float vMaxX, float vMaxZ, float clusterWorld,
-                 std::vector<Pile> &piles, std::vector<const Marker *> &singles) const
+                 std::vector<Pile> &piles, std::vector<const Marker *> &singles, int minCount) const
     {
         const Node &n = m_nodes[ni];
         if (n.count == 0) return;
         if (n.maxx < vMinX || n.minx > vMaxX || n.maxz < vMinZ || n.minz > vMaxZ) return;   // cull
         const float sz = (std::max)(n.maxx - n.minx, n.maxz - n.minz);
-        if (n.count > 1 && sz <= clusterWorld)   // node too small on screen → one pile
+        if (n.count >= minCount && sz <= clusterWorld)   // enough markers + too small on screen → one pile
         {
             piles.push_back(Pile{(float)(n.sumx / n.count), (float)(n.sumz / n.count), n.count, ni});
             return;
@@ -168,7 +171,7 @@ private:
             return;
         }
         for (int i = 0; i < 4; ++i)
-            collect(n.firstChild + i, vMinX, vMinZ, vMaxX, vMaxZ, clusterWorld, piles, singles);
+            collect(n.firstChild + i, vMinX, vMinZ, vMaxX, vMaxZ, clusterWorld, piles, singles, minCount);
     }
 };
 } // namespace goblin::overlay::panel

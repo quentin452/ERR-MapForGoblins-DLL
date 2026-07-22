@@ -1860,12 +1860,18 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         const float vMinX = (std::min)(wxa, wxb), vMaxX = (std::max)(wxa, wxb);
         const float vMinZ = (std::min)(wza, wzb), vMaxZ = (std::max)(wza, wzb);
         constexpr float kPilePx = 26.0f;
-        const float clusterWorld = kPilePx / (s_zoom > 1e-6f ? s_zoom : 1e-6f);
+        // Grouping obeys the manual "Enable clustering" toggle + its "Cluster size" sub-option, which
+        // now OVERRIDE the always-on zoom-LOD (user 2026-07-23): OFF → clusterWorld < 0 disables the
+        // collapse test, so every marker draws individually at any zoom. ON → the zoom-scaled pile size,
+        // but a node only piles once it holds >= clusterThreshold markers, so small groups stay expanded.
+        const bool clusterOn = goblin::config::enableClustering;
+        const float clusterWorld = clusterOn ? (kPilePx / (s_zoom > 1e-6f ? s_zoom : 1e-6f)) : -1.0f;
+        const int clusterMin = clusterOn ? (std::max)(2, (int)goblin::config::clusterThreshold) : 2;
         static std::vector<MarkerQuadtree::Pile> s_piles;
         static std::vector<const goblin::worldmap::Marker *> s_singles;
         s_piles.clear();
         s_singles.clear();
-        s_qt.query(vMinX, vMinZ, vMaxX, vMaxZ, clusterWorld, s_piles, s_singles);
+        s_qt.query(vMinX, vMinZ, vMaxX, vMaxZ, clusterWorld, s_piles, s_singles, clusterMin);
 
         // Cluster piles (drawn UNDER singles + graces): a disc sized ~log(count) + the count.
         for (const MarkerQuadtree::Pile &pl : s_piles)
