@@ -511,6 +511,15 @@ static inline bool anonymous_is_boss(const goblin::worldmap::Marker &m)
     return m.category == static_cast<int>(goblin::generated::Category::WorldBosses);
 }
 
+// NPCs/merchants keep a coarse TYPE cue when anonymized (aggressive blackout): a blue "?" so a friendly
+// pin still reads apart from generic loot, without naming the NPC (user 2026-07-23).
+static inline bool anonymous_is_npc(const goblin::worldmap::Marker &m)
+{
+    using Cat = goblin::generated::Category;
+    const Cat c = static_cast<Cat>(m.category);
+    return c == Cat::WorldHostileNPC || c == Cat::WorldQuestNPC || c == Cat::WorldMerchant;
+}
+
 // Is a single loot member collected? Same predicate as marker_done's loot branch (event flag +
 // geom/kindling tracking), factored so an item-stack can test each absorbed member.
 static bool loot_member_collected(uint64_t row_id, int collected_flag)
@@ -784,18 +793,20 @@ static void draw_marker_impl(ImDrawList *fg, const Marker &m, ImVec2 p, const Ic
     // Collected ones still gray; category gate unchanged.
     if ((*goblin::overlay_api::cfg_anonymousLoot_ptr()) && anonymous_marker(m))
     {
-        // Bosses stay distinguishable when anonymized: a bigger red-tinted "?" disc reads as a
-        // threat without naming it; regular loot/entities get the neutral gray "?" (user 2026-07-23).
+        // Anonymized markers keep a coarse TYPE cue without naming the thing: bosses = bigger red "?",
+        // NPCs/merchants = blue "?" (aggressive blackout), everything else neutral gray "?" (user 2026-07-23).
         const bool boss = anonymous_is_boss(m);
+        const bool npc = !boss && anonymous_is_npc(m);
         const float cr = half * (boss ? 0.8f : 0.5f);
-        const ImU32 fill = boss ? (done ? IM_COL32(120, 70, 70, 130) : IM_COL32(205, 70, 70, 225))
-                                : (done ? IM_COL32(120, 120, 120, 120) : IM_COL32(155, 155, 160, 215));
+        ImU32 fill, txt;
+        if (boss)     { fill = done ? IM_COL32(120, 70, 70, 130)   : IM_COL32(205, 70, 70, 225);  txt = IM_COL32(250, 245, 245, done ? 150 : 255); }
+        else if (npc) { fill = done ? IM_COL32(70, 90, 130, 130)   : IM_COL32(70, 120, 210, 225); txt = IM_COL32(245, 248, 255, done ? 150 : 255); }
+        else          { fill = done ? IM_COL32(120, 120, 120, 120) : IM_COL32(155, 155, 160, 215); txt = IM_COL32(25, 25, 30, done ? 150 : 255); }
         fg->AddCircleFilled(p, cr, fill);
-        fg->AddCircle(p, cr, IM_COL32(0, 0, 0, done ? 120 : (boss ? 235 : 220)), 0, boss ? 2.0f : 1.5f);
+        fg->AddCircle(p, cr, IM_COL32(0, 0, 0, done ? 120 : ((boss || npc) ? 235 : 220)), 0, boss ? 2.0f : 1.5f);
         const char *q = "?";
         ImVec2 ts = ImGui::CalcTextSize(q);
-        fg->AddText(ImVec2(p.x - ts.x * 0.5f, p.y - ts.y * 0.5f),
-                    IM_COL32(boss ? 250 : 25, boss ? 245 : 25, boss ? 245 : 30, done ? 150 : 255), q);
+        fg->AddText(ImVec2(p.x - ts.x * 0.5f, p.y - ts.y * 0.5f), txt, q);
         if (cleared)
             draw_check(fg, p, half);
         return;
