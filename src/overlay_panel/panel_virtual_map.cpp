@@ -1655,6 +1655,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // grace within radius beats an underlying non-grace, matching the visible z-order (the tooltip/warp
     // then targets the grace you see on top, not the object beneath it).
     float hoverBestD = 1e18f; int hoverName = -1, hoverCat = -1, hoverDisc = 0, hoverPrio = -1; std::string hoverV; uint64_t hoverRow = 0;
+    bool hoverAnon = false;              // spoiler-free hides this marker's name in the tooltip (same predicate as the native map)
     float hoverWx = 0.f, hoverWz = 0.f;  // world pos of the hovered marker (for warp diagnostics)
     int hoverArea = -1;                  // the hovered marker's REAL area (mp->raw_area), for warp diagnostics
     // mp != null (base ER) → reuse the native state-aware per-marker draw (grace discovered/undiscovered
@@ -1684,7 +1685,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             float dx = ps.x - vptr.x, dy = ps.y - vptr.y, d = dx * dx + dy * dy;
             const int prio = (cat == kGraceCat) ? 1 : 0;   // graces (drawn on top) win the hover
             if (d < icoHalf * icoHalf * 2.0f && (prio > hoverPrio || (prio == hoverPrio && d < hoverBestD)))
-            { hoverBestD = d; hoverPrio = prio; hoverName = nameId; hoverCat = cat; hoverV = vname ? vname : ""; hoverRow = rowId; hoverDisc = discFlag; hoverWx = wx; hoverWz = wz; hoverArea = mp ? mp->raw_area : -1; }
+            { hoverBestD = d; hoverPrio = prio; hoverName = nameId; hoverCat = cat; hoverV = vname ? vname : ""; hoverRow = rowId; hoverDisc = discFlag; hoverWx = wx; hoverWz = wz; hoverArea = mp ? mp->raw_area : -1; hoverAnon = mp && goblin::worldmap::marker_is_anonymized(*mp); }
         }
     };
     // ── Region-hide gate precompute (A7 interactive region labels) ─────────────────────────────────
@@ -2044,7 +2045,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     if (mdx * mdx + mdy * mdy <= absorbR * absorbR)
                     {
                         hoverBestD = 1e18f; hoverPrio = -1; hoverName = -1; hoverCat = -1;
-                        hoverV.clear(); hoverRow = 0; hoverDisc = 0;
+                        hoverV.clear(); hoverRow = 0; hoverDisc = 0; hoverAnon = false;
                     }
                     dl->AddCircleFilled(c, max_r + icoHalf + 6.0f * uiScale, IM_COL32(18, 22, 30, 150));
                     for (int k = 0; k < n; ++k)
@@ -2062,6 +2063,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                         {
                             hoverBestD = 0.f; hoverPrio = 2; hoverName = m->name_id; hoverCat = m->category;
                             hoverV = ""; hoverRow = m->row_id; hoverDisc = m->discover_flag;
+                            hoverAnon = goblin::worldmap::marker_is_anonymized(*m);
                             hoverWx = m->worldX; hoverWz = m->worldZ; hoverArea = m->raw_area;
                         }
                     }
@@ -2090,6 +2092,10 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         std::string nm = !hoverV.empty() ? hoverV
                          : (hoverName > 0 ? goblin::overlay_api::lookup_text_utf8(hoverName) : std::string());
         const char *clab = hoverCat >= 0 ? goblin::overlay_api::category_label(hoverCat) : nullptr;
+        // Spoiler-free: hide BOTH the item/boss name and the category line (the category can itself be
+        // the identity, e.g. "Rune Pieces"). Same "?" the native map tooltip shows. Graces are never
+        // anonymized (hoverAnon false), so their warp label is unaffected.
+        if (hoverAnon) { nm = "?"; clab = nullptr; }
         if (!nm.empty() || clab || hoverGrace)
         {
             ImGui::BeginTooltip();

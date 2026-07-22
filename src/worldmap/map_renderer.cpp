@@ -484,13 +484,33 @@ unsigned int dim_color(unsigned int abgr)
     return ((unsigned)a << 24) | ((unsigned)b << 16) | ((unsigned)g << 8) | (unsigned)r;
 }
 
-// Spoiler-free coverage: markers whose tooltip/icon reveals a SPECIFIC item. Lot-backed rows
-// (treasure/enemy/EMEVD drops) plus the non-lot Farmable Drops markers (each names its real
-// notable drop). Pieces/kindling/material nodes keep their identity — it is the category.
+// Spoiler-free coverage: markers whose tooltip/icon reveals a SPECIFIC item or named boss.
+// Lot-backed rows (treasure/enemy/EMEVD drops) + the non-lot Farmable Drops markers, PLUS
+// pieces/kindling/material nodes and bosses (user 2026-07-23: hide those names too — a boss's
+// name is itself a spoiler). Bosses still render distinctly (see draw_marker) so a threat reads
+// without naming it.
 static inline bool anonymous_marker(const goblin::worldmap::Marker &m)
 {
-    return m.lot_backed ||
-           m.category == static_cast<int>(goblin::generated::Category::WorldFarmableCollectible);
+    using Cat = goblin::generated::Category;
+    switch (static_cast<Cat>(m.category))
+    {
+    case Cat::WorldFarmableCollectible:
+    case Cat::ReforgedRunePieces:
+    case Cat::ReforgedEmberPieces:
+    case Cat::LootMaterialNodes:
+    case Cat::WorldKindlingSpirits:
+    case Cat::WorldBosses:
+        return true;
+    default:
+        return m.lot_backed;
+    }
+}
+
+// Anonymized markers that must stay visually distinct from generic loot: bosses keep a bigger,
+// red-tinted "?" disc so the map still signals "a boss is here" without leaking which one.
+static inline bool anonymous_is_boss(const goblin::worldmap::Marker &m)
+{
+    return m.category == static_cast<int>(goblin::generated::Category::WorldBosses);
 }
 
 // Is a single loot member collected? Same predicate as marker_done's loot branch (event flag +
@@ -766,14 +786,20 @@ static void draw_marker_impl(ImDrawList *fg, const Marker &m, ImVec2 p, const Ic
     // Collected ones still gray; category gate unchanged.
     if ((*goblin::overlay_api::cfg_anonymousLoot_ptr()) && anonymous_marker(m))
     {
-        float cr = half * 0.5f;
-        const ImU32 fill = done ? IM_COL32(120, 120, 120, 120) : IM_COL32(155, 155, 160, 215);
+        // Bosses stay distinguishable when anonymized: a bigger red-tinted "?" disc reads as a
+        // threat without naming it; regular loot/entities get the neutral gray "?" (user 2026-07-23).
+        const bool boss = anonymous_is_boss(m);
+        const float cr = half * (boss ? 0.8f : 0.5f);
+        const ImU32 fill = boss ? (done ? IM_COL32(120, 70, 70, 130) : IM_COL32(205, 70, 70, 225))
+                                : (done ? IM_COL32(120, 120, 120, 120) : IM_COL32(155, 155, 160, 215));
         fg->AddCircleFilled(p, cr, fill);
-        fg->AddCircle(p, cr, IM_COL32(0, 0, 0, done ? 120 : 220), 0, 1.5f);
+        fg->AddCircle(p, cr, IM_COL32(0, 0, 0, done ? 120 : (boss ? 235 : 220)), 0, boss ? 2.0f : 1.5f);
         const char *q = "?";
         ImVec2 ts = ImGui::CalcTextSize(q);
         fg->AddText(ImVec2(p.x - ts.x * 0.5f, p.y - ts.y * 0.5f),
-                    IM_COL32(25, 25, 30, done ? 150 : 255), q);
+                    IM_COL32(boss ? 250 : 25, boss ? 245 : 25, boss ? 245 : 30, done ? 150 : 255), q);
+        if (cleared)
+            draw_check(fg, p, half);
         return;
     }
     const bool red = !done && redify_boss(m);
@@ -1713,6 +1739,10 @@ bool inworld_hovered() { return s_inworld_hot; }
 // Exported wrapper over the file-local marker_done (which lives in the anon namespace above, reachable
 // here in the same TU). Lets the vmap spiderfy drop collected/cleared members from a fan.
 bool marker_is_done(const Marker &m) { bool co = false; return marker_done(m, co); }
+bool marker_is_anonymized(const Marker &m)
+{
+    return (*goblin::overlay_api::cfg_anonymousLoot_ptr()) && anonymous_marker(m);
+}
 
 // Region on/off toggle — shared read/set so the Virtual World Map's region labels drive the SAME
 // g_region_on flags the native chips do (sync + config::regionToggles persistence). Both seed the

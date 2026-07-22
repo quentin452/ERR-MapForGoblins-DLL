@@ -24,6 +24,11 @@ void draw_marker_glyph(ImDrawList *dl, const Marker &m, float px, float py, void
 // from a fan (they'd otherwise be blank slots: draw_marker_glyph hides them) → smaller, action-only fans.
 bool marker_is_done(const Marker &m);
 
+// True when spoiler-free mode (anonymousLoot) is ON and this marker hides its identity. SSOT for the
+// spoiler predicate — the native draw/tooltip and the virtual-map tooltip all call this so they agree
+// on exactly which markers are anonymized (loot, pieces/kindling, farmables, bosses).
+bool marker_is_anonymized(const Marker &m);
+
 // Draw all visible layers' markers for the currently open map page. Call once per
 // frame the overlay builds (from the Present hook). Must run inside an ImGui frame.
 // atlas_texture = the category-icon atlas's ImGui texture id (GPU descriptor handle),
