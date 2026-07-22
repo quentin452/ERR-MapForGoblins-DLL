@@ -497,9 +497,13 @@ int extract_region_log(float wminx, float wmaxx, float wminz, float wmaxz)
         {
             if (m.worldX < wminx || m.worldX > wmaxx || m.worldZ < wminz || m.worldZ > wmaxz) continue;
             const bool o0 = (m.worldX == 0.0f && m.worldZ == 0.0f);
+            // Real ER markers sit thousands of units from origin; anything within ~200u is almost certainly
+            // a projection FAILURE dumped near (0,0) — the actual "off-map" case the crude origin0/OOB test
+            // missed (user 2026-07-23: selected off-map markers all logged "ok").
+            const bool near0 = !o0 && (m.worldX > -200.f && m.worldX < 200.f && m.worldZ > -200.f && m.worldZ < 200.f);
             const bool oob = (m.worldX < -40000.f || m.worldX > 40000.f || m.worldZ < -40000.f || m.worldZ > 40000.f);
-            const char *flag = o0 ? "origin0" : (oob ? "OOB" : "ok");
-            if (o0 || oob) ++off;
+            const char *flag = o0 ? "origin0" : (oob ? "OOB" : (near0 ? "near0" : "ok"));
+            if (o0 || oob || near0) ++off;
             spdlog::info("[VMEXTRACT] {},{},{},{},{},{:.1f},{:.1f},{}",
                          flag, m.group, m.category, m.srcArea, m.raw_area, m.worldX, m.worldZ, m.name_id);
             ++n;
