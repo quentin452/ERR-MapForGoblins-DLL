@@ -36,7 +36,8 @@ SSOT predicate = `goblin::worldmap::marker_is_anonymized(m)` (`map_renderer.hpp/
 - **AGGRESSIVE "blackout"**: `!m.discover_flag` — EVERY marker except graces → "?" (`discover_flag` is
   grace-only; graces stay named/warpable). Positions only; for a blind randomizer run.
 - Bosses stay distinguishable in aggressive: `draw_marker`'s anon branch draws a **bigger, red-tinted
-  "?" disc** for `anonymous_is_boss(m)` (WorldBosses), neutral gray "?" for everything else.
+  "?" disc** for `anonymous_is_boss(m)` (WorldBosses); **NPCs/merchants** (`anonymous_is_npc`:
+  WorldHostileNPC/WorldQuestNPC/WorldMerchant) get a **blue "?"**; everything else neutral gray "?".
 - **Virtual-map tooltip fix (ask 2):** the vmap builds its OWN tooltip (`panel_virtual_map.cpp` ~2090)
   and used to bypass the spoiler check → leaked the real name on hover. Now it captures
   `hoverAnon = marker_is_anonymized(*m)` at each hover site and shows "?" (name + category line both
@@ -55,10 +56,30 @@ param (`marker_quadtree.hpp`).
 honored on the vmap (position-only quadtree; native map only). `enableClustering` defaults **false**,
 so the vmap now shows all markers individually until grouping is turned on.
 
+## 4 · vmap dev-tool gating + marker extractor + gamepad (2026-07-23)
+
+- **Dev-tool gating:** the vmap toolbar's dev/calibration buttons (Sample terrain, Load ER map tiles,
+  Resident cells, Clear/Flip, warp offset) are wrapped in `if (*cfg_debugLogging_ptr())` in
+  `panel_virtual_map.cpp` — hidden unless Verbose logging is on. **Baked-only** diag moved from
+  `panel_settings.cpp` (Display tab) to `panel_dev_tools.cpp` `draw_dev_tools_danger` (Dev tab).
+- **Marker extractor** (`panel_virtual_map.cpp`): dev-gated "Extract region" toggle (`s_extract_mode`);
+  left-drag draws a box (suspends pan), on release `extract_region_log(wmin/wmax…)` logs every marker
+  inside via `spdlog` `[VMEXTRACT]` with a crude off-map flag (origin0 / OOB>40000 / ok). Reuses the
+  `dump_markers_csv` columns + `offmap_probe` crude test. Rect→world via `s2w` on the two corners.
+- **Gamepad #2:** the pad IS wired + fed — `ImGui_ImplWin32_NewFrame` (`goblin_overlay.cpp:1709`) calls
+  `UpdateGamepads`, which polls XInput (our hook returns real data for in-module callers) and feeds
+  `ImGuiKey_Gamepad*`. The vmap reads those. Bug was runtime fragility: pad-mode exited on ANY mouse
+  delta (Wine/Proton cursor micro-jitter killed it each frame) and only armed on analog. Fix: arm on a
+  face-button too, exit only on >2px mouse move. A **gamepad diagnostic readout** (HasGamepad + raw
+  analog/buttons) was added to the **Dev** tab (`panel_dev_tools.cpp`) to confirm live what ImGui gets.
+  Custom-marker placement via pad = **X/□** (`pad_place`, gated `pad_over_canvas && active_world==0`).
+
 ## Verify
 
-Built green in BOTH `build-linux` and `build-linux-hotreload` (host + `goblin_overlay_render`).
-**Live in-game verification still pending** (game was down at implementation): check POI/Services
-sections + toggles, boss/piece/kindling "?" on the vmap tooltip, and grouping on/off + size.
+Built green in BOTH `build-linux` and `build-linux-hotreload` (host + `goblin_overlay_render`) at each
+commit. **Live in-game verification pending** (game down at implementation): POI/Services sections +
+toggles; boss(red)/npc(blue)/piece/kindling "?" on the vmap tooltip; grouping on/off + size; dev
+buttons hidden without Verbose logging; extract box → `[VMEXTRACT]` lines; and the **gamepad** — read
+the Dev-tab readout first (HasGamepad? analog move?) to localize the "pad doesn't work in vmap" report.
 
 See [overlay-rendered-markers](overlay-rendered-markers.md) for the marker/draw pipeline.

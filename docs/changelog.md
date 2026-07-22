@@ -32,17 +32,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
   enemy drops + farmables; bosses, pieces, kindling and landmarks keep their names) and **Aggressive**
   (a full "blackout" for blind randomizer runs — every marker except graces shows "?", positions only).
   Bosses stay distinguishable in aggressive: an anonymized boss draws a bigger red-tinted "?" disc so a
-  threat still reads without naming it. New INI `anonymous_loot_aggressive`; radio in F1 settings.
+  threat still reads without naming it. NPCs/merchants get a **blue "?"** (vs gray loot). New INI
+  `anonymous_loot_aggressive`; radio in F1 settings.
+- Virtual World Map **marker extractor** (dev): toggle "Extract region", left-drag a box on the map, and
+  every marker inside is logged (`[VMEXTRACT]` in `logs/MapForGoblins.log`) with an off-map flag
+  (origin0 / OOB / ok) — a debug aid for markers that land off the map artwork.
 - 3D greybox render (objects.toml) now projects correctly end-to-end: the mod reads the game's REAL
   camera (position/orientation pose + live FOV/aspect lens) through a static, scan-free chain, plus
   an exact per-frame rebase origin — TOML-defined boxes draw at their world positions with correct
   perspective. (`objects render on` to enable; the previous camera read was the player's own pose,
   which put every box off-position.)
 
+### Changed
+
+- Virtual World Map **dev/calibration buttons** (Sample terrain, Load ER map tiles, Resident cells,
+  Clear/Flip, warp offset) are now hidden unless **Verbose logging** is on — RE tools, not map features.
+  **Baked-only** diag moved from the Display tab to the **Dev** tab.
+
 ### Fixed
 
 - Spoiler-free mode: the **Virtual World Map tooltip** was still leaking the real item/boss name on
   hover (it built its own tooltip, bypassing the spoiler check). It now shows "?" like the native map.
+- Virtual World Map **gamepad** pad-mode was fragile — it exited on any cursor delta (Wine/Proton micro-
+  jitter killed it every frame) and only armed on stick/trigger. Now it arms on a face-button press too
+  and only exits on a real (>2px) mouse move. A gamepad diagnostic readout was added to the Dev tab.
 - Marker grouping: the **"Enable clustering" toggle + "Cluster size"** now control the Virtual World
   Map. It previously had an always-on zoom-based clustering that ignored the setting — grouping off now
   really shows every marker, and the size threshold gates how many markers a pile needs.
