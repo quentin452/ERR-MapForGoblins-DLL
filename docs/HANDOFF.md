@@ -3,6 +3,50 @@
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
 
+## ⇒ 2026-07-23 (Linux) — ★ marker-UX batch SHIPPED + deployed; 2 items queued for next session
+
+Deployed `MapForGoblins.dll` → `/home/iamacat/Games/ERRv2.2.9.6/dll/offline/` (md5 `fe3464c2`, == HEAD
+code; needs a game **restart**, single-DLL build, no hot-reload). Both builds green at every commit.
+Full detail: [marker-sections-spoiler-clustering](memory/features/marker-sections-spoiler-clustering.md)
++ changelog `[Unreleased]`.
+
+**Shipped this session** (all committed on `master`, NOT pushed):
+- Marker sections split World → **World / POI / Services** (data-driven `data/categories.json`).
+- Spoiler-free **two levels** (`anonymous_loot_aggressive`): light (loot only) / aggressive blackout;
+  aggressive "?" **colour-coded by type** (boss=red/npc=blue/POI=green/service=amber/item=gray) with a
+  matching **tooltip type label** (SSOT `AnonKind` in `map_renderer`). vmap tooltip spoiler leak fixed.
+- vmap **clustering** now obeys the manual `enableClustering` + `clusterThreshold` (was always-on zoom-LOD).
+- vmap **dev tools gated** behind Verbose logging; Baked-only moved to Dev tab; **gamepad diagnostic**
+  readout added to Dev tab.
+- vmap **marker extractor** (`Extract region` dev button → `[VMEXTRACT]` log, `near0`/`origin0`/`OOB` flag).
+- **gamepad** pad-mode robustness (arm on button, exit only on >2px mouse move — Wine jitter fix).
+
+**★ NEXT SESSION — start here (cold-start actionable):**
+1. **Godrick vs Godfrey search highlight.** REFINED symptom (user 2026-07-23): the search RESULT LIST is
+   correct (only Godrick), but the on-map **highlight rings BOTH** Godrick and Godfrey/Godefroy. Highlight
+   = `search_hit(m)` = `s_match.count(m.name_id)` (`map_renderer.cpp` ~1801) and the search inserts
+   `name_id`s. Hypothesis: the two boss markers **share one `name_id`** (Godefroy the Grafted is a Godrick
+   clone) → matching Godrick's name rings both. FIRST STEP: with the game up, extract/hover both markers
+   and compare their resolved `name_id` (the vmap tooltip / `[VMEXTRACT]` dump both show `name_id`). If
+   identical → key the highlight on `row_id` (unique) instead of `name_id`, OR accept as a data collision.
+   Search predicate itself is CORRECT (all-tokens substring on loc+en; `panel_util.cpp:89`).
+2. **`data/dungeon_to_world.json` → runtime dungeon projection.** User suspects the static anchor JSON
+   should be replaced by the RUNTIME dungeon projection (likely already exists via
+   `worldmap_probe::project` / the engine converter) but the JSON is still used. Investigate: why is the
+   static table still the path? Can the live projection cover ALL dungeon areas (mod-agnostic)? This
+   directly unblocks the **off-map area-45** bug — ERR area 45 is missing from the JSON (anchors only for
+   10/11/12/14/16/30/31/32/34/39), so its markers pile at origin. See
+   [offmap-area45-missing-anchor](memory/bugs/offmap-area45-missing-anchor.md). TEST FIRST: open the ER
+   map + move → does live projection place area 45? If yes, the JSON is just a stale fallback to retire.
+
+**Pending live re-tests from this session (quick, when the game is up):**
+- gamepad: read the Dev-tab readout (`HasGamepad` + analog) to confirm the pad reaches ImGui; re-test the
+  vmap hover tooltip in pad-mode (suspected already fixed by the jitter change).
+- anon "?" colour "changes with Y" report: hover a "?" — if the SAME marker's type label flips with Y it's
+  real corruption (suspect stacked/cluster rep); else it's the per-category colouring working. Colour has
+  no altitude input (ruled out in code).
+- `near0` off-map flag: CONFIRMED working (user log: 4/4 area-45 markers flagged `near0`).
+
 ## ⇒ 2026-07-08 (Windows) — ★ bloodstain read SOLVED in Ghidra + ✅ LIVE-VERIFIED same night: offsets were RIGHT, the souls>0 GATE was wrong (0-rune stains)
 
 - **Root cause (static RE, no boot needed):** a 0-rune death leaves a REAL engine bloodstain
