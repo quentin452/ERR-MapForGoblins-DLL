@@ -1469,8 +1469,15 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         float zoomAx = an(ImGuiKey_GamepadR2) - an(ImGuiKey_GamepadL2);
         if (zoomAx < 0.12f && zoomAx > -0.12f) zoomAx = 0.0f;
 
-        if (lsx || lsy || rsx || rsy || zoomAx) s_pad_mode = true;
-        if (io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f) s_pad_mode = false;   // real mouse → exit pad-mode
+        // Enter pad-mode on ANY stick/trigger OR a face-button press — a pad that feeds buttons but little
+        // analog (or a user who presses X to place a marker before nudging a stick) still activates it.
+        const bool pad_btn = ImGui::IsKeyDown(ImGuiKey_GamepadFaceUp) || ImGui::IsKeyDown(ImGuiKey_GamepadFaceLeft) ||
+                             ImGui::IsKeyDown(ImGuiKey_GamepadFaceDown) || ImGui::IsKeyDown(ImGuiKey_GamepadFaceRight);
+        if (lsx || lsy || rsx || rsy || zoomAx || pad_btn) s_pad_mode = true;
+        // Exit only on a REAL mouse move — Wine/Proton can micro-jitter the cursor every frame, which used to
+        // kill pad-mode instantly (suspected cause of "pad doesn't work in vmap", user 2026-07-23).
+        if (io.MouseDelta.x > 2.0f || io.MouseDelta.x < -2.0f || io.MouseDelta.y > 2.0f || io.MouseDelta.y < -2.0f)
+            s_pad_mode = false;
         goblin::overlay_api::set_vmap_pad_mode(s_pad_mode);  // host reads this to hide/show the mouse cursor
         if (!s_pad_cursor_init) { s_pad_cursor = center; s_pad_cursor_init = true; }
 
