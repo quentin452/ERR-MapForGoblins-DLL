@@ -1,139 +1,125 @@
-# ELDEN RING Map For Goblins - DLL
+# ELDEN RING Map For Goblins — DLL
 
-A DLL mod for Elden Ring that adds thousands of icons to the world map: weapons, armor, spells, quest items, bosses, NPCs, gathering nodes, etc. Four builds: one for [ERR](https://www.nexusmods.com/eldenring/mods/541) (~9000 icons, including ERR-specific content like Rune Pieces), one for the vanilla game + Shadow of the Erdtree (~6700 icons), one for [The Convergence](https://www.nexusmods.com/eldenring/mods/3419) (~7200 icons generated from the overhaul's own data), and one for [ERTE](https://www.nexusmods.com/eldenring/mods/2747) (~7600 icons generated from the overhaul's own data).
+A DLL mod for Elden Ring that overlays the world map (and a minimap) with thousands of markers —
+weapons, armor, spells, quest items, bosses, NPCs, merchants, graces, gathering nodes, landmarks and
+more — plus its own draggable/zoomable **Virtual World Map**, marker search, click-to-warp, and a
+spoiler-free mode.
 
-**Download:** [Nexus Mods](https://www.nexusmods.com/eldenring/mods/10062) · **Community:** [Elden Ring - DLL Mods Discord](https://discord.gg/JvTMwPCygB)
+**Mod-agnostic:** it works on **any** Elden Ring setup — vanilla, [ELDEN RING Reforged](https://www.nexusmods.com/eldenring/mods/541),
+[The Convergence](https://www.nexusmods.com/eldenring/mods/3419), [ERTE](https://www.nexusmods.com/eldenring/mods/2747),
+or your own mods — because it reads the marker data **live from the active install at runtime** (MSB
+layouts, `regulation.bin` params, EMEVD, FMG text, and Oodle-decompressed game assets). Nothing is baked
+per-mod: whatever the loaded game exposes is what you see, in the game's own language. Mod-specific extras
+(e.g. ERR's Rune/Ember Pieces and custom map icons) light up automatically when that mod is detected and
+stay disabled otherwise.
 
-Unlike [Map for Goblins](https://www.nexusmods.com/eldenring/mods/3091), this mod does not modify `regulation.bin`. All map point data is injected into memory at runtime, so it won't conflict with other regulation edits.
+**Download:** [Nexus Mods](https://www.nexusmods.com/eldenring/mods/10062) · **Community:** [Elden Ring — DLL Mods Discord](https://discord.gg/JvTMwPCygB)
 
-> **Note:** OFFLINE only. This is an unofficial mod, not affiliated with the ERR team, the Convergence Team, or the ERTE author.
+Unlike [Map for Goblins](https://www.nexusmods.com/eldenring/mods/3091), this mod does **not** modify
+`regulation.bin`. All map data is injected into memory at runtime, so it won't conflict with other
+regulation edits.
 
-Collected Rune Pieces, Ember Pieces and gathering nodes are automatically hidden on the map using real-time memory detection of the game's geometry object state.
+> **Note:** OFFLINE only. Unofficial mod, not affiliated with FromSoftware, the ERR team, the Convergence
+> Team, or the ERTE author.
 
 ## Features
 
-- ~9000 map icons across 60+ toggleable categories (configurable via INI)
-- Map text sourced from existing in-game FMG entries (all 14 languages) via a MsgRepository hook — each marker redirects to a goods/weapon/armour/etc. name by ID, so translations come for free
-- Collected Rune/Ember Piece detection: GEOF singletons for unloaded tiles + CSWorldGeomMan flags for loaded tiles
-- [Item & Enemy Randomizer](https://www.nexusmods.com/eldenring/mods/428) support (vanilla build, on by default): loot markers read the loaded `ItemLotParam` from live memory at startup, so each shows the item actually placed by your seed (name + icon) and hides on the real light-point pickup — seed-agnostic, no per-seed data
-- Spoiler-free mode (`anonymous_loot` INI option): every loot marker shows a gray "?" icon and a generic localized label instead of the real item, for blind / randomizer runs
-- No regulation.bin changes - no conflicts with other mods
-- Addon-compatible folder structure for ERR
+### Map & markers
+- **Thousands of world-map markers** across 60+ toggleable categories — the exact set depends on the
+  loaded game/mod (read at runtime, not a fixed bake).
+- **Marker sections** — the categories are grouped into **World** (collectibles: maps, paintings, imp
+  statues, kindling, interactables), **POI** (discovery landmarks: churches, ruins, forts, castles,
+  dungeons, towers, evergaols…), and **Services** (graces, merchants, elevators, lifts, smithing,
+  summoning pools). Each section has its own visibility toggle.
+- **Virtual World Map** — a draggable, zoomable map surface with **click-to-warp** to graces, marker
+  **clustering** (with spiderfy to fan out a hovered pile), and constant-size pins across zoom levels.
+- **Minimap HUD** — a corner minimap in normal gameplay with the same markers, quest-NPC pins, boss
+  symbols, and your death marker.
+- **Marker text from the game's own files** — each marker redirects to a goods/weapon/armour/etc. name
+  by ID through a MsgRepository (FMG) hook, so labels are correct and translated for free (all 14 game
+  languages).
 
-## Building
+### Smart data
+- **Merchant pins** are joined at runtime from the game's ESD talk scripts × MSB enemy placements —
+  fully mod-agnostic, no bundled merchant table. Item search shows "sold by &lt;Merchant&gt;" attribution.
+- **[Item & Enemy Randomizer](https://www.nexusmods.com/eldenring/mods/428) support** — loot markers read
+  the loaded `ItemLotParam` from live memory, so each shows the item your seed actually placed (name +
+  icon) and hides on the real pickup. Seed-agnostic, no per-seed data.
+- **Collected-pickup detection** — collected Rune/Ember Pieces and gathering nodes are hidden
+  automatically via real-time detection of the game's geometry-object state (GEOF singletons for unloaded
+  tiles + CSWorldGeomMan flags for loaded tiles).
 
-One toolchain everywhere: **clang-cl + lld-link + ninja** against an
-[xwin](https://github.com/Jake-Shadle/xwin)-splatted MSVC CRT/SDK — no Visual
-Studio. Identical sources produce byte-identical DLLs (`/Brepro`), and every
-build emits a matching `MapForGoblins.pdb` for crash symbolication
-(`tools/resolve_crash.py`).
-
-Requirements (Windows):
-- LLVM (clang-cl, lld-link, llvm-rc) — e.g. `scoop install llvm`
-- ninja, CMake 3.28+
-- an xwin splat of the MSVC CRT + Windows SDK
-  (`xwin --accept-license --arch x86_64 splat --output <dir>`)
-- Internet connection (CMake fetches dependencies on first configure)
-
-Tool locations are env-overridable: `MFG_LLVM_BIN`, `MFG_NINJA`, `MFG_CMAKE`,
-`MFG_XWIN` (see the defaults at the top of `build.bat`).
-
-```bash
-build.bat              # configure + build
-build.bat snapshot     # run the full data pipeline + build + package into pre-release/
-build.bat release      # same as snapshot, but non-pre version + bumps patch version
-build.bat generate     # run the data pipeline only (no DLL build)
-build.bat clean        # delete build directory
-```
-
-Every command builds the ERR profile by default. Append `--vanilla`,
-`--convergence`, or `--erte` to build the other profiles (own data/source/build/
-package dirs; see `tools/config.ini.example` for the required paths). The
-Convergence and ERTE profiles stage a merged overlay-over-vanilla source view
-first, since those overhauls ship a partial ModEngine overlay.
-
-Output: `build-err/MapForGoblins.dll` (+ `.pdb`) + a generated `MapForGoblins.ini`
-
-The same toolchain cross-builds from Linux (same `clang-cl-xwin.cmake`):
-
-```bash
-cmake -B build-linux -G Ninja -DCMAKE_TOOLCHAIN_FILE=clang-cl-xwin.cmake \
-      -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-ninja -C build-linux MapForGoblins
-```
+### UX
+- **F1 overlay panel** (ImGui) — category toggles, search, settings; usable with keyboard/mouse **or
+  gamepad** (stick/trigger/face-button navigation).
+- **Spoiler-free mode**, two levels — **Light** (hides only randomized loot; bosses/landmarks keep names)
+  and **Aggressive** (full blackout for blind runs: every marker but graces shows a colour-coded "?").
+- **Item search + locate** — find a marker by name and jump the map to it.
+- **Multi-language overlay UI** (`assets/lang/*.txt`).
 
 ## Installation
 
-Grab a packaged release from [Nexus Mods](https://www.nexusmods.com/eldenring/mods/10062) — it has step-by-step instructions for all four builds (ERR; vanilla via ModEngine2/me3; The Convergence via its bundled ModEngine2; ERTE via Mod Engine 3).
+Grab a packaged release from the [GitHub Releases](https://github.com/quentin452/ERR-MapForGoblins-DLL/releases)
+or [Nexus Mods](https://www.nexusmods.com/eldenring/mods/10062).
 
-Manual install of the ERR build:
-1. Copy `MapForGoblins.dll` and `MapForGoblins.ini` to your ERR `dll/offline/` directory
-2. Copy `addons/MapForGoblins/menu/02_120_worldmap.gfx` to ERR `addons/MapForGoblins/menu/`
-All map data is compiled into the DLL itself - no external data files needed at runtime.
+The mod is a single `MapForGoblins.dll`. Manual install (ERR layout):
+1. Copy `MapForGoblins.dll`, the generated `MapForGoblins.ini`, and the `lang/` folder to your ERR
+   `dll/offline/` directory.
+2. Copy `menu/02_120_worldmap.gfx` to `addons/MapForGoblins/menu/`.
 
-## Data Pipeline
+For vanilla / Convergence / ERTE, the release ships the same DLL under a `MapForGoblins/` folder for
+ModEngine2 / me3 — see the release notes / Nexus page for the per-loader steps. No external data files are
+needed at runtime; markers come from the live game.
 
-The mod's map data is generated from ERR game files through a Python pipeline
-orchestrated by `tools/build_pipeline.py` (18 stages, hash-based incremental cache):
+## Building
 
-```
-MSB + regulation.bin + EMEVD
-    │
-    ├─► extract_all_items.py        → items_database.json
-    ├─► build_entity_index.py       → msb_entity_index.json
-    ├─► scan_emevd_awards.py        → emevd_lot_mapping.json
-    ├─► enrich_fallback_with_emevd.py (upgrades unmatched records in-place)
-    │
-    ├─► generate_loot_massedit.py   → 50+ Loot/Equipment/Key/Quest/Magic MASSEDIT
-    ├─► generate_pieces_massedit.py → Rune/Ember MASSEDIT + slot mappings
-    ├─► generate_material_nodes.py, generate_graces.py, generate_summoning_pools.py,
-    │   generate_spirit_springs.py, generate_imp_statues.py, generate_stakes.py,
-    │   generate_paintings.py, generate_maps.py, generate_gestures.py,
-    │   generate_hostile_npcs.py    → world-infrastructure MASSEDIT
-    │
-    └─► generate_data.py → goblin_map_data.cpp (no-bake stub)
-                              │
-                              └─► build.bat → MapForGoblins.dll
-```
-
-### Python Setup
+The mod cross-builds to a Windows DLL with `clang-cl` (not MSVC), from **Windows or Linux**.
 
 ```bash
-pip install -r requirements.txt
-cp tools/config.ini.example tools/config.ini
-# Edit config.ini with paths to your ERR mod and game directories
+# Configure (once, or after CMakeLists changes)
+cmake -B build-linux -G Ninja -DCMAKE_TOOLCHAIN_FILE=clang-cl-xwin.cmake \
+      -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+# Build the single shipped DLL
+ninja -C build-linux MapForGoblins
 ```
 
-See [tools/README.md](tools/README.md) for detailed script documentation.
+On Windows, `build.bat` wraps the same toolchain and can package a release; append `--vanilla`,
+`--convergence`, or `--erte` to produce the other package layouts (same DLL, different worldmap GFX +
+runtime-gated ERR config). See `build.bat` for the packaging targets.
 
-## Project Structure
+> The map markers are read at runtime from the active install, so a build does **not** bake per-mod data.
+> The bundled Python tools (`tools/`) handle game-data **extraction** and support assets; the embedded
+> icon atlas is a transitional fallback used only until a live icon resolves (the plain circle is the
+> universal fallback). See `docs/plans/baked_data_full_removal_plan.md` for the no-bake direction.
+
+An optional **hot-reload** dev split (`goblin_overlay_render.dll`) exists behind
+`-DGOBLIN_OVERLAY_HOTRELOAD=ON` for iterating on the draw layer without a restart; the default single-DLL
+build is the shipped one.
+
+## Project structure
 
 ```
 MapForGoblins/
-├── src/                    C++ DLL source code
-│   ├── generated/          Auto-generated data (from Python pipeline)
-│   ├── from/               Game engine structures (params, paramdefs)
-│   └── goblin/             Mod-specific headers (structs, flags, tiles)
-├── data/
-│   ├── massedit_generated/ MASSEDIT files (auto-generated map icon definitions)
-│   └── *.json, *.csv       Extracted game data (items, entity index, EMEVD map, ...)
-├── tools/                  Python scripts (extraction, generation, analysis)
-│   ├── lib/                Andre.SoulsFormats.dll + dependencies
-│   ├── paramdefs/          Elden Ring param field definitions (XML)
-│   └── fmg_patcher/        C++ tool for FMG binary patching
-├── assets/                 Modified game assets (worldmap GFX)
-├── docs/                   Technical documentation
-│   └── geom_collection_tracking.md  Geom object collection detection
-├── CMakeLists.txt
-├── build.bat
-├── MapForGoblins.ini       DLL configuration (icon category toggles)
-└── requirements.txt        Python dependencies
+├── src/
+│   ├── worldmap/          runtime marker build (build_disk_*), map render, dvdbnd/Oodle disk reader
+│   ├── overlay_panel/     F1 ImGui panel (search, settings, virtual map, clustering)
+│   ├── input/             cursor / raw-input / wndproc hooks
+│   ├── generated_shared/  embedded fallback icon atlas
+│   └── *.cpp              hooks, config, param scan, collected-state detection, warp, crash/watchdogs
+├── data/                  category definitions (categories.json) + extracted support data
+├── tools/                 Python extraction/build helpers + mfg.py RPC driver + rpc_tests/
+├── assets/                worldmap GFX + lang/*.txt
+├── docs/                  memory/ (project knowledge), plans/, re/ (reverse-engineering), changelog.md
+├── CMakeLists.txt · build.bat · clang-cl-xwin.cmake
+└── requirements.txt
 ```
 
 ## Documentation
 
-- [Geom Collection Tracking](docs/geom_collection_tracking.md) - how collected Rune Pieces are detected from process memory
-- [Tools README](tools/README.md) - Python script documentation and usage
+- [Changelog](docs/changelog.md) — feature/change/fix history per release.
+- `docs/memory/` — project knowledge base (features, bugs, tooling, process). Start at
+  `docs/memory/common.md`.
+- [Tools README](tools/README.md) — Python script + RPC-driver documentation.
 
 ## Credits
 
@@ -145,8 +131,8 @@ This project builds on the work of many people and projects:
 - **Elden Ring Reforged** team - the overhaul mod that inspired this project. Thanks to [**ividyon**](https://github.com/ividyon) and the ERR Discord
 - **Gacsam** - [Goblin-ERR](https://github.com/Gacsam/Goblin-ERR), the original map icons mod for ERR. MapForGoblins started as a fork of this project and reuses its map fragment logic
 - **Harmonixer** - [Map for Goblins](https://www.nexusmods.com/eldenring/mods/3091), the original Elden Ring map icons mod that started it all
-- **Convergence Team** - [The Convergence](https://www.nexusmods.com/eldenring/mods/3419), the overhaul the Convergence build targets
-- **ERTE author** - [ERTE](https://www.nexusmods.com/eldenring/mods/2747), the overhaul the ERTE build targets
+- **Convergence Team** - [The Convergence](https://www.nexusmods.com/eldenring/mods/3419), one of the overhauls the mod supports
+- **ERTE author** - [ERTE](https://www.nexusmods.com/eldenring/mods/2747), one of the overhauls the mod supports
 
 ### Libraries & Tools
 
