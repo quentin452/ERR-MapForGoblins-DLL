@@ -22,22 +22,22 @@ Full detail: [marker-sections-spoiler-clustering](memory/features/marker-section
 - **gamepad** pad-mode robustness (arm on button, exit only on >2px mouse move — Wine jitter fix).
 
 **★ NEXT SESSION — start here (cold-start actionable):**
-1. **Godrick vs Godfrey search highlight.** REFINED symptom (user 2026-07-23): the search RESULT LIST is
-   correct (only Godrick), but the on-map **highlight rings BOTH** Godrick and Godfrey/Godefroy. Highlight
-   = `search_hit(m)` = `s_match.count(m.name_id)` (`map_renderer.cpp` ~1801) and the search inserts
-   `name_id`s. Hypothesis: the two boss markers **share one `name_id`** (Godefroy the Grafted is a Godrick
-   clone) → matching Godrick's name rings both. FIRST STEP: with the game up, extract/hover both markers
-   and compare their resolved `name_id` (the vmap tooltip / `[VMEXTRACT]` dump both show `name_id`). If
-   identical → key the highlight on `row_id` (unique) instead of `name_id`, OR accept as a data collision.
-   Search predicate itself is CORRECT (all-tokens substring on loc+en; `panel_util.cpp:89`).
-2. **`data/dungeon_to_world.json` → runtime dungeon projection.** User suspects the static anchor JSON
-   should be replaced by the RUNTIME dungeon projection (likely already exists via
-   `worldmap_probe::project` / the engine converter) but the JSON is still used. Investigate: why is the
-   static table still the path? Can the live projection cover ALL dungeon areas (mod-agnostic)? This
-   directly unblocks the **off-map area-45** bug — ERR area 45 is missing from the JSON (anchors only for
-   10/11/12/14/16/30/31/32/34/39), so its markers pile at origin. See
-   [offmap-area45-missing-anchor](memory/bugs/offmap-area45-missing-anchor.md). TEST FIRST: open the ER
-   map + move → does live projection place area 45? If yes, the JSON is just a stale fallback to retire.
+1. ~~**Godrick vs Godfrey search highlight.**~~ **DONE 2026-07-23** (`28ab8368`, live-verified). Was NOT
+   a shared `name_id` — a DUPLICATE Godrick boss marker at Godefroy's evergaol. Godefroy reuses Godrick's
+   chr model (`c4750`) with a blank NpcParam.nameId, so tier-2 (bestiary codex by MODEL) named the
+   Godefroy enemy "Godrick the Grafted"; the boss enemy-supplement then stamped a 2nd Godrick on the gaol
+   tile. Fixed with a **native-cell guard** in `build_live_bosses` (don't supplement a boss onto a tile a
+   different-named native boss already owns). Diagnosed with the new **`vmap ename`** probe verb
+   (`d9b6f0e2`) — enemy npcParam/model/resolved-name+TIER dump. `vmap find Godrick` = 11 (was 12).
+2. **Off-map area-45 → mod-agnostic dungeon-entrance anchor.** DIAGNOSED + PLAN SCOPED 2026-07-23. The
+   runtime already uses the LIVE projection (`legacy_fold`/`WorldMapLegacyConvParam`); `dungeon_to_world.json`
+   is offline-only (never read at runtime). Area 45 piles because ERR's `WorldMapLegacyConvParam` has no
+   conv row for it — confirmed live (`proj`, `vmap find 900301540`: area 34/35/42/43 project via fold
+   chains, area 45 does not). No param field links overworld→dungeon-area (WorldMapPointParam has no target
+   field; EMEVD portal parse drops the dest map), so the fix is a real feature, not a wiring tweak. **START
+   HERE:** [dungeon_entrance_fallback_anchor_plan.md](plans/dungeon_entrance_fallback_anchor_plan.md) — do
+   the **RE probe first** (derive a known catacomb's entrance from its warp, validate == its `ConvRow.dst`).
+   Corrected root-cause doc: [offmap-area45-missing-anchor](memory/bugs/offmap-area45-missing-anchor.md).
 
 **Pending live re-tests from this session (quick, when the game is up):**
 - gamepad: read the Dev-tab readout (`HasGamepad` + analog) to confirm the pad reaches ImGui; re-test the
