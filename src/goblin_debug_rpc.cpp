@@ -1642,6 +1642,10 @@ namespace goblin::debug_rpc
             // so a stale DLL is detectable: `ping` answers even from an OLD DLL (the listener lives), but
             // mfg_build reveals the actual build. Check this BEFORE RPC-verifying new code — a rebuild
             // needs a game RESTART/hot-reload to load (a redeploy alone keeps the old DLL resident).
+            // ⚠ FALSE-STALE: this stamp is ONE TU. If your change touched only OTHER TUs and the build
+            // merely relinked, __TIME__ here stays frozen — mfg_build then reports an old time while the
+            // DLL is actually fresh. Reliable only when your edit hit this file; else verify by behaviour
+            // or by /proc/<pid>/maps identity (see mfg-rpc-driver-hardening.md).
             if (cmd == "mfg_build")
                 return std::string("ok mfg_build built=") + __DATE__ + " " + __TIME__;
             // er_base — absolute base of eldenring.exe, so a Python RPM client can turn er+RVA

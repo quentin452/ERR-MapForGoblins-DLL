@@ -45,6 +45,14 @@ Mandatory pattern for every RPC driver / background validation script:
      from your latest build, the DLL is stale. (Any new verb edits `goblin_debug_rpc.cpp`, so its
      `__TIME__` advances every time the RPC surface changes.) Fallback check: probe your **newest
      verb** — `err unknown command` ⇒ stale.
+   - ⚠ **FALSE-STALE trap** (verified 2026-07-23): `mfg_build` is `__TIME__` of **one TU**
+     (`goblin_debug_rpc.cpp`). It only advances when *that file* recompiles. An incremental build
+     that changed OTHER TUs and merely **relinked** the DLL leaves the stamp frozen at an old time,
+     so `mfg_build` reports a compile time that "doesn't exist" as a build → looks stale while the
+     DLL is actually FRESH. Reliable only when your change touched `goblin_debug_rpc.cpp`. When it
+     didn't, freshness-check by **behaviour** (a changed non-RPC-verb effect) or by identity:
+     `grep -i mapforgoblins /proc/<er-pid>/maps` gives the mapped DLL path — compare its size/mtime
+     to your latest `dll/offline/MapForGoblins.dll`. Same file mapped ⇒ fresh, ignore the stamp.
    - A stale DLL means: **rebuild → redeploy → RESTART the game** (or hot-reload). A DLL loads at
      game boot; a redeploy WITHOUT a restart keeps the old DLL resident. Reconnecting the RPC does
      NOT reload it.
