@@ -2613,6 +2613,9 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
             }
             if (haloA > 0)
                 fg->AddCircleFilled(ctr, hh * 0.95f, IM_COL32(40, 130, 255, haloA));
+            // Persistent dark outline ring (zoom-independent): the pale player sprite otherwise
+            // blends into the gold grace icon when parked on a grace — same fix as the Virtual Map.
+            fg->AddCircle(ctr, hh * 0.62f, IM_COL32(0, 0, 0, 200), 0, 2.0f * uiScale);
             const ImVec2 tl(ctr.x - rgt.x * hw + fwd.x * hh, ctr.y - rgt.y * hw + fwd.y * hh);
             const ImVec2 tr(ctr.x + rgt.x * hw + fwd.x * hh, ctr.y + rgt.y * hw + fwd.y * hh);
             const ImVec2 br(ctr.x + rgt.x * hw - fwd.x * hh, ctr.y + rgt.y * hw - fwd.y * hh);

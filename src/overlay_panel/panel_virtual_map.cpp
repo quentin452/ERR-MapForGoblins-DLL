@@ -1107,8 +1107,13 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     s_warp_pending = g.rowId;                         // discovered → teleport (post-frame)
                 else { s_cam_x = g.wx; s_cam_z = g.wz; s_group = g.group; }  // locate: pan the canvas to it
             }
+            // Gamepad: nav-activate (A) LOCATES like a single mouse click; FaceUp (Y) on the focused row
+            // WARPS — mirrors the canvas pad_activate so a discovered grace is warpable from the sidebar
+            // too (bug: gamepad could only ever locate, never warp, despite "double-click to warp").
+            if (disc && ImGui::IsItemFocused() && ImGui::IsKeyPressed(ImGuiKey_GamepadFaceUp, false))
+                s_warp_pending = g.rowId;
             if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("%s", disc ? tr("double-click: warp · click: locate")
+                ImGui::SetTooltip("%s", disc ? tr("double-click / Y: warp · click: locate")
                                              : tr("undiscovered — click: locate"));
             ImGui::PopID();
         };
@@ -2465,11 +2470,17 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                         int haloA = 95;
                         if (s_zoom > 0.30f)
                         {
-                            const float f = 1.0f - (s_zoom - 0.30f) / 0.70f;  // 1 at 0.30 px/unit → 0 by ~1.0
-                            haloA = f > 0.0f ? (int)(95.0f * f) : 0;
+                            const float f = 1.0f - (s_zoom - 0.30f) / 0.70f;  // 1 at 0.30 px/unit → floor by ~1.0
+                            // Floor at 55 (never 0): the halo is the ONLY thing distinguishing the pale
+                            // player sprite from the gold grace icon, and zoomed in (exactly when you park
+                            // ON a grace) it used to fade to nothing → player invisible on a grace. Keep a
+                            // faint blue ring always.
+                            haloA = f > 0.0f ? (int)(55.0f + 40.0f * f) : 55;
                         }
-                        if (haloA > 0)
-                            dl->AddCircleFilled(pp, hh * 0.9f, IM_COL32(40, 130, 255, haloA));
+                        dl->AddCircleFilled(pp, hh * 0.9f, IM_COL32(40, 130, 255, haloA));
+                        // Persistent dark outline ring so the player reads over ANY marker colour (gold
+                        // grace, teal, bright loot), independent of zoom/halo.
+                        dl->AddCircle(pp, hh * 0.62f, IM_COL32(0, 0, 0, 200), 0, 2.0f * uiScale);
                         const ImVec2 tl(pp.x - rgt.x * hw + fwd.x * hh, pp.y - rgt.y * hw + fwd.y * hh);
                         const ImVec2 tr(pp.x + rgt.x * hw + fwd.x * hh, pp.y + rgt.y * hw + fwd.y * hh);
                         const ImVec2 br(pp.x + rgt.x * hw - fwd.x * hh, pp.y + rgt.y * hw - fwd.y * hh);

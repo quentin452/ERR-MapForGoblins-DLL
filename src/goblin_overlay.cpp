@@ -1474,6 +1474,19 @@ namespace
                 }
             }
 
+            // While the overlay-toggle combo is HELD, suppress ImGui's gamepad NAV so the combo's own
+            // buttons don't ALSO drive widget focus/activation in the frames before the panel toggles
+            // (bug: closing F1 via the pad combo fired whatever selector was focused). This gates only
+            // ImGui's built-in nav — our explicit IsKeyPressed() checks (vmap warp/place) are untouched —
+            // and is restored the instant the combo is released. Set before NewFrame reads ConfigFlags.
+            {
+                ImGuiIO &io = ImGui::GetIO();
+                const bool combo_held = goblin::config::overlayToggleGamepad != 0 &&
+                    (combined & goblin::config::overlayToggleGamepad) == goblin::config::overlayToggleGamepad;
+                if (combo_held) io.ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
+                else            io.ConfigFlags |=  ImGuiConfigFlags_NavEnableGamepad;
+            }
+
             // Gamepad combo recorder: settings button arms this. Buttons pressed one after
             // another while held (e.g. Y then R3 while still holding Y) all count — capture the
             // UNION of everything held during the press, and finalize on release (not on the
