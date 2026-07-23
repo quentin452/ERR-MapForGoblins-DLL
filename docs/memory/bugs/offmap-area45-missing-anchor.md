@@ -72,3 +72,25 @@ Related: `src/goblin_world_position.cpp` (`project_dungeon_row_to_overworld` / `
 `src/goblin_legacy_fold.cpp` (`WorldMapLegacyConvParam` fold), `src/worldmap/msbe_parser.cpp` (part-type
 parse to extend), the m19 Chapel "no converter accepts it" note in
 [marker-sections-spoiler-clustering](../features/marker-sections-spoiler-clustering.md).
+
+---
+
+## Off-grid template tiles (grid > 0x3F) piled OOB — universal push_marker guard (FIXED 2026-07-23)
+
+ERR parks its Roundtable Hold COPY at **m31_90 (grid 90)** — grid 90 is OUTSIDE the engine's tile grid
+`0..0x3F (63)` (both `WorldMapLegacyConvParam` and the fold's out-of-range clamp cap at 0x3F). m31_90 has
+no conv row (fold declines) AND no EMEVD file (dead template), so its WHOLE region snapped OOB to
+~(22700,-280): captured via `vmap` region-extract as **32 area-31 markers** (landmarks 112200000 /
+graces 200721100 / summoning 900301540 / dungeon-entrance icons 500800010 / the 2nd Mad Tongue Alberich).
+These come from MANY passes (live WorldMapPointParam landmarks/graces + disk), so the entity-home loot
+filter ([[disk-parser-coverage-gaps]]) covered only the Treasure slice, not these.
+
+**Fix (universal, `push_marker` in map_entry_layer.cpp):** every marker source funnels through push_marker,
+so one guard there — `if (d.gridXNo > 0x3F || d.gridZNo > 0x3F) return;` — drops the phantom tile across
+ALL passes. NOT a magic coordinate: 0x3F is the engine's own tile-grid max. On-grid declines (area-45
+colosseum at grid 0) and low-grid underground (area 12) are untouched; no legit tile exceeds 0x3F
+(overworld maxes ~58).
+
+**Live-verified:** `vmap find Alberich` = 1 (was 2: the m31_90 dup at (22776,-274) gone); Codex still 1;
+Leyndell Alberich armor (grid 0) + area-45 origin markers kept. The region-extract at ~(22700,-280) that
+had 32 markers now clears.

@@ -211,6 +211,16 @@ void push_marker(uint64_t row_id, const from::paramdef::WORLD_MAP_POINT_PARAM_ST
                  Source source = Source::Baked, bool live_classified = false)
 {
     namespace gen = goblin::generated;
+    // Off-grid template tile guard: the engine's map tile grid is 0..0x3F (WorldMapLegacyConvParam and the
+    // fold's out-of-range clamp both cap at 0x3F). A row on a tile ABOVE that is a dead template/storage
+    // slot, not a real location — e.g. ERR parks its Roundtable Hold COPY at m31_90 (grid 90): it has no
+    // conv row (fold declines) AND no EMEVD, so its whole region (landmarks/graces/summoning/dungeon icons/
+    // 2nd Alberich) snapped OOB to ~(22700,-280). Every marker source funnels through push_marker, so one
+    // check here drops the phantom tile across ALL passes (param + disk). On-grid declines (area-45
+    // colosseum at grid 0) and low-grid underground are untouched; no legit tile exceeds 0x3F (overworld
+    // maxes ~58). user 2026-07-23.
+    if (d.gridXNo > 0x3F || d.gridZNo > 0x3F)
+        return;
     int ga;
     float wx, wz;
     goblin::overlay_api::marker_world_pos(d.areaNo, d.gridXNo, d.gridZNo, d.posX, d.posZ, ga, wx, wz,
