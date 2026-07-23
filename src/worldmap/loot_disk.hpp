@@ -275,7 +275,7 @@ GOBLIN_RENDER_API void set_build_trigger(void (*fn)());
 // map-dir state — the generic no-bake "give me a real game file" primitive, reusable by
 // the item-icon layout now and the item-icon DDS sheets (00_Solo.tpfbhd) later. Does
 // disk I/O — call off the engine thread / once.
-std::vector<uint8_t> read_game_file_decompressed(const std::string &rel_path);
+GOBLIN_RENDER_API std::vector<uint8_t> read_game_file_decompressed(const std::string &rel_path);
 
 // Loose-only variant: resolves the mod overlay / UXM-unpacked file and
 // decompresses it, but does NOT fall back to the packed dvdbnd. Empty if the

@@ -57,3 +57,30 @@ apply to `m45` (which has no `ConvRow`) to seed `entrance_anchor`.
 
 Related: `fold_probe` / `entrance_anchor` RPC verbs (`goblin_debug_rpc.cpp`), `goblin_legacy_fold.cpp`
 (`ent_x/ent_z`), `msbe_parser.cpp` (EMEVD parse to extend).
+
+## EMEVD warp decode — round 1 (live, 2026-07-23, new `vmap emevd` probe)
+
+New probe `vmap emevd <mapName> [needle]` (dumps an EMEVD's bank-2000 InitializeEvent inits: containing
+event, invoked template, raw arg words; needle filters by entity/template/arg). Data:
+
+- **m30_04_00_00** (a catacomb): 41 inits / 19 templates — ALL reference the catacomb's OWN entities
+  (`3004XXXX`): boss-fog family `9005800/01/11/22` (`30040800`=boss,`30041800`=fog,…), grace
+  `90005650/651` (`30040540/30041540`). **No overworld / cross-map reference.**
+- **m60_43_33_00** (overworld tile at a30's fold entrance ~`(10913,8522)`): 41 inits / 21 templates. The
+  transition-looking family `90005720-724` + `90005600`/`900005610` reference only **tile-local** entities
+  (`1043330290…` = m60 43_33 local) + a float arg (`1084227584`=5.0f radius). **No `30XXXXXX` dungeon
+  dest** — so the overworld→catacomb warp is NOT a bank-2000 init in this tile.
+
+**Conclusion (round 1):** the overworld→dungeon link is not in bank-2000 init args. Two remaining sources
+to test:
+1. **Direct `WarpPlayer` instruction (bank 2003)** — the init-dump only sees bank-2000; extend the probe
+   to dump ALL instructions (any bank) and find the warp instruction + its dest-map arg. (Catacombs are
+   loading-screen warps → likely an EMEVD `WarpPlayer`.)
+2. **MSB `ConnectCollision` (part type 5)** — SEAMLESS dungeons (Stormveil↔overworld) connect via a
+   ConnectCollision part carrying the target `MapID[4]` (area/block/cc/dd) + a position = a DIRECT
+   (overworld pos → target map) link, no EMEVD. `msbe_parser` reads Enemy(2)/Asset(13) only; adding
+   type 5 would give the cleanest source **for seamless dungeons**. Likely MIXED: ConnectCollision for
+   seamless, `WarpPlayer` for loading-warp catacombs — area 45's type (seamless vs warp) is unknown.
+
+Next: (a) extend `vmap emevd` to all-instruction dump to catch bank-2003 `WarpPlayer`, and/or (b) add a
+ConnectCollision probe to the MSB parser. Validate either against a30's `(10913,8522)`.

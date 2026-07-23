@@ -16,6 +16,8 @@
 #include "goblin_map_data.hpp"            // generated::Category::WorldGraces (click-to-warp)
 #include "worldmap/marker_layer.hpp"   // Marker / MarkerLayer (overlay_layers → markers to project)
 #include "worldmap/map_entry_layer.hpp" // far_relief_snapshot/step/built_group (relief draw, post split resync)
+#include "worldmap/loot_disk.hpp"       // read_game_file_decompressed (vmap emevd RE probe)
+#include "worldmap/msbe_parser.hpp"     // msbe::emevd_inits (vmap emevd RE probe)
 #include "worldmap/map_renderer.hpp"   // draw_marker_glyph — reuse the native state-aware per-marker draw
 #include "goblin_config.hpp"           // config::clusterSpiderfy — hover fan-out gate (spiderfy)
 #include "worldmap/maptile.hpp"        // maptile ART reader (endgame phase-1a slice 2/3)
@@ -2514,6 +2516,46 @@ static std::string vmap_next_token(std::string &s)
     s = (e == std::string::npos) ? std::string{} : s.substr(e + 1);
     return tok;
 }
+// RE probe (dungeon_entrance_fallback_anchor_plan Slice 3): dump an EMEVD's bank-2000 inits to hunt
+// the overworld→dungeon warp. No needle → a template-id histogram (what event templates the map uses).
+// With a needle (entityId / template / any arg word, decimal or 0x) → the full arg list of every init
+// referencing it — used to find the entrance warp by its known trigger entity or destination-map arg.
+static std::string emevd_probe(const std::string &mapName, uint32_t needle, bool hasNeedle)
+{
+    const std::string rel = "event/" + mapName + ".emevd.dcx";
+    std::vector<uint8_t> evd = goblin::worldmap::read_game_file_decompressed(rel);
+    if (evd.size() < 0x80) return "err emevd: '" + rel + "' not found / too small";
+    std::vector<goblin::msbe::EmevdInit> inits = goblin::msbe::emevd_inits(evd.data(), evd.size());
+    spdlog::info("[EMEVDUMP] {} : {} bytes, {} inits, needle={}", rel, evd.size(), inits.size(),
+                 hasNeedle ? std::to_string(needle) : std::string("none"));
+    if (!hasNeedle)
+    {
+        std::map<uint32_t, int> hist;
+        for (const auto &r : inits) hist[r.tmpl]++;
+        for (const auto &[t, c] : hist) spdlog::info("[EMEVDUMP]   tmpl={} x{}", t, c);
+        char out[144];
+        std::snprintf(out, sizeof(out), "ok vmap emevd '%s': %zu inits, %zu templates — see [EMEVDUMP]",
+                      mapName.c_str(), inits.size(), hist.size());
+        return out;
+    }
+    size_t hits = 0;
+    for (const auto &r : inits)
+    {
+        bool m = (r.event == needle || r.tmpl == needle);
+        if (!m) for (uint32_t w : r.args) if (w == needle) { m = true; break; }
+        if (!m) continue;
+        ++hits;
+        std::string as;
+        for (size_t k = 0; k < r.args.size(); ++k)
+        { char t[24]; std::snprintf(t, sizeof(t), "%s%u", k ? "," : "", r.args[k]); as += t; }
+        spdlog::info("[EMEVDUMP]   ev={} tmpl={} args=[{}]", r.event, r.tmpl, as);
+    }
+    char out[144];
+    std::snprintf(out, sizeof(out), "ok vmap emevd '%s' needle=%u: %zu match(es) — see [EMEVDUMP]",
+                  mapName.c_str(), needle, hits);
+    return out;
+}
+
 std::string vmap_rpc_command(std::string rest)
 {
     std::string arg = vmap_next_token(rest);
@@ -2583,6 +2625,16 @@ std::string vmap_rpc_command(std::string rest)
         q = (b == std::string::npos) ? std::string{} : q.substr(b, e - b + 1);
         if (q.empty()) return "err usage: vmap ename <substr | area gx gz>";
         return goblin::worldmap::ename_probe(q);
+    }
+    if (arg == "emevd")
+    {
+        std::string mn = vmap_next_token(rest);
+        if (mn.empty())
+            return "err usage: vmap emevd <mapName e.g. m60_43_33> [needle: entityId/template/arg]";
+        std::string ns = vmap_next_token(rest);
+        uint32_t needle = 0; bool has = false;
+        if (!ns.empty()) { try { needle = (uint32_t)std::stoul(ns, nullptr, 0); has = true; } catch (...) {} }
+        return emevd_probe(mn, needle, has);
     }
     if (arg == "relief")
     {

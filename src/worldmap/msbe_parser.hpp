@@ -4,6 +4,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include "../goblin_dll_export.hpp"  // GOBLIN_RENDER_API (emevd_inits imported by render probe)
 
 // MSBE (.msb) parser — sources loot placement (Treasure events) straight from the active
 // mod's real map files, no committed bake. Chain (RE'd live + disk-validated, exact-match to
@@ -246,6 +247,14 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
 // EntityID to an MSB Enemy position (Enemy::entityId) to place the marker. Empty on any
 // malformed blob.
 std::vector<EmevdAward> parse_emevd(const uint8_t *buf, size_t len);
+
+// RE probe (dungeon_entrance_fallback_anchor_plan Slice 3): every bank-2000 InitializeEvent/
+// InitializeCommonEvent init in an EMEVD, as {containing event id, invoked template id, raw arg
+// words}. Unfiltered — the caller (vmap emevd) hunts the overworld→dungeon warp template by
+// matching a known trigger entity / destination-map arg. Args are the u32 words of the arg blob
+// (arg[1] = the invoked template id, echoing `tmpl`).
+struct EmevdInit { uint32_t event = 0, tmpl = 0; std::vector<uint32_t> args; };
+GOBLIN_RENDER_API std::vector<EmevdInit> emevd_inits(const uint8_t *buf, size_t len);
 
 // One InitializeCommonEvent(0, 90005702, entity, concluded, reg_lo, reg_hi) call — the
 // ENGINE-standard quest-NPC "_q99 concluded/died" handler. Grouping these by
