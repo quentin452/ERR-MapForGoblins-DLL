@@ -4,6 +4,11 @@ Complex bugs — resolved and open — with the durable root-cause/fix takeaway.
 **current code**, verified during the 2026-06-29 reorg. Open items are the real backlog.
 
 ## Resolved
+- **Boss markers were ERR-only** [resolved 2026-07-23] — bosses + Great Runes vanished on vanilla/
+  randomizer/any non-ERR game: `build_live_bosses` seeded boss TYPES only from ERR's `textId2==5100`
+  WorldMapPointParam pins. Now also seeds mod-agnostically from the tier-3 field-boss NpcName band
+  (`enemy_display_name(...,&tier)==3`), carrying the runtime name via new `Marker::live_name` + a synthetic
+  `name_id` for search/ring keys. → [mod-agnostic-boss-markers](mod-agnostic-boss-markers.md)
 - **Overlay input hooks fired while game unfocused** [resolved 2026-07-23] — F1 open + alt-tab left the
   cursor/raw-input/wndproc swallow hooks commandeering input for another app. Re-gated the INPUT path on OS
   focus (`input_capture_active() = (menu_open||vmap_covers_map) && has_focus()`) while keeping drawing
