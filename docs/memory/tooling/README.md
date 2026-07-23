@@ -52,6 +52,9 @@ one-off scripts — most workflows are already reusable.
   `__try` around a **noinline CALL** (`raw_copy`/`raw_store8`) for hot in-process reads, RPM otherwise. → [clang-cl-seh-noinline](clang-cl-seh-noinline.md)
 - **Linux/Proton RPM walk trap** [active] — per-node RPM-to-self is a Proton freeze cliff; bulk-read
   whole structs then parse, throttle, wrap in `GOBLIN_BENCH_QUIET`. → [linux-rpm-walk-danger](linux-rpm-walk-danger.md)
+- **Logging verbosity control + [BENCH] flood fix** [active] — knobs (`debugLogging` sets level only,
+  `benchLogIndividual` now default off, 23 feature-diag bools); per-frame bench MUST be `GOBLIN_BENCH_QUIET`;
+  pending category-logging rewrite (`docs/plans/logging_rewrite_plan.md`). → [logging-verbosity](logging-verbosity.md)
 - **Never AOB-scan at boot / thread-start** [active, gotcha] — `modutils::scan` at DLL-init or on a
   thread spawned during boot crashes (`0xC0000005` in `Pattern16::scanRegion`) — module not mapped
   yet. Resolve AOB statics LAZILY on first use (like world_position / warp / load_watchdog). →

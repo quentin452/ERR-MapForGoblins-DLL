@@ -201,7 +201,11 @@ void goblin::overlay::request_f1_tab(int idx) { g_requested_tab = idx; }
         // Instrumented: the world-map close edge hands off to this minimap HUD, whose marker loop
         // does a read_event_flag() per marker. That first-closed-frame cost was previously unbenched,
         // so the "map-close lag" never showed up in the report or the spike warn. Now it does.
-        GOBLIN_BENCH("render.minimap");
+        // QUIET: this HUD draws EVERY frame, so a loud per-call line floods the log (was ~28k
+        // lines/session, ~77% of the whole file). Aggregate-only — the session report still shows
+        // its avg/min/max/total and a real hitch still fires a [BENCH][SPIKE] WARN. Matches the
+        // sibling render.worldmap path, which is QUIET for the same reason.
+        GOBLIN_BENCH_QUIET("render.minimap");
         void *atlas = ctx.atlas_srv;
         ImGuiIO &io = ImGui::GetIO();
         if (ensure_grace_srv())

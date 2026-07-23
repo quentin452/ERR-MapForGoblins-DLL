@@ -111,13 +111,24 @@ namespace
         return s;
     }
 
+    // A file under logs_dir that this session should fold into the archive zip + delete, so the dir
+    // starts clean. Two families:
+    //   1. Session logs: any `MapForGoblins*.log` + `MapForGoblins_flagcapture.txt`.
+    //   2. Auto-generated crash artifacts: `MapForGoblins_{crash,freeze,load_stall}_<pid>.{txt,dmp}`
+    //      (goblin_crashdump.cpp + the freeze/load watchdogs). These piled up forever before — the
+    //      archive only handled logs. Matched by NAME PREFIX (not a blanket .txt/.dmp) so it never
+    //      sweeps user-named `MapForGoblins.log.<label>` baselines, marker dumps, or dev probe outputs.
     bool is_session_log(const fs::path &p)
     {
         if (!p.has_filename()) return false;
         std::string n = p.filename().string();
         if (n.rfind("MapForGoblins", 0) != 0) return false; // must start with MapForGoblins
         std::string ext = p.extension().string();
-        return ext == ".log" || n == "MapForGoblins_flagcapture.txt";
+        if (ext == ".log" || n == "MapForGoblins_flagcapture.txt") return true;
+        // Crash/freeze/load-stall artifacts (any extension — .txt triage + .dmp minidump).
+        return n.rfind("MapForGoblins_crash_", 0) == 0 ||
+               n.rfind("MapForGoblins_freeze_", 0) == 0 ||
+               n.rfind("MapForGoblins_load_stall_", 0) == 0;
     }
 }
 
