@@ -32,6 +32,24 @@ Claude Code auto-loads this file. The full agent handoff lives in `AGENTS.md`, i
 - On any completed task that changes durable state, update the right `docs/memory/` file (+ `changelog.md`
   if it adds a feature or fixes a bug) and commit — never stash it in a side memory.
 
+## Changelog discipline — update PER COMMIT, not in a batch
+
+- **When a commit adds a user-facing feature/change, edit `docs/changelog.md` `[Unreleased]` in that SAME
+  commit.** Do NOT defer it. Batching means a later session must re-read `git log` + diffs across N commits
+  to reconstruct what changed — an expensive re-investigation that burns tokens. One line at commit time
+  costs ~nothing; catching up 20 commits later costs a whole agent run.
+- **What to log (fork has no prior release, so most fixes are NOT logged):**
+  - `Added` — a new user-facing feature/capability (a new marker source/category, a new toggle, a new
+    render behavior). Dev-only tools (RPC probes like `vmap prov`) are BORDERLINE — log only if a user
+    would use them; otherwise they belong in `docs/memory/tooling/` only.
+  - `Changed` — a change a migrating user perceives (default flipped, marker sizing/placement changed).
+  - `Fixed` — ONLY a defect present in **upstream** or a **prior shipped release**. A bug introduced AND
+    fixed within the current unreleased cycle nets to zero vs upstream → it goes to `docs/memory/`, NOT the
+    changelog (see the changelog.md workflow header). Most 2026-07 marker/parser fixes are intra-cycle.
+  - Keep entries short + user-facing; deep technical detail stays in `docs/memory/` / `docs/re/`.
+- Group under the standard headings (`Added`/`Changed`/`Fixed`/`Performance`/`Removed`). If a commit is
+  purely intra-cycle-bug / refactor / docs / tooling, it gets NO changelog line — that's correct, not a miss.
+
 ## Prefer refactor over duplicated code
 
 - **Prefer a refactor over adding duplicated code.** Before pasting a variant of an existing function,

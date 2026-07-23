@@ -98,3 +98,6 @@ Complex bugs — resolved and open — with the durable root-cause/fix takeaway.
   `conv_underground=true` in both cache-build calls; `marker_group_from` keys the UG bit off the ORIGINAL
   area (12), so the pins stay on the UG layer, only the position unifies. Verified live: `vmap offmap` → 0
   off-map of 438; all `g1(UG)` merchant pins `onmap` with unified ~9k–13k coords. Render-side → hot-reloads.
+- **Atlas-upload GPU-init race** [DEFERRED / intermittent] — cold-boot crash (`fault_base +0x0`) in
+  `upload_rgba` ← `try_upload_atlas` ← `hk_present` (D3D12 icon-atlas upload in the present hook, fires
+  before device/cmd-list ready). Not a marker/build-thread regression. → [atlas-upload-gpu-race](atlas-upload-gpu-race.md)
