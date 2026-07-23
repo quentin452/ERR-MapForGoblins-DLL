@@ -1,7 +1,9 @@
 # Mod-agnostic dungeon-entrance fallback anchor (fold-declined areas)
 
-**Status:** SCOPED 2026-07-23, not started. Grounded in a live diagnosis + a code map (see
-[offmap-area45-missing-anchor](../memory/bugs/offmap-area45-missing-anchor.md)).
+**Status:** Slice 1 DONE + live-verified 2026-07-23 (`2e743886`); Slices 2/3 open. Grounded in a live
+diagnosis + a code map (see [offmap-area45-missing-anchor](../memory/bugs/offmap-area45-missing-anchor.md)).
+Next: the RE probe (gates Slice 3) — derive a known catacomb's entrance from its warp, validate ==
+its `ConvRow.dst`.
 
 ## Problem
 
@@ -48,7 +50,7 @@ Reuse the existing shapes:
 
 ## Slices (incremental — infra is mod-agnostic even before the auto source lands)
 
-### Slice 1 — fallback-anchor plumbing (no RE, mod-agnostic)
+### Slice 1 — fallback-anchor plumbing (no RE, mod-agnostic) — ✅ DONE 2026-07-23 (`2e743886`, live-verified)
 Add a runtime `area → EntranceAnchor{dst_area,dst_gx,dst_gz,dst_px,dst_pz}` table and consult it in
 `project_dungeon_row_to_overworld` right where `fold` declines (after `legacy_fold.cpp` returns
 unmatched, before the `return false`). If the area has a fallback anchor, translate the row's
