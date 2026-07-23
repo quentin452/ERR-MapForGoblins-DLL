@@ -173,3 +173,32 @@ call):
 3. **Hide/flag:** leave the orphan markers off-map-flagged (current behaviour) since they can't be placed.
 
 The `vmap msbparts` + `vmap emevd` + `fold_probe` + `entrance_anchor` probes are all committed and reusable.
+
+## ★ Runtime lead (2026-07-23) — `get_player_map_pos`/WCM projects the player, even orphans
+
+User confirmed: **ER places the player at the correct overworld spot on the native map for ANY area**,
+including orphans. So the value EXISTS in memory — read it instead of computing statically.
+
+**Source identified:** `get_player_map_pos(area,wx,wz,gx,gz,group)` (`goblin_inject`, used by the vmap
+player dot + `coords` verb) reads the **WorldChrMan (WCM) chain** — the engine's authoritative player map
+position — and returns it in the **WorldMapPointParam (overworld) frame**, NOT via the failing fold.
+- Live proof: at the **Murkwater Cave** grace (a loading-screen cave), `coords` →
+  `area=60 world=(11051,9526) grid=(43,37)`. The engine PROJECTED the player into overworld area 60,
+  not the cave's own frame. Since it reads WCM (not the conv/fold), it should give a valid overworld
+  position inside a DECLINED orphan too (area 45) — the game keeps WCM correct there (user-confirmed).
+
+**Mechanism to build (runtime capture, mod-agnostic, learn-by-visiting):**
+1. When the player is physically inside a declined dungeon, call `get_player_map_pos` → the overworld
+   entrance position.
+2. Seed `entrance_anchor[block]` with it (persist so it survives sessions → learned once per visit).
+3. The Slice-1 fallback (`project_dungeon_row_to_overworld`) then places that block's markers there.
+
+**Remaining RE (the ONE missing piece):** `get_player_map_pos` returns the PROJECTED area (60), not the
+**real loaded map id** (`m45_XX`) needed to KEY the anchor. Find the engine's current-loaded-map-id
+(WorldChrMan / MapItemMan / the map-management struct) — a small live find-what-reads or Ghidra xref.
+Then: key = real map id (area,block), value = get_player_map_pos overworld → done.
+
+**NEXT-SESSION START:** (1) confirm the orphan case — go into area 45 / a declined dungeon, run `coords`,
+verify it gives area 60 + a plausible overworld pos (not origin/fault). (2) RE the real-loaded-map-id
+read. (3) wire the capture + persist + key `entrance_anchor` per-block (revise its uint8 area key to a
+full (area,gx,gz) block key). All probes (`fold_probe`/`entrance_anchor`/`vmap msbparts|emevd`) are in.

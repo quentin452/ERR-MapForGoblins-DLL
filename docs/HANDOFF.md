@@ -35,8 +35,16 @@ Full detail: [marker-sections-spoiler-clustering](memory/features/marker-section
    conv row for it — confirmed live (`proj`, `vmap find 900301540`: area 34/35/42/43 project via fold
    chains, area 45 does not). No param field links overworld→dungeon-area (WorldMapPointParam has no target
    field; EMEVD portal parse drops the dest map), so the fix is a real feature, not a wiring tweak. **START
-   HERE:** [dungeon_entrance_fallback_anchor_plan.md](plans/dungeon_entrance_fallback_anchor_plan.md) — do
-   the **RE probe first** (derive a known catacomb's entrance from its warp, validate == its `ConvRow.dst`).
+   HERE:** [dungeon_entrance_fallback_anchor_plan.md](plans/dungeon_entrance_fallback_anchor_plan.md).
+   **★ RE DONE 2026-07-23 — all STATIC sources dead, runtime is the way.** Slice-1 fallback-anchor
+   plumbing landed + live-verified (`entrance_anchor` RPC + `fold_probe`/`vmap emevd`/`vmap msbparts`
+   probes, all committed). Declined "orphan" blocks (m45, m31_90) have NO conv row / ConnectCollision /
+   EMEVD warp / grace — all pile via the same fold. **THE WAY = runtime capture:** `get_player_map_pos`
+   (WCM chain) gives the player's overworld-projected pos for ANY area incl. orphans (proven at Murkwater
+   Cave → area 60 (11051,9526)). NEXT-SESSION: (1) confirm in area 45 (`coords` inside it), (2) RE the
+   real-loaded-map-id read (WCM/MapItemMan) to key the anchor, (3) wire capture+persist, re-key
+   `entrance_anchor` to (area,gx,gz). Full plan:
+   [re/dungeon_entrance_anchor_re_probe_findings.md](re/dungeon_entrance_anchor_re_probe_findings.md).
    Corrected root-cause doc: [offmap-area45-missing-anchor](memory/bugs/offmap-area45-missing-anchor.md).
 
 **Pending live re-tests from this session (quick, when the game is up):**
