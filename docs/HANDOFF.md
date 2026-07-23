@@ -45,6 +45,12 @@ Full detail: [marker-sections-spoiler-clustering](memory/features/marker-section
    real-loaded-map-id read (WCM/MapItemMan) to key the anchor, (3) wire capture+persist, re-key
    `entrance_anchor` to (area,gx,gz). Full plan:
    [re/dungeon_entrance_anchor_re_probe_findings.md](re/dungeon_entrance_anchor_re_probe_findings.md).
+   **⚠ OFF-MAP IS MULTI-CAUSE (user-caught 2026-07-23) — do NOT just hide:** 3 classes (findings doc):
+   **A** declined-orphan/ERR-dup (m31_90 = 2nd Roundtable + 2nd Mad Tongue Alberich OOB — suppress/dedupe);
+   **B** matched-but-wrong-tile REAL content (Ash of War: White Shadow's Lure, base overworld, renders at
+   `grid(24,28) w(6030,7050)` instead of Mountaintops — lot→position bug, must FIX not hide); **C** declined
+   REAL content (Ashen Leyndell m35 — `reverse_lookup` should cover it but doesn't). First next-session step:
+   a classifier probe tagging each off/OOB marker by class, then fix per class.
    Corrected root-cause doc: [offmap-area45-missing-anchor](memory/bugs/offmap-area45-missing-anchor.md).
 
 **Pending live re-tests from this session (quick, when the game is up):**

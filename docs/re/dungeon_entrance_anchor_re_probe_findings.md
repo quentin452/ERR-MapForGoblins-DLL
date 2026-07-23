@@ -202,3 +202,37 @@ Then: key = real map id (area,block), value = get_player_map_pos overworld → d
 verify it gives area 60 + a plausible overworld pos (not origin/fault). (2) RE the real-loaded-map-id
 read. (3) wire the capture + persist + key `entrance_anchor` per-block (revise its uint8 area key to a
 full (area,gx,gz) block key). All probes (`fold_probe`/`entrance_anchor`/`vmap msbparts|emevd`) are in.
+
+## ★★ Off-map markers have MULTIPLE distinct causes (2026-07-23, user-caught) — DON'T just hide
+
+Critical correction: "hide all unplaceable markers" is WRONG — some off-map markers are REAL content at a
+WRONG position (not orphans). At least THREE distinct OOB classes, each needing a different fix:
+
+- **Class A — declined orphan / ERR duplicate.** `legacy_fold` DECLINES the block (no conv row) → raw
+  coords → origin (small grid) or OOB (large grid). Example: **m31_90 = ERR's Roundtable-copy** (`legacy_
+  fold.cpp:58,155` already names it). It renders a WHOLE 2nd Roundtable OOB — `vmap find Alberich`: real
+  **Mad Tongue Alberich** = `area11 grid(10,0) w(7763,8594)` (m11_10, CORRECT); duplicate =
+  `area31 grid(90,0) w(22776,-274)` (m31_90, OOB bottom-right). `legacy_fold:159` DELIBERATELY leaves
+  m31_90 unmatched (lifting it via area-31's Academy waygate row would snap it to 8848,11714 = worse).
+  Fix candidate: dedupe/suppress the declined DUPLICATE (its content mirrors the placed m11_10).
+  (~29 markers, area 31.)
+- **Class B — matched but WRONG tile (real overworld content).** `area=60` (overworld, matched — NOT
+  declined) yet the marker sits at a wrong grid. Example: **Ash of War: White Shadow's Lure** (a BASE-GAME
+  overworld ash, belongs at Mountaintops of the Giants ~grid 48,50) renders at `area60 grid(24,28)
+  w(6030,7050) g0(OW)` = far SW, off the map artwork. NOT DLC (user-confirmed), NOT declined. → a
+  **lot→position resolution bug** (the loot pass joined lot 40524 to the wrong MSB position/tile). Hiding
+  would LOSE a real item. Needs the lot/position resolution fixed, not hidden.
+- **Class C — declined but REAL, fixable content.** e.g. **Ashen Leyndell (m35)** (~26 markers) — a vanilla
+  sub-map dead-end that SHOULD lift via `legacy_fold`'s `reverse_lookup` (m19/m34/m35) but still declines
+  here → its markers pile off-map. Fix = make reverse_lookup actually cover these blocks (it isn't firing
+  for them). Real content → must be PLACED, not hidden.
+
+Off-map count this session: **59** clearly-off markers (`area 31: 29, area 35: 26, area 45: 4`) via a
+crude origin/OOB filter — UNDERcounts Class B (White Shadow at 6030,7050 passes an "onmap" text check but
+is off the artwork).
+
+**NEXT-SESSION (off-map track):** build a classifier probe that tags EACH off/OOB marker by class —
+(A) `fold matched=0` + duplicates a placed marker, (B) `matched` + outside the drawn map extent
+(matched-wrong-tile), (C) `matched=0` but a known dead-end (reverse_lookup should cover). Then fix per
+class: A = dedupe/suppress, B = fix lot→position join, C = fix reverse_lookup coverage. The runtime-capture
+`get_player_map_pos` idea only helps the TRUE orphans (a subset of A), not B/C.
