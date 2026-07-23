@@ -68,7 +68,8 @@ void draw_world_editor(Filter &f)
     static int new_item = 8000000;  // a reserved custom-goods id (define via custom_items.toml)
     ImGui::SetNextItemWidth(140.0f);
     ImGui::InputInt(tr("New goods id"), &new_item);
-    if (ImGui::IsItemHovered())
+        // NoNavOverride: mouse-hover tooltip only, no gamepad nav-focus teleport (imgui.cpp:4087)
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
         ImGui::SetTooltip("%s", tr("Raw goods row id (must be <= 8388606 to be grantable).\n"
                                    "Define its name/stats first via custom_items.toml; an\n"
                                    "existing goods id works too. Edits the SELECTED slot of this\n"
@@ -88,7 +89,7 @@ void draw_world_editor(Filter &f)
                          : "FAILED to set lot %d %s", lot, field, new_item);
     }
     ImGui::EndDisabled();
-    if (ImGui::IsItemHovered())
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
         ImGui::SetTooltip("%s", tr("IN-PLACE re-skin of the selected slot: changes the shared lot\n"
                                    "itself, so EVERY asset that points at this lot changes too. To\n"
                                    "change only THIS asset, use Repoint below instead. Slot 1 is\n"
@@ -101,7 +102,7 @@ void draw_world_editor(Filter &f)
     static int target_lot = 0;
     ImGui::SetNextItemWidth(140.0f);
     ImGui::InputInt(tr("Repoint to lot"), &target_lot);
-    if (ImGui::IsItemHovered())
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
         ImGui::SetTooltip("%s", tr("Point THIS asset at a different ItemLotParam_map row\n"
                                    "(non-destructive — the current lot is left unchanged). Works for\n"
                                    "an existing lot or one you just cloned below; Refresh markers\n"
@@ -140,7 +141,7 @@ void draw_world_editor(Filter &f)
     static int clone_new_lot = 900900900;  // a high, normally-unused ItemLotParam_map id
     ImGui::SetNextItemWidth(140.0f);
     ImGui::InputInt(tr("Clone to new lot id"), &clone_new_lot);
-    if (ImGui::IsItemHovered())
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
         ImGui::SetTooltip("%s", tr("New ItemLotParam_map row id for the clone (must be unused).\n"
                                    "After cloning, this id is filled into 'Repoint to lot' so you\n"
                                    "can point this asset at the copy, then Refresh markers."));
@@ -160,7 +161,7 @@ void draw_world_editor(Filter &f)
                          : "FAILED to clone lot %d (id in use / not found?)", lot, clone_new_lot);
     }
     ImGui::EndDisabled();
-    if (ImGui::IsItemHovered())
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
         ImGui::SetTooltip("%s", tr("Add a new lot row that copies this one. Non-destructive: the\n"
                                    "original lot is untouched. Then Repoint + Refresh markers."));
 
@@ -173,7 +174,7 @@ void draw_world_editor(Filter &f)
     static float mv[3] = {0.0f, 5.0f, 0.0f};
     ImGui::SetNextItemWidth(220.0f);
     ImGui::InputFloat3(tr("Delta X/Y/Z"), mv);
-    if (ImGui::IsItemHovered())
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
         ImGui::SetTooltip("%s", tr("World-units to move the nearest placement by (Y is up). Uses the\n"
                                    "engine's transform setter — the object really moves + collides.\n"
                                    "Not saved (a live edit); use Restore to put it back."));
@@ -191,7 +192,7 @@ void draw_world_editor(Filter &f)
             std::snprintf(status, sizeof(status), "no loaded placement for asset %d nearby", aeg);
     }
     ImGui::EndDisabled();
-    if (ImGui::IsItemHovered())
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
         ImGui::SetTooltip("%s", tr("Move the nearest loaded placement of the picked asset (aegRow above).\n"
                                    "Targets THAT object, not just whatever is closest to you."));
     ImGui::SameLine();
@@ -248,7 +249,7 @@ void draw_world_editor(Filter &f)
         goblin::overlay_api::rebuild_markers();
         std::snprintf(status, sizeof(status), "markers rebuilding on the disk worker — open/pan the map");
     }
-    if (ImGui::IsItemHovered())
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
         ImGui::SetTooltip("%s", tr("Rebuild the map markers from live params so the edit shows.\n"
                                    "Full rebuild (~2s) on a worker thread — no frame hitch."));
 
@@ -290,7 +291,7 @@ void draw_world_editor(Filter &f)
         }
         ImGui::SameLine();
         ImGui::TextDisabled("%d assets / %d items", (int)assets.size(), (int)goods.size());
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
             ImGui::SetTooltip("%s", tr("Reads every pickup asset + named goods from the live params.\n"
                                        "One-shot (brief hitch); re-scan after cloning to pick the copy."));
 

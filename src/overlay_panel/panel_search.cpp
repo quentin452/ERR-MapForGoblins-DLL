@@ -355,10 +355,11 @@ void draw_item_search(const OverlayFrameCtx &ctx, Filter &f)
                         virtual_map_locate(h.name_id, h.group);
                 }
                 if (locked) ImGui::EndDisabled();
-                if (map_open && !locked && off_page && ImGui::IsItemHovered())
+        // NoNavOverride: mouse-hover tooltip only, no gamepad nav-focus teleport (imgui.cpp:4087)
+                if (map_open && !locked && off_page && ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
                     ImGui::SetTooltip(tr("On the %s map — click to switch there + centre on it."),
                                       page_label(h.group));
-                if (locked && ImGui::IsItemHovered())
+                if (locked && ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
                     ImGui::SetTooltip(tr("On the %s map — you haven't discovered it yet."),
                                       page_label(h.group));
             }

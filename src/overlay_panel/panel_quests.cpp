@@ -58,7 +58,8 @@ void draw_quest_browser(Filter &f)
             goblin::overlay_api::request_save();  // watcher-thread sync + persist to ini
         ImGui::SameLine();
         ImGui::TextDisabled("(?)");
-        if (ImGui::IsItemHovered())
+        // NoNavOverride: mouse-hover tooltip only, no gamepad nav-focus teleport (imgui.cpp:4087)
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
             ImGui::SetTooltip("%s",
                 tr("POTENTIALLY BUGGY. Death flags are reverse-engineered per NPC;\n"
                    "a line may grey incorrectly, or stay normal when its NPC is gone.\n"
@@ -230,7 +231,7 @@ void draw_quest_browser(Filter &f)
                     if (flag_backed)
                     {
                         ImGui::TextDisabled("%s", tr("[auto]"));
-                        if (ImGui::IsItemHovered())
+                        if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
                             ImGui::SetTooltip("%s", (*goblin::overlay_api::cfg_questAllowFlagWrite_ptr())
                                 ? tr("Mirrors + can write the live EMEVD flag (cheat ON) -- can break this questline.")
                                 : tr("Read-only mirror of the live EMEVD flag. Enable 'Allow writing quest flags' to edit."));

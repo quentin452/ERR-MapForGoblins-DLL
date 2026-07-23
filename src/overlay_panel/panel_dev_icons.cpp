@@ -46,7 +46,8 @@ void draw_dev_icon_sections(const OverlayFrameCtx &ctx, Filter &f)
             ImVec2 uv0 = sit != ctx.item_icon_srvs->end() ? sit->second.uv0 : ImVec2(0, 0);
             ImVec2 uv1 = sit != ctx.item_icon_srvs->end() ? sit->second.uv1 : ImVec2(1, 1);
             ImGui::Image(reinterpret_cast<ImTextureID>(h), ImVec2(48, 48), uv0, uv1);
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("iconId %d", id);
+        // NoNavOverride: mouse-hover tooltip only, no gamepad nav-focus teleport (imgui.cpp:4087)
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride)) ImGui::SetTooltip("iconId %d", id);
         }
         if (!drawn)
             ImGui::TextDisabled(ids.empty() ? "no icons harvested yet — open inventory first"

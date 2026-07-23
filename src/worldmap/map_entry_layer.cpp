@@ -471,8 +471,12 @@ void build_live_bosses()
         const uint64_t rid = en.entityId ? (uint64_t)en.entityId : (0xB055ull << 32 | key);
         push_marker(rid, d, c, /*lotId=*/0u, /*lotType=*/0u, Source::Live);
         // Mod-agnostic boss: no FMG id, so carry the resolved name on the just-pushed marker for the
-        // tooltip/search to display (see Marker::live_name). ERR pins keep their textId1/FMG path.
-        if (live_named && !g_buckets[c].empty()) g_buckets[c].back().live_name = nm;
+        // tooltip/search to display (see Marker::live_name). Gate on the TYPE being mod-agnostic (its
+        // synthetic textId1 band), NOT on `live_named` — that's only true on the FIRST instance that
+        // seeds the type, so keying on it named 91 of 1183 (one per type). ERR FMG-pinned bosses have a
+        // small textId1 and keep their FMG-name path. it->first = the marked type's display name.
+        if (!g_buckets[c].empty() && it->second.textId1 >= 0x60000000)
+            g_buckets[c].back().live_name = it->first;
         ++supp;
         if (live_named) ++agnostic;
     }
@@ -3809,6 +3813,17 @@ void build_buckets_impl()
             }
         }
         spdlog::info("[CATICON] representative item-icons resolved for {} / {} categories", wired, NUM_CAT);
+    }
+
+    // PROBE (bug 5, temporary): after the FULL build (incl. finalize), report whether WorldBosses markers
+    // carry a live_name. Splits "build/finalize dropped it" from "display path ignores it".
+    {
+        const auto &bb = g_buckets[static_cast<int>(goblin::generated::Category::WorldBosses)];
+        int named = 0; std::string sample;
+        for (const auto &m : bb)
+            if (!m.live_name.empty()) { ++named; if (sample.empty()) sample = m.live_name; }
+        spdlog::info("[BOSSPROBE] WorldBosses bucket: {} markers, {} with live_name, sample='{}'",
+                     bb.size(), named, sample);
     }
 }
 

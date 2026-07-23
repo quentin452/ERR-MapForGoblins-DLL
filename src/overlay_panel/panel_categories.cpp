@@ -128,7 +128,7 @@ void draw_sections_categories(const OverlayFrameCtx &ctx, Filter &f, bool with_e
             {
                 ImGui::SameLine();
                 ImGui::TextDisabled("↻");
-                if (ImGui::IsItemHovered())
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))  // mouse-only (see bug-1 note below)
                     ImGui::SetTooltip("%s", tr("Also hides the game's OWN pin for these spots while enabled\n"
                                                "(\"Hide native landmark pins\" in Settings, avoids duplicates).\n"
                                                "The native pin change shows the NEXT time the map is opened."));
@@ -155,7 +155,7 @@ void draw_sections_categories(const OverlayFrameCtx &ctx, Filter &f, bool with_e
                 ImVec4 col = (rem == 0) ? ImVec4(0.45f, 0.85f, 0.45f, 1.0f)   // all collected
                                         : ImVec4(0.85f, 0.82f, 0.45f, 1.0f);  // some left
                 ImGui::TextColored(col, "%s", cntbuf);
-                if (ImGui::IsItemHovered())
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))  // mouse-only (bug-1: no nav-focus teleport)
                     ImGui::SetTooltip("%s", tr("Items not yet collected / total collectible in this category."));
             }
             // Right-aligned cluster opt-in: checked = this category's markers
@@ -166,7 +166,11 @@ void draw_sections_categories(const OverlayFrameCtx &ctx, Filter &f, bool with_e
             bool clu = goblin::overlay_api::category_clustered(c);
             if (ImGui::Checkbox(tr("cluster"), &clu))
                 goblin::overlay_api::set_category_clustered(c, clu);
-            if (ImGui::IsItemHovered())
+            // NoNavOverride: show this help tooltip on MOUSE hover only. During gamepad/keyboard nav,
+            // plain IsItemHovered() returns the nav-FOCUSED item (imgui.cpp:4087) and ImGui anchors the
+            // tooltip at that item → the tooltip "teleports" to whatever you select (bug 1). NoNavOverride
+            // skips that nav branch. Applied to every nav-reachable sidebar help tooltip.
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
                 ImGui::SetTooltip("%s", tr("Checked = this category's markers fold into the\n"
                                            "one-per-location cluster pile. Unchecked = shown\n"
                                            "normally on the map. Live — reopen the map to apply."));
@@ -181,7 +185,7 @@ void draw_sections_categories(const OverlayFrameCtx &ctx, Filter &f, bool with_e
         bool hide_bosses = goblin::overlay_api::err_hide_bosses();
         if (ImGui::Checkbox(tr("Hide boss markers (ERR already marks bosses)"), &hide_bosses))
             goblin::overlay_api::set_err_hide_bosses(hide_bosses);
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))  // mouse-only (bug-1: no nav-focus teleport)
             ImGui::SetTooltip("%s", tr("ELDEN RING Reforged natively marks bosses (and enemy camps,\n"
                                        "plus completion markers) on the world map. Enable this to hide\n"
                                        "MapForGoblins' own boss markers and avoid the duplicate.\n"

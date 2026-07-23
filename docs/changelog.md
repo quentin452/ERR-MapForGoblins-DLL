@@ -28,19 +28,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Fixed
 
-- **Boss markers now appear (and are named) on vanilla / randomizer / any non-ERR game** (previously
-  ERR-only). Bosses — and the Great Runes derived from them — were sourced only from ERR's authored map
-  pins, so on vanilla or a randomizer run the whole boss category was empty. They're now discovered
-  mod-agnostically from the game's own field-boss data, with names.
 - **Player marker no longer disappears when you stand on a Site of Grace** — the pale player arrow blended
   into the gold grace icon (its highlight faded out when zoomed in); it now keeps a persistent outline on
   the world map, minimap, and Virtual World Map.
 - **Escape no longer traps you in the Virtual World Map** — when the VWM stands in for the native map,
   Escape used to open the game menu *behind* it (unclosable until the hidden menu was dismissed). Escape
   now closes the VWM.
-- **Gamepad:** warp a discovered grace straight from the VWM grace list with **Y** (was mouse-double-click
-  only); closing the F1 panel with the toggle combo no longer also activates whatever was selected; and
-  VWM tooltips no longer stick to the old cursor spot after you move the stick reticle.
+
+<!-- NOT YET CONFIRMED against the latest build — tracked in docs/HANDOFF.md, add here once verified:
+     bug 1 gamepad tooltip teleport, bug 2 Y-warp on sidebar focus, bug 4 Y+R3 combo warp,
+     bug 5 mod-agnostic boss markers (names work but the tier-3 discriminator dups; real fix is the RE
+     task docs/re/cross_mod_boss_naming_re_prompt.md). -->
 
 ## [v2.4.0] - 2026-07-23
 

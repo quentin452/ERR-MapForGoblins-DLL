@@ -39,3 +39,11 @@ only an FMG `name_id`, so:
 **Guardrail.** Any "what enemies are bosses?" question is answered mod-agnostically by
 `enemy_display_name(..., &tier)` tier==3, NOT by an ERR map-pin field. See [[overlay-input-unfocused-hooks]]
 for the same session's input fixes.
+
+**Follow-up (2026-07-23): tier-3 is a stopgap, not the real answer.** Bosses now show WITH names on vanilla
+(fixed the 91/1183 bug — `live_name` was only set on the first-seeded instance per type; now set on every
+instance of a synthetic-textId1 type). BUT tier-3 is a NAME-SOURCE tier, not an "is-boss" signal, so it
+mis-identifies / duplicates (observed: multiple "Mimic Tear", clone-model bosses collapse). The item-search
+name↔position list can't be reused — it's POI-only (`WorldMapPointParam`), not entities. The proper
+mod-agnostic boss enumeration (GameAreaParam / NpcParam boss flag / EMEVD defeat-flag / CSFeMan bossHpBars)
+is an OPEN Ghidra RE task: `docs/re/cross_mod_boss_naming_re_prompt.md`.

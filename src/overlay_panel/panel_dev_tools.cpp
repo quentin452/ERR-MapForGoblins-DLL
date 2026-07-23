@@ -21,7 +21,8 @@ void draw_dev_tools_danger(Filter &f)
     if (f.match("virtual world map vmap tiles"))
     {
         if (ImGui::Button(tr("Open Virtual World Map (WIP)"))) { virtual_map_open() = true; virtual_map_request_focus(); }
-        if (ImGui::IsItemHovered())
+        // NoNavOverride: mouse-hover tooltip only, no gamepad nav-focus teleport (imgui.cpp:4087)
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
             ImGui::SetTooltip("Opens the mod map window. Then: 'Load ER map tiles' in its toolbar loads\n"
                               "ER's real map art (open the game map + move on it first so it resolves).\n"
                               "Note: tile alignment is still WIP.");
@@ -58,7 +59,7 @@ void draw_dev_tools_danger(Filter &f)
     {
         ImGui::Checkbox("Baked-only (diag: show just the no-bake residual)",
                         goblin::overlay_api::cfg_bakedOnly_ptr());
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
             ImGui::SetTooltip("Hides every marker the live disk/memory passes already cover,\n"
                               "leaving only the markers still coming from the static bake.\n"
                               "Use it to judge each leftover: real loot we fail to source live\n"
@@ -84,7 +85,7 @@ void draw_dev_tools_danger(Filter &f)
                         goblin::overlay_api::cfg_debugLogging_ptr());
         ImGui::Checkbox("Flag-capture hook (NPC death-flag tool)",
                         goblin::overlay_api::cfg_debugFlagCapture_ptr());
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
             ImGui::SetTooltip("These take effect after Save + a game restart — each\n"
                               "installs its hook/worker once at startup.");
 
@@ -148,11 +149,11 @@ void draw_dev_tools_danger(Filter &f)
     {
         if (ImGui::Button(tr("Reset quest progression")))
             ImGui::OpenPopup("##confirm_reset_quest");
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
             ImGui::SetTooltip("%s", tr("Clear every quest-step checkmark. Save to INI to persist."));
         if (ImGui::Button(tr("Reset parameters to default")))
             ImGui::OpenPopup("##confirm_reset_params");
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
             ImGui::SetTooltip("%s", tr("Restore all settings to defaults and write the ini.\n"
                                        "Restart the game to fully apply."));
 

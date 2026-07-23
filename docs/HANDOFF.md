@@ -3,6 +3,45 @@
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
 
+## ⇒ 2026-07-23 (Linux, later) — gamepad/vmap/boss bug batch: 4 fixes UNVERIFIED, need a Windows retest
+
+Deployed `MapForGoblins.dll` → `~/Games/ERRv2.2.9.6/dll/offline/` (11:33). **User runs on WINDOWS** by
+COPYING that DLL over (same cross-built binary; confirmed it's the one Windows loads). All work below is
+committed on `master` but the latest fixes are **NOT yet verified against the new build** — re-test first.
+
+**CONFIRMED FIXED (user-verified earlier this session):**
+- **Bug 3** — Escape no longer opens the ER system menu behind the fullscreen (redirect) vmap. Fix: a
+  redirect branch in `hk_wndproc` + blanking raw-input Escape (`input_rawinput.cpp`, both GetRawInputData +
+  buffer paths) only when `vmap_redirect() && !world_map_open()`.
+- **Bug 6** — player marker no longer invisible on a grace (persistent dark outline + floored halo on
+  vmap/native/minimap).
+
+**FIXED but UNVERIFIED with the 11:33 build — RETEST, then mark done or reopen:**
+- **Bug 1 (tooltip teleports to gamepad selection).** Root cause (read from vendored ImGui 1.90.9
+  `imgui.cpp:4087`): during gamepad nav, bare `IsItemHovered()` returns the NAV-FOCUSED item and ImGui
+  anchors the tooltip there. Fix: `IsItemHovered(ImGuiHoveredFlags_NoNavOverride)` on ALL 43 nav-reachable
+  help-tooltips (swept across every `panel_*.cpp`). Earlier `!s_pad_mode`/`vmap_pad_mode` gating was WRONG
+  (fails when nav is driven by D-pad without setting s_pad_mode) — reverted. VERIFY: nav any widget, tooltip
+  stays put.
+- **Bug 2 (Y warps when a sidebar selector is focused).** Fix: removed the sidebar grace-list Y-warp (it
+  fired on mere nav focus); Y now warps ONLY the grace under the canvas reticle. VERIFY: nav-focus a
+  checkbox + tap Y → no warp.
+- **Bug 4 (closing F1 with the Y+R3 combo also warps; only if Y before R3).** Fix: warp fires on Y RELEASE
+  and only if R3 was never held during the Y hold (press-order-independent) — `s_y_warp_armed` in
+  `panel_virtual_map.cpp`. The earlier press-edge suppression missed Y-before-R3. VERIFY: Y+R3 (Y first) →
+  no warp; clean Y-tap over a reticle grace → warps.
+
+**NOT FIXED — deferred to RE (bug 5):** bosses now show WITH names on vanilla (fixed 91/1183: `live_name`
+was set only on the first-seeded instance per type; now every instance). BUT the tier-3 NpcName-band
+discriminator mis-identifies/duplicates (multiple "Mimic Tear"; clone models collapse). The search list
+can't be reused — it's POI-only, not entities. Proper mod-agnostic boss enumeration =
+**`docs/re/cross_mod_boss_naming_re_prompt.md`** (GameAreaParam / NpcParam boss-flag / EMEVD defeat-flag /
+CSFeMan bossHpBars). See [[mod-agnostic-boss-markers]].
+
+**TEMPORARY PROBES still in the build (strip once bugs verified fixed):** `[COMBOPROBE]` (goblin_overlay.cpp,
+combo state), `[BOSSPROBE]` (map_entry_layer.cpp end-of-build, WorldBosses live_name count — should read
+`1183 with live_name`). Removed already: `[ESCPROBE]`, `[TIPPROBE]`, `[PADACT]`, `[NAVACT]`.
+
 ## ⇒ 2026-07-23 (Linux) — ★ marker-UX batch SHIPPED + deployed; 2 items queued for next session
 
 Deployed `MapForGoblins.dll` → `/home/iamacat/Games/ERRv2.2.9.6/dll/offline/` (md5 `fe3464c2`, == HEAD

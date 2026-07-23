@@ -1485,10 +1485,29 @@ namespace
                     (combined & goblin::config::overlayToggleGamepad) == goblin::config::overlayToggleGamepad;
                 if (combo_held) io.ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
                 else            io.ConfigFlags |=  ImGuiConfigFlags_NavEnableGamepad;
-                // Also expose it so the vmap suppresses its OWN pad-button actions (Y=warp / X=place) —
-                // the combo often shares the Y button, so without this Y-in-combo would warp a grace
-                // while you're closing the panel. Clears NavEnableGamepad above handles ImGui widgets.
-                goblin::overlay_api::set_gamepad_combo_held(combo_held);
+                // PROBE (bug 2/4, temporary): log combo state transitions + the button mask so we can see
+                // whether combo_held actually asserts while closing, and what buttons ImGui might also see.
+                {
+                    static bool s_prev_combo = false;
+                    if (combo_held != s_prev_combo)
+                    {
+                        s_prev_combo = combo_held;
+                        spdlog::info("[COMBOPROBE] combo_held={} combined=0x{:04X} toggleMask=0x{:04X} navGamepad={}",
+                                     combo_held, combined, goblin::config::overlayToggleGamepad,
+                                     (io.ConfigFlags & ImGuiConfigFlags_NavEnableGamepad) ? 1 : 0);
+                    }
+                }
+                // Expose a pad-action suppression flag for the vmap (Y=warp / X=place). CRITICAL: assert
+                // it as soon as the NON-primary combo buttons are held — i.e. the combo minus FaceUp(Y),
+                // which our pad_activate also uses. `combo_held` only asserts when ALL combo bits are down
+                // TOGETHER, but IsKeyPressed(Y) fires on Y's press EDGE — so pressing R3 then Y (or not
+                // perfectly simultaneously) warped on the Y edge before the full combo registered (bug 4:
+                // [PADACT] showed pad_activate firing during a close). Suppressing from "R3 held" closes
+                // that window; normal Y-warp (R3 not held) is unaffected.
+                constexpr uint16_t kPadActionBtn = 0x8000;  // XINPUT_GAMEPAD_Y = our FaceUp warp
+                const uint16_t comboOther = (uint16_t)(goblin::config::overlayToggleGamepad & ~kPadActionBtn);
+                const bool combo_forming = comboOther != 0 && (combined & comboOther) == comboOther;
+                goblin::overlay_api::set_gamepad_combo_held(combo_held || combo_forming);
             }
 
             // Gamepad combo recorder: settings button arms this. Buttons pressed one after

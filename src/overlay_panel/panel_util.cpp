@@ -236,7 +236,8 @@ void draw_gamepad_keyboard_button(const char *popup_id, char *buf, size_t buf_si
     // so a same-line button would land past the panel's right edge — invisible without
     // scrolling. Own line instead, always visible regardless of the field's width.
     if (ImGui::SmallButton("Kbd")) ImGui::OpenPopup(popup_id);   // ASCII-only: U+2328 isn't in the merged font ranges
-    if (ImGui::IsItemHovered())
+        // NoNavOverride: mouse-hover tooltip only, no gamepad nav-focus teleport (imgui.cpp:4087)
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
         ImGui::SetTooltip("%s", tr("On-screen keyboard for gamepad text entry."));
 
     if (ImGui::BeginPopup(popup_id))

@@ -25,7 +25,8 @@ void draw_clustering(Filter &f)
     bool en = goblin::overlay_api::clustering_enabled();
     if (ImGui::Checkbox(tr("Enable clustering (declutter dense areas)"), &en))
         goblin::overlay_api::set_clustering_enabled(en);
-    if (ImGui::IsItemHovered())
+        // NoNavOverride: mouse-hover tooltip only, no gamepad nav-focus teleport (imgui.cpp:4087)
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
         ImGui::SetTooltip("%s", tr("Collapse dense marker piles into one icon to keep busy\n"
                                    "regions readable. NOT for performance — the overlay map\n"
                                    "has no freeze. Live (updates as you pan/zoom the map)."));
@@ -39,7 +40,7 @@ void draw_clustering(Filter &f)
         ImGui::SetNextItemWidth(90.0f);
         if (ImGui::InputInt(tr("Cluster size — markers per location (live)"), &gt))
             goblin::overlay_api::set_global_threshold(gt);
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
             ImGui::SetTooltip("%s", tr("A location collapses into one pile when it holds MORE\n"
                                        "than this many (clustered-category) markers. LOWER = MORE\n"
                                        "clustering. Min 1. Live — reopen the map to see it.\n"
@@ -52,7 +53,7 @@ void draw_clustering(Filter &f)
             (*goblin::overlay_api::cfg_clusterDistanceAdaptive_ptr()) = da;
             goblin::overlay_api::request_cluster_replan();
         }
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
             ImGui::SetTooltip("%s", tr("Own mode: OVERRIDES the per-category opt-in above and clusters\n"
                                        "EVERY category by distance — full detail (individual items)\n"
                                        "near you, dense spots far away merged into piles. Ramps from\n"
@@ -69,7 +70,7 @@ void draw_clustering(Filter &f)
             ImGui::SetNextItemWidth(160.0f);
             if (ImGui::SliderInt(tr("Detail near you (cluster size)"), &nt, 1, 60))
             { (*goblin::overlay_api::cfg_clusterNearThreshold_ptr()) = static_cast<uint8_t>(nt); goblin::overlay_api::request_cluster_replan(); }
-            if (ImGui::IsItemHovered())
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
                 ImGui::SetTooltip("%s", tr("Cluster size WITHIN the near radius (higher = more individual\n"
                                            "items shown near you). Ramps down to 'Cluster size' (above) far away."));
             int fr = (*goblin::overlay_api::cfg_clusterFarRadius_ptr());
@@ -105,7 +106,7 @@ void draw_clustering(Filter &f)
             (*goblin::overlay_api::cfg_clusterDistanceAdaptive_ptr()) = false;
             goblin::overlay_api::request_cluster_replan();
         }
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Max detail: individual items everywhere; only the densest spots cluster. No distance scaling."));
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride)) ImGui::SetTooltip("%s", tr("Max detail: individual items everywhere; only the densest spots cluster. No distance scaling."));
         ImGui::SameLine();
         if (ImGui::SmallButton(tr("Explorer")))
         {
@@ -119,7 +120,7 @@ void draw_clustering(Filter &f)
             (*goblin::overlay_api::cfg_clusterFarRadius_ptr()) = 2;
             goblin::overlay_api::request_cluster_replan();
         }
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Balanced: individual items in your immediate area, everything else merged."));
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride)) ImGui::SetTooltip("%s", tr("Balanced: individual items in your immediate area, everything else merged."));
         ImGui::SameLine();
         if (ImGui::SmallButton(tr("Performance")))
         {
@@ -130,7 +131,7 @@ void draw_clustering(Filter &f)
             (*goblin::overlay_api::cfg_clusterFarRadius_ptr()) = 2;
             goblin::overlay_api::request_cluster_replan();
         }
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Aggressive far-merge: fewest distant icons, most declutter."));
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride)) ImGui::SetTooltip("%s", tr("Aggressive far-merge: fewest distant icons, most declutter."));
     }
 }
 } // namespace goblin::overlay::panel

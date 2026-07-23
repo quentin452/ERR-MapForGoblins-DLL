@@ -70,7 +70,8 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
         }
         ImGui::SameLine();
         ImGui::TextDisabled("(?)");
-        if (ImGui::IsItemHovered())
+        // NoNavOverride: mouse-hover tooltip only, no gamepad nav-focus teleport (imgui.cpp:4087)
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
             ImGui::SetTooltip("%s", tr("Overlay UI language (lang/<code>.txt next to the DLL).\n"
                                        "Switches live; Save to INI to persist. Game content\n"
                                        "names stay in the game's own language."));
@@ -147,7 +148,7 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
     {
         ImGui::Checkbox(tr("Spoiler-free loot (gray \"?\" instead of the item)"),
                         goblin::overlay_api::cfg_anonymousLoot_ptr());
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
             ImGui::SetTooltip("%s", tr("Every loot marker shows a gray \"?\" and only its location,\n"
                                        "hiding the real item (useful with randomizers). Markers still\n"
                                        "gray out when collected; category show/hide is unaffected."));
@@ -159,13 +160,13 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
             ImGui::Indent();
             if (ImGui::RadioButton(tr("Light — randomized loot only"), !*aggr))
                 *aggr = false;
-            if (ImGui::IsItemHovered())
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
                 ImGui::SetTooltip("%s", tr("Hide only markers whose identity is randomized:\n"
                                            "treasure/enemy drops + farmable drops. Bosses,\n"
                                            "pieces, kindling and landmarks keep their names."));
             if (ImGui::RadioButton(tr("Aggressive — blackout (for randomizers)"), *aggr))
                 *aggr = true;
-            if (ImGui::IsItemHovered())
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
                 ImGui::SetTooltip("%s", tr("Full blackout: EVERY marker except graces shows \"?\"\n"
                                            "(bosses, pieces, kindling, POI/landmarks). Positions only.\n"
                                            "Bosses keep a bigger red \"?\" so a threat still reads."));
@@ -193,7 +194,7 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
             *ctx.gamepad_combo_recording = true;
             ctx.gamepad_combo_reject_reason->clear();
         }
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
             ImGui::SetTooltip("%s", tr("Click, then press the button combo on your controller (default Y+R3).\n"
                                        "The first combo read is captured and saved to the ini immediately."));
         if (!ctx.gamepad_combo_reject_reason->empty())
@@ -244,7 +245,7 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
         s_minimap_focus_frame = ImGui::GetFrameCount();  // keep the minimap drawn over the vmap while tuning
         ImGui::Checkbox(tr("Show minimap (corner HUD during gameplay)"),
                         goblin::overlay_api::cfg_showMinimap_ptr());
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
             ImGui::SetTooltip("%s", tr("A small north-up minimap in the screen corner showing nearby\n"
                                        "markers around you during play. OVERWORLD only for now\n"
                                        "(underground player position isn't reliable yet)."));
@@ -275,7 +276,7 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
     {
         bool *master = goblin::overlay_api::cfg_enemyNames_ptr();
         ImGui::Checkbox(tr("Name non-boss enemies"), master);
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
             ImGui::SetTooltip("%s", tr("Name the game's own non-boss enemy tags. The name is resolved\n"
                                        "live from the active install and fed to the engine's OWN red\n"
                                        "tag (NpcParam.nameId -> NpcName), so the game renders it itself\n"

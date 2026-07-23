@@ -828,9 +828,6 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // the canvas below). Restored before End() so ImGui's next-frame MouseDelta isn't corrupted.
     const ImVec2 s_pad_saved_mouse = ImGui::GetIO().MousePos;
     if (s_pad_mode) ImGui::GetIO().MousePos = s_pad_cursor;
-    // rowId of the discovered grace nav-focused in the sidebar this frame (0 = none). Set in the grace
-    // render_row, consumed for the Y-warp AFTER pad_over_canvas is known (canvas reticle takes precedence).
-    uint64_t pad_sidebar_grace = 0;
 
     // Opened by the game MAP KEY (s_from_map) → draw FULLSCREEN + opaque so it stands in for the
     // native map (which still renders underneath; we cover it rather than suppress it — the native
@@ -908,7 +905,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     if (ImGui::SmallButton(tr("Player"))) { goblin::vworld::set_active(goblin::vworld::player_world()); s_focus_player = true; }
     ImGui::SameLine();
     ImGui::Checkbox(tr("Follow"), &s_follow_player_dim);   // auto-switch page to the player's dimension on a crossing
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("auto-switch the map page to the player's dimension (OW/underground/DLC) when they cross"));
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride)) ImGui::SetTooltip("%s", tr("auto-switch the map page to the player's dimension (OW/underground/DLC) when they cross"));
     ImGui::SameLine();
     ImGui::Checkbox(tr("Icons"), &s_show_icons);   // real category icons vs plain dots
     ImGui::SameLine();
@@ -956,7 +953,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         ImGui::SameLine();
         if (ImGui::SmallButton(s_extract_mode ? tr("Extract: drag a box") : tr("Extract region")))
         { s_extract_mode = !s_extract_mode; s_extract_dragging = false; }
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))  // mouse-only (bug-1: no nav-focus teleport)
             ImGui::SetTooltip("%s", tr("Toggle, then left-drag a rectangle on the map. Every marker inside is\n"
                                        "logged ([VMEXTRACT] in logs/MapForGoblins.log) with an off-map flag\n"
                                        "(origin0 / OOB / ok) — a debug aid for markers that land off the map."));
@@ -1126,13 +1123,10 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     s_warp_pending = g.rowId;                         // discovered → teleport (post-frame)
                 else { s_cam_x = g.wx; s_cam_z = g.wz; s_group = g.group; }  // locate: pan the canvas to it
             }
-            // Gamepad: nav-activate (A) LOCATES like a single mouse click; FaceUp (Y) on the focused row
-            // WARPS. Only RECORD the focused grace here — the actual Y-warp fires later, gated on the
-            // reticle NOT being over the canvas (canvas selection takes precedence, bug 2) and on the
-            // toggle combo not being held (bug 4).
-            if (disc && ImGui::IsItemFocused())
-                pad_sidebar_grace = g.rowId;
-            if (!s_pad_mode && ImGui::IsItemHovered())   // pad-mode: no stale-mouse sidebar tooltip (see s_pad_mode)
+            // Gamepad: A (nav-activate) LOCATES the grace (pans the canvas to it), like a single mouse
+            // click. To WARP, point the right-stick reticle at the grace on the canvas and tap Y — the
+            // sidebar list itself no longer warps on Y (that fired on mere nav focus; see bug-2 note).
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))   // mouse-only (bug-1: no nav-focus teleport)
                 ImGui::SetTooltip("%s", disc ? tr("double-click / Y: warp · click: locate")
                                              : tr("undiscovered — click: locate"));
             ImGui::PopID();
@@ -1299,7 +1293,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                               h.name_id, h.state_id);
             if (ImGui::Selectable(row))
                 virtual_map_locate(h.name_id, h.group);   // centre the canvas on the hit + switch page
-            if (!s_pad_mode && ImGui::IsItemHovered())   // pad-mode: no stale-mouse sidebar tooltip (see s_pad_mode)
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))   // mouse-only (bug-1: no nav-focus teleport)
             {
                 if (h.state.empty())
                     ImGui::SetTooltip(tr("click: centre the map on it (%s)"), gname);
@@ -1552,17 +1546,22 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     const bool pad_over_canvas = s_pad_mode && s_pad_cursor.x >= origin.x && s_pad_cursor.x <= canvas_end.x &&
                                  s_pad_cursor.y >= origin.y && s_pad_cursor.y <= canvas_end.y;
     const bool hovered_eff = hovered || pad_over_canvas;
-    // Suppress our pad-button actions while the overlay-toggle combo is held — it often shares the Y
-    // button, so closing the panel would otherwise ALSO warp/place (bug 4). ImGui widget nav is gated
-    // separately (NavEnableGamepad cleared in the host poll).
     const bool pad_combo = goblin::overlay_api::gamepad_combo_held();
-    const bool pad_activate = s_pad_mode && !pad_combo && ImGui::IsKeyPressed(ImGuiKey_GamepadFaceUp, false);
-    const bool pad_place    = s_pad_mode && !pad_combo && ImGui::IsKeyPressed(ImGuiKey_GamepadFaceLeft, false);
-    // Canvas precedence (bug 2): warp the sidebar-focused grace with Y ONLY when the reticle is NOT over
-    // the canvas — if it is, the canvas target owns Y (handled at the grace tooltip below). Deferred from
-    // the sidebar render (drawn before pad_over_canvas is known) via s_pad_sidebar_grace.
-    if (pad_activate && !pad_over_canvas && pad_sidebar_grace)
-        s_warp_pending = pad_sidebar_grace;
+    // WARP TRIGGER (bug 4, press-order-independent): fire on Y RELEASE, and only if the toggle combo's
+    // OTHER button (R3) was never held during the Y hold. A Y-tap-release = warp; a Y+R3 combo (in ANY
+    // order) = close, never a warp. The old press-edge check missed Y-before-R3 (R3 not down yet at the
+    // Y edge, so combo suppression hadn't asserted). One latched flag: armed on Y-down, cleared the moment
+    // the combo forms, consumed on Y-up.
+    static bool s_y_warp_armed = false;
+    if (s_pad_mode && ImGui::IsKeyPressed(ImGuiKey_GamepadFaceUp, false)) s_y_warp_armed = true;
+    if (pad_combo) s_y_warp_armed = false;                               // R3 joined the hold → it's the combo
+    const bool pad_activate = s_y_warp_armed && ImGui::IsKeyReleased(ImGuiKey_GamepadFaceUp);
+    if (ImGui::IsKeyReleased(ImGuiKey_GamepadFaceUp)) s_y_warp_armed = false;
+    // Place/delete a custom marker: press-edge is fine (X is not part of the toggle combo).
+    const bool pad_place = s_pad_mode && !pad_combo && ImGui::IsKeyPressed(ImGuiKey_GamepadFaceLeft, false);
+    // NOTE (bug 2): Y warps ONLY the canvas reticle's hovered grace (below). The sidebar grace-list
+    // Y-warp was removed — it fired whenever a grace row merely held nav focus, so navigating a selector
+    // and tapping Y warped unexpectedly ("toggle + teleport"). Point the reticle at the grace to warp it.
     // Pad place/delete a custom marker at the reticle (mirrors the right-click path above; s_pad_cursor is
     // now current this frame). Near an existing same-group pin → delete, else drop a new one (cap-enforced).
     if (pad_place && pad_over_canvas && active_world == 0)
