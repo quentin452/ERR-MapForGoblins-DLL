@@ -455,7 +455,7 @@ namespace goblin::debug_rpc
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers entrance_anchor warp coords warp_local warp_xyz warp_far load_rescue we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
-                       " | hp immortal exit mfg_build er_base er_version proj mem_dump mem_write mem_scan_f3 mem_scan_u32 mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset spawn_cap4e80 spawn_capreg add_collision objects hf_probe hf_probe_present hf_sample hf_shape_probe ground_at far_relief_probe far_relief w2s_probe"
+                       " | hp immortal exit mfg_build er_base er_version proj fold_probe mem_dump mem_write mem_scan_f3 mem_scan_u32 mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset spawn_cap4e80 spawn_capreg add_collision objects hf_probe hf_probe_present hf_sample hf_shape_probe ground_at far_relief_probe far_relief w2s_probe"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
             if (cmd == "idlediag")
@@ -1440,6 +1440,30 @@ namespace goblin::debug_rpc
                 char b[128];
                 if (!ok) { std::snprintf(b, sizeof(b), "err proj: converter unresolved (map never opened?) or declined"); return std::string(b); }
                 std::snprintf(b, sizeof(b), "ok proj area=%d grid=(%d,%d) -> u=%.2f v=%.2f page=%d", area, gx, gz, u, v, page);
+                return std::string(b);
+            }
+            // fold_probe <area> <gx> <gz> [px] [pz] — run the LIVE legacy_fold (WorldMapLegacyConvParam)
+            // and report matched + the folded dst block + the ENTRANCE base-point world (ent_x/ent_z =
+            // ConvRow.dst). This is the ground-truth "overworld entrance" for a mapped dungeon — the value
+            // the Slice-2/3 entrance-anchor must reproduce for a fold-DECLINED area (see
+            // dungeon_entrance_fallback_anchor_plan; RE probe: entrance from a warp must equal this).
+            if (cmd == "fold_probe")
+            {
+                std::string as = next_token(rest), gxs = next_token(rest), gzs = next_token(rest),
+                            pxs = next_token(rest), pzs = next_token(rest);
+                int area = 0, gx = 0, gz = 0; float px = 0.f, pz = 0.f;
+                try { area = std::stoi(as); gx = std::stoi(gxs); gz = std::stoi(gzs);
+                      if (!pxs.empty()) px = std::stof(pxs); if (!pzs.empty()) pz = std::stof(pzs); }
+                catch (...) { return "err usage: fold_probe <area> <gx> <gz> [px] [pz]"; }
+                goblin::legacy_fold::ensure_built();
+                goblin::legacy_fold::Folded f =
+                    goblin::legacy_fold::fold((uint8_t)area, (uint8_t)gx, (uint8_t)gz, px, pz);
+                char b[224];
+                std::snprintf(b, sizeof(b),
+                    "ok fold_probe area=%d matched=%d avail=%d -> dst area=%d grid=(%d,%d) pos=(%.1f,%.1f) "
+                    "ent=(%.1f,%.1f)",
+                    area, (int)f.matched, (int)goblin::legacy_fold::available(),
+                    (int)f.area, (int)f.gx, (int)f.gz, f.posX, f.posZ, f.ent_x, f.ent_z);
                 return std::string(b);
             }
             // proj_conv <area> <gxbase> <gzbase> <ox> <oz> <bx> <bz> <scale> <gx> <gz> [px] [pz] —
