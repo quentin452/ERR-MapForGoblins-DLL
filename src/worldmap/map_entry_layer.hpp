@@ -48,6 +48,13 @@ std::string far_relief_probe();
 // to its base's name (Godrick) and spawns a duplicate boss marker in build_live_bosses' supplement pass.
 std::string ename_probe(const std::string &query);
 
+// Item PROVENANCE probe: for a lot id (numeric) or item-name substring, dump every disk placement
+// (Treasure / cross-tile LOD-Treasure / AEG Collectible) carrying that lot — RAW source tile + pos and
+// PROJECTED overworld position (onmap / OOB / DECLINED). Reads the cached g_parsed (no re-scan). RPC
+// `vmap prov <lot|name>`. Diagnoses duplicate / mis-projected loot (e.g. a lot present in several ERR
+// Roundtable-copy tiles → the same item at multiple world positions). Detail → [PROV] log.
+std::string loot_prov_probe(const std::string &query);
+
 // D-far -1 v0 — build the MSB Y-cloud ground-height field (overworld collectible posY → per-cell median
 // grid → heightfield::Cell[] with gradient normals). Consumed by the vmap hillshade (same as the near
 // raycast). cellSize in world units (default 128). RPC `far_relief [cell]`; snapshot for the renderer.

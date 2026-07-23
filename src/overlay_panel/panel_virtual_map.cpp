@@ -2739,6 +2739,15 @@ std::string vmap_rpc_command(std::string rest)
         if (q.empty()) return "err usage: vmap ename <substr | area gx gz>";
         return goblin::worldmap::ename_probe(q);
     }
+    if (arg == "prov")
+    {
+        std::string q = rest;
+        size_t b = q.find_first_not_of(" \t");
+        size_t e = q.find_last_not_of(" \t");
+        q = (b == std::string::npos) ? std::string{} : q.substr(b, e - b + 1);
+        if (q.empty()) return "err usage: vmap prov <lot|item-name>";
+        return goblin::worldmap::loot_prov_probe(q);
+    }
     if (arg == "emevd")
     {
         std::string mn = vmap_next_token(rest);

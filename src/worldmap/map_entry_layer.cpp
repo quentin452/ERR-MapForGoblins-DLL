@@ -3841,6 +3841,59 @@ std::string ename_probe(const std::string &query)
     return out;
 }
 
+// Item PROVENANCE probe (`vmap prov <lot|name>`): for a lot id (numeric) or an item-name substring,
+// dump EVERY disk placement that carries that lot — Treasure (_00), cross-tile LOD-Treasure, and AEG
+// Collectible — with its RAW source tile + block-local pos and the PROJECTED overworld position. Reads
+// the cached g_parsed (no re-scan). Purpose: diagnose duplicate/mis-projected markers (e.g. ERR's
+// Roundtable Hold placed in several map tiles → the SAME lot appears at multiple world positions). The
+// projected AREA tells the story: still the raw sub-map area = the fold DECLINED (unmappable → snaps
+// off-map), an overworld/DLC/UG area = it folded. So the reader sees exactly which physical tile each
+// duplicate came from and where each one landed.
+std::string loot_prov_probe(const std::string &query)
+{
+    auto lower = [](std::string s) { for (char &c : s) c = (char)std::tolower((unsigned char)c); return s; };
+    // numeric → exact lot filter; else substring on the resolved item name.
+    uint32_t wantLot = 0; bool byLot = false;
+    { std::istringstream is(query); unsigned long v;
+      if ((is >> v) && (is >> std::ws).eof()) { wantLot = (uint32_t)v; byLot = true; } }
+    const std::string needle = byLot ? std::string() : lower(query);
+
+    if (!g_parsed.valid)
+        return "err vmap prov: disk parse not ready — be in-world (markers built) or run refresh_markers first";
+
+    spdlog::info("[PROV] query='{}' ({})", query, byLot ? "lot" : "name");
+    size_t hits = 0;
+    auto dump = [&](const char *src, uint32_t lot, uint8_t area, uint8_t gx, uint8_t gz, float px, float pz)
+    {
+        if (lot == 0) return;
+        int32_t key = goblin::overlay_api::resolve_loot_item_textid(lot, 1, -1);
+        std::string nm = key > 0 ? goblin::overlay_api::lookup_text_utf8(key) : std::string();
+        bool match = byLot ? (lot == wantLot)
+                           : (!nm.empty() && lower(nm).find(needle) != std::string::npos);
+        if (!match) return;
+        ++hits;
+        int ga = area; float wx = 0.f, wz = 0.f;
+        goblin::overlay_api::marker_world_pos(area, gx, gz, px, pz, ga, wx, wz, /*conv_underground=*/true);
+        const bool declined = (ga == (int)area) && area != 60 && area != 61 && area != 12 &&
+                              !(area >= 40 && area <= 43);  // projected area unchanged from a sub-map = no fold
+        const bool oob = (wx == 0.f && wz == 0.f) || wx < -256.f || wz < -256.f || wx > 16384.f || wz > 16384.f;
+        spdlog::info("[PROV]   src={} lot={} '{}' | RAW area{} grid({},{}) pos({:.0f},{:.0f}) "
+                     "| PROJ area{} world({:.0f},{:.0f}) {}",
+                     src, lot, nm.empty() ? "<?>" : nm.c_str(), (int)area, (int)gx, (int)gz, px, pz,
+                     ga, wx, wz, declined ? "DECLINED-oob" : (oob ? "OOB" : "onmap"));
+    };
+    for (const DiskTreasure &t : g_parsed.treasures)
+        dump("Treasure", t.lotId, t.area, t.gx, t.gz, t.posX, t.posZ);
+    for (const DiskTreasure &t : g_parsed.lod)
+        dump("LOD-Treasure", t.lotId, t.area, t.gx, t.gz, t.posX, t.posZ);
+    for (const DiskCollectible &c : g_parsed.collectibles)
+        dump("Collectible", goblin::overlay_api::aeg_pickup_lot(c.aegRow), c.area, c.gx, c.gz, c.posX, c.posZ);
+    spdlog::info("[PROV] {} match(es)", hits);
+    char out[128];
+    std::snprintf(out, sizeof(out), "ok vmap prov '%s': %zu placement(s) — see [PROV] log", query.c_str(), hits);
+    return out;
+}
+
 void prebuild_markers()
 {
     // Wire CreateFileW discovery → kick the worker the instant the dir is Found,
