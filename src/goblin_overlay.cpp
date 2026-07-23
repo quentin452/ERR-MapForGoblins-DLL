@@ -1485,6 +1485,10 @@ namespace
                     (combined & goblin::config::overlayToggleGamepad) == goblin::config::overlayToggleGamepad;
                 if (combo_held) io.ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
                 else            io.ConfigFlags |=  ImGuiConfigFlags_NavEnableGamepad;
+                // Also expose it so the vmap suppresses its OWN pad-button actions (Y=warp / X=place) —
+                // the combo often shares the Y button, so without this Y-in-combo would warp a grace
+                // while you're closing the panel. Clears NavEnableGamepad above handles ImGui widgets.
+                goblin::overlay_api::set_gamepad_combo_held(combo_held);
             }
 
             // Gamepad combo recorder: settings button arms this. Buttons pressed one after

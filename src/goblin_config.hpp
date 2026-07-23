@@ -297,6 +297,7 @@ namespace goblin
         extern GOBLIN_RENDER_API bool showMinimap;
         extern GOBLIN_RENDER_API float minimapZoom;     // px per world-unit
         extern GOBLIN_RENDER_API float gamepadSensitivity; // vmap gamepad reticle/pan speed multiplier
+        extern GOBLIN_RENDER_API float gamepadZoomSensitivity; // vmap gamepad L2/R2 zoom speed multiplier
         extern GOBLIN_RENDER_API float minimapSize;     // radius px
         extern GOBLIN_RENDER_API float minimapOpacity;  // background opacity 0..1
         extern GOBLIN_RENDER_API bool minimapAnchorRight;

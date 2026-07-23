@@ -112,6 +112,7 @@ namespace goblin::config
     bool showMinimap = false;
     float minimapZoom = 2.0f;      // px per world-unit shown on the minimap
     float gamepadSensitivity = 1.0f; // vmap gamepad: scales reticle-move + left-stick pan speed
+    float gamepadZoomSensitivity = 1.0f; // vmap gamepad: scales L2/R2 zoom speed
     float minimapSize = 100.0f;    // minimap radius in px
     float minimapOpacity = 0.85f;  // background disc opacity 0..1
     bool minimapAnchorRight = true;   // corner: right vs left
@@ -556,6 +557,9 @@ namespace
                   false, nullptr},
                 IniEntry{"gamepad_sensitivity", IniType::F32, &cfg::gamepadSensitivity, "1.0",
                   "Virtual World Map GAMEPAD sensitivity: scales the right-stick reticle move\nspeed + the left-stick pan speed. 1.0 = default; higher = faster.",
+                  false, nullptr, 0.2f, 4.0f},
+                IniEntry{"gamepad_zoom_sensitivity", IniType::F32, &cfg::gamepadZoomSensitivity, "1.0",
+                  "Virtual World Map GAMEPAD zoom sensitivity: scales the L2/R2 trigger zoom\nspeed. 1.0 = default; higher = faster. Independent of gamepad_sensitivity.",
                   false, nullptr, 0.2f, 4.0f},
                 IniEntry{"minimap_zoom", IniType::F32, &cfg::minimapZoom, "2.0",
                   "Minimap zoom = pixels per world-unit. Higher = more zoomed-in (less area\nshown). 2.0 = default (raised from 0.08 through live user tuning 2026-07-01 --\nthe old default and the old 0.30 slider max both read as too zoomed-out/small).",

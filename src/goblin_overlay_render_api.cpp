@@ -69,6 +69,15 @@ namespace goblin::overlay_api
     void set_vmap_pad_mode(bool v) { g_vmap_pad_mode.store(v, std::memory_order_relaxed); }
     bool vmap_pad_mode() { return g_vmap_pad_mode.load(std::memory_order_relaxed); }
 
+    // True while the gamepad overlay-TOGGLE combo (e.g. Y+R3) is physically held. Set by the host poll
+    // (goblin_overlay.cpp); the vmap reads it to SUPPRESS its own pad-button actions (grace warp on Y /
+    // place on X) so a combo that shares the Y button doesn't ALSO fire a warp while closing the panel
+    // (bug: "closing F1 with the pad combo still triggers other selectors"). Companion to clearing
+    // NavEnableGamepad for ImGui's built-in widget nav.
+    static std::atomic<bool> g_gamepad_combo_held{false};
+    void set_gamepad_combo_held(bool v) { g_gamepad_combo_held.store(v, std::memory_order_relaxed); }
+    bool gamepad_combo_held() { return g_gamepad_combo_held.load(std::memory_order_relaxed); }
+
 #define GOBLIN_CFG_DEF_PTR(name) \
     decltype(&goblin::config::name) cfg_##name##_ptr() { return &goblin::config::name; }
     GOBLIN_CFG_BOOL_LIST(GOBLIN_CFG_DEF_PTR)

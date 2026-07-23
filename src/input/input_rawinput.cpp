@@ -1,5 +1,7 @@
 #include "input_rawinput.hpp"
 #include "input_shared.hpp"
+#include "goblin_inject.hpp"              // goblin::world_map_open()
+#include "goblin_overlay_render_api.hpp"  // overlay_api::vmap_redirect() — redirect-vmap Escape gate
 
 #include <atomic>
 #include <cstdint>
@@ -150,10 +152,18 @@ UINT WINAPI hk_get_raw_input_data(HRAWINPUT h, UINT cmd, LPVOID data, PUINT size
             ri->data.mouse.usButtonFlags = 0;
             ri->data.mouse.usButtonData = 0;
         }
-        else if (ri->header.dwType == RIM_TYPEKEYBOARD && menu_open())
+        else if (ri->header.dwType == RIM_TYPEKEYBOARD &&
+                 (menu_open() ||
+                  // Redirect stand-in (vmap replaced the native map, world_map_open()==false): the game
+                  // reads keyboard via RAW input (NOLEGACY), so consuming the legacy WM_KEYDOWN in
+                  // hk_wndproc isn't enough — Escape ALSO arrives here and opens the system menu behind the
+                  // vmap (bug: "Escape does vmap-close AND ER-menu at once"). Blank JUST Escape in that mode
+                  // (other keys pass so the map key can still toggle the redirect). NOT the custom-world
+                  // path (world_map_open()==true) — there Escape legitimately closes the native map.
+                  (ri->data.keyboard.VKey == VK_ESCAPE && goblin::overlay_api::vmap_redirect() &&
+                   !goblin::world_map_open())))
         {
-            // Keyboard blanked ONLY for the F1 menu — NOT for the fullscreen vmap, whose map-close
-            // key must reach the game (raw NOLEGACY) so the native map (→ vmap) can close.
+            // Keyboard blanked for the F1 menu (all keys) or the redirect vmap (Escape only, per above).
             ri->data.keyboard.VKey = 0xFF;          // no valid key
             ri->data.keyboard.Message = WM_NULL;
             ri->data.keyboard.MakeCode = 0;
@@ -201,6 +211,18 @@ UINT WINAPI hk_get_raw_input_buffer(PRAWINPUT data, PUINT size, UINT hdr)
                     ri->data.mouse.usButtonFlags = 0;
                     ri->data.mouse.usButtonData = 0;
                 }
+            }
+            // Redirect stand-in: blank Escape IN PLACE (the buffer is kept, not dropped, for the vmap) so
+            // it can't open the system menu behind the map (same reason as the singular-read path). Only
+            // Escape, only in redirect mode — other keys survive so the map key still toggles the redirect.
+            else if (ri->header.dwType == RIM_TYPEKEYBOARD && !ri_menu &&
+                     ri->data.keyboard.VKey == VK_ESCAPE &&
+                     goblin::overlay_api::vmap_redirect() && !goblin::world_map_open())
+            {
+                ri->data.keyboard.VKey = 0xFF;
+                ri->data.keyboard.Message = WM_NULL;
+                ri->data.keyboard.MakeCode = 0;
+                ri->data.keyboard.Flags = RI_KEY_BREAK;
             }
             // NEXTRAWINPUTBLOCK expands to a QWORD-based alignment macro that isn't visible
             // with this project's xwin/clang-cl SDK headers — inlined equivalent (8-byte

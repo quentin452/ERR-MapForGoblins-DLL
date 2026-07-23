@@ -46,7 +46,7 @@ namespace goblin::overlay_api
 #define GOBLIN_CFG_FLOAT_LIST(X) \
     X(iconMinHalfPx) \
     X(minimapOffsetX) X(minimapOffsetY) X(minimapOpacity) X(minimapSize) \
-    X(minimapZoom) X(overlayIconScale) X(overlayMasterScale) X(gamepadSensitivity)
+    X(minimapZoom) X(overlayIconScale) X(overlayMasterScale) X(gamepadSensitivity) X(gamepadZoomSensitivity)
 #define GOBLIN_CFG_U8_LIST(X) X(clusterFarRadius) X(clusterNearRadius) X(clusterNearThreshold) X(virtualKeyboardLayout)
 #define GOBLIN_CFG_U16_LIST(X) X(overlayToggleGamepad)
 
@@ -158,6 +158,8 @@ namespace goblin::overlay_api
     // software cursor while the pad drives + show it on a mouse switch. See goblin_overlay_render_api.cpp.
     GOBLIN_RENDER_API void set_vmap_pad_mode(bool v);
     GOBLIN_RENDER_API bool vmap_pad_mode();
+    GOBLIN_RENDER_API void set_gamepad_combo_held(bool v);
+    GOBLIN_RENDER_API bool gamepad_combo_held();
     GOBLIN_RENDER_API bool page_switch_busy();
     GOBLIN_RENDER_API void request_switch_to_page(int group);
     GOBLIN_RENDER_API const goblin::worldmap_probe::LocateDebug &last_locate_debug();

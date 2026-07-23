@@ -819,6 +819,18 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // real mouse would render at the stale cursor spot, not where the pad is looking — bug "tooltip
     // shows at the old gamepad selection, not the reticle". Pad tooltips come only from the canvas.
     static bool s_pad_mode = false;
+    static ImVec2 s_pad_cursor(0, 0);       // right-stick reticle; init'd + clamped to the canvas below
+    static bool s_pad_cursor_init = false;
+    // SINGLE-POINTER override: in pad-mode point ImGui's mouse at the reticle for the ENTIRE frame,
+    // BEFORE the sidebar/category panel draw. The reticle is clamped to the canvas, so no sidebar widget
+    // (grace list, category checkboxes, search) is "hovered" off the stale/frozen real mouse → no tooltip
+    // teleports to a nav-selected widget. Uses last frame's reticle (static; recomputed + re-applied for
+    // the canvas below). Restored before End() so ImGui's next-frame MouseDelta isn't corrupted.
+    const ImVec2 s_pad_saved_mouse = ImGui::GetIO().MousePos;
+    if (s_pad_mode) ImGui::GetIO().MousePos = s_pad_cursor;
+    // rowId of the discovered grace nav-focused in the sidebar this frame (0 = none). Set in the grace
+    // render_row, consumed for the Y-warp AFTER pad_over_canvas is known (canvas reticle takes precedence).
+    uint64_t pad_sidebar_grace = 0;
 
     // Opened by the game MAP KEY (s_from_map) → draw FULLSCREEN + opaque so it stands in for the
     // native map (which still renders underneath; we cover it rather than suppress it — the native
@@ -1115,10 +1127,11 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                 else { s_cam_x = g.wx; s_cam_z = g.wz; s_group = g.group; }  // locate: pan the canvas to it
             }
             // Gamepad: nav-activate (A) LOCATES like a single mouse click; FaceUp (Y) on the focused row
-            // WARPS — mirrors the canvas pad_activate so a discovered grace is warpable from the sidebar
-            // too (bug: gamepad could only ever locate, never warp, despite "double-click to warp").
-            if (disc && ImGui::IsItemFocused() && ImGui::IsKeyPressed(ImGuiKey_GamepadFaceUp, false))
-                s_warp_pending = g.rowId;
+            // WARPS. Only RECORD the focused grace here — the actual Y-warp fires later, gated on the
+            // reticle NOT being over the canvas (canvas selection takes precedence, bug 2) and on the
+            // toggle combo not being held (bug 4).
+            if (disc && ImGui::IsItemFocused())
+                pad_sidebar_grace = g.rowId;
             if (!s_pad_mode && ImGui::IsItemHovered())   // pad-mode: no stale-mouse sidebar tooltip (see s_pad_mode)
                 ImGui::SetTooltip("%s", disc ? tr("double-click / Y: warp · click: locate")
                                              : tr("undiscovered — click: locate"));
@@ -1472,8 +1485,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // gamepad analog keys (fed by ImGui_ImplWin32_UpdateGamepads). RIGHT stick + triggers deliberately DON'T
     // collide with ImGui nav, which uses the LEFT stick / dpad for sidebar widget focus. A latch keeps the
     // reticle shown only while the pad is actually driving (a real mouse move exits pad-mode).
-    static ImVec2 s_pad_cursor(0, 0);
-    static bool s_pad_cursor_init = false;  // s_pad_mode hoisted to the top of draw_virtual_map
+    // s_pad_mode / s_pad_cursor / s_pad_cursor_init hoisted to the top of draw_virtual_map (single-pointer)
     {
         auto an = [&io](ImGuiKey k) { return io.KeysData[k - ImGuiKey_KeysData_OFFSET].AnalogValue; };
         auto ax = [&](ImGuiKey neg, ImGuiKey pos) {
@@ -1516,7 +1528,8 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             if (zoomAx != 0.0f)
             {
                 float wxb, wzb; s2w(s_pad_cursor, wxb, wzb);
-                s_zoom *= std::pow(1.9f, zoomAx * dt);
+                const float zoomSens = *goblin::overlay_api::cfg_gamepadZoomSensitivity_ptr();
+                s_zoom *= std::pow(1.9f, zoomAx * dt * zoomSens);
                 if (s_zoom < kZoomMin) s_zoom = kZoomMin;
                 if (s_zoom > kZoomMax) s_zoom = kZoomMax;
                 float wxa, wza; s2w(s_pad_cursor, wxa, wza);
@@ -1531,20 +1544,25 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // actions exactly like the mouse. Buttons chosen to NOT collide with ImGui nav (FaceDown=Activate,
     // FaceRight=Cancel, dpad/LStick=widget nav): FaceUp (Y/△) = activate (warp a hovered discovered grace),
     // FaceLeft (X/□) = place / delete a custom marker (the right-click equivalent). Mouse path unchanged.
-    // Point ImGui's mouse at the reticle in pad-mode so canvas TOOLTIPS — which anchor to io.MousePos —
-    // render at the reticle, not the stale real-mouse spot (that mismatch is invisible now but becomes
-    // obvious once the vmap is fullscreen over the ER map). SAVED here + RESTORED before End() so the mouse
-    // DELTA the pad-latch reads next frame (io.MouseDelta, used above to exit pad-mode) isn't corrupted by
-    // the override. Only affects tooltips created below (the sidebar, drawn earlier, keeps ImGui-nav focus
-    // tooltips). vptr then == io.MousePos == reticle in pad-mode, real mouse otherwise.
-    const ImVec2 saved_mouse = io.MousePos;
+    // Re-apply the single-pointer override with THIS frame's freshly-computed reticle (the top-of-function
+    // override used last frame's static, for the sidebar). Restored to the real mouse before End() (see
+    // s_pad_saved_mouse) so ImGui's next-frame MouseDelta isn't corrupted. vptr == reticle in pad-mode.
     if (s_pad_mode) io.MousePos = s_pad_cursor;
     const ImVec2 vptr = io.MousePos;
     const bool pad_over_canvas = s_pad_mode && s_pad_cursor.x >= origin.x && s_pad_cursor.x <= canvas_end.x &&
                                  s_pad_cursor.y >= origin.y && s_pad_cursor.y <= canvas_end.y;
     const bool hovered_eff = hovered || pad_over_canvas;
-    const bool pad_activate = s_pad_mode && ImGui::IsKeyPressed(ImGuiKey_GamepadFaceUp, false);
-    const bool pad_place    = s_pad_mode && ImGui::IsKeyPressed(ImGuiKey_GamepadFaceLeft, false);
+    // Suppress our pad-button actions while the overlay-toggle combo is held — it often shares the Y
+    // button, so closing the panel would otherwise ALSO warp/place (bug 4). ImGui widget nav is gated
+    // separately (NavEnableGamepad cleared in the host poll).
+    const bool pad_combo = goblin::overlay_api::gamepad_combo_held();
+    const bool pad_activate = s_pad_mode && !pad_combo && ImGui::IsKeyPressed(ImGuiKey_GamepadFaceUp, false);
+    const bool pad_place    = s_pad_mode && !pad_combo && ImGui::IsKeyPressed(ImGuiKey_GamepadFaceLeft, false);
+    // Canvas precedence (bug 2): warp the sidebar-focused grace with Y ONLY when the reticle is NOT over
+    // the canvas — if it is, the canvas target owns Y (handled at the grace tooltip below). Deferred from
+    // the sidebar render (drawn before pad_over_canvas is known) via s_pad_sidebar_grace.
+    if (pad_activate && !pad_over_canvas && pad_sidebar_grace)
+        s_warp_pending = pad_sidebar_grace;
     // Pad place/delete a custom marker at the reticle (mirrors the right-click path above; s_pad_cursor is
     // now current this frame). Near an existing same-group pin → delete, else drop a new one (cap-enforced).
     if (pad_place && pad_over_canvas && active_world == 0)
@@ -2184,7 +2202,11 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                         if (fdx * fdx + fdy * fdy < icoHalf * icoHalf * 2.0f)
                         {
                             hoverBestD = 0.f; hoverPrio = 2; hoverName = m->name_id; hoverCat = m->category;
-                            hoverV = ""; hoverRow = m->row_id; hoverDisc = m->discover_flag;
+                            // Carry the runtime name (mod-agnostic bosses have no FMG id → hoverName is a
+                            // synthetic key that resolves to nothing; the tooltip prefers hoverV). Fanned
+                            // pile members bypass plot(), so set it here too or every clustered boss shows
+                            // unnamed.
+                            hoverV = m->live_name; hoverRow = m->row_id; hoverDisc = m->discover_flag;
                             hoverAnon = goblin::worldmap::marker_is_anonymized(*m);
                             hoverWx = m->worldX; hoverWz = m->worldZ; hoverArea = m->raw_area;
                         }
@@ -2550,7 +2572,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // marker icon draw), then (slice C) tag markers to a synthetic group / bundle-backed custom world.
     dl->PopClipRect();
 
-    if (s_pad_mode) io.MousePos = saved_mouse;   // restore the real mouse (see the pad-mode override above)
+    if (s_pad_mode) io.MousePos = s_pad_saved_mouse;   // restore the real mouse (see the top-of-fn override)
     ImGui::End();
 }
 
