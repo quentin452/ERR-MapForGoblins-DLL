@@ -44,7 +44,7 @@ BOOL WINAPI hk_set_cursor_pos(int x, int y)
     g_diag_set_cursor_pos_live.fetch_add(1, std::memory_order_relaxed);
     g_diag_last_set_cursor_pos_x.store(x, std::memory_order_relaxed);
     g_diag_last_set_cursor_pos_y.store(y, std::memory_order_relaxed);
-    if (menu_open() || vmap_covers_map())
+    if (input_capture_active())
     {
         g_diag_set_cursor_pos_swallowed.store(true, std::memory_order_relaxed);
         return TRUE;                    // swallow the game's recenter-to-middle
@@ -55,7 +55,7 @@ BOOL WINAPI hk_set_cursor_pos(int x, int y)
 BOOL WINAPI hk_clip_cursor(const RECT *rc)
 {
     g_diag_clip_cursor.fetch_add(1, std::memory_order_relaxed);
-    if (menu_open() || vmap_covers_map()) return o_clip_cursor(nullptr);   // unclip while menu / vmap up
+    if (input_capture_active()) return o_clip_cursor(nullptr);   // unclip while menu / vmap up (and focused)
     return o_clip_cursor(rc);
 }
 
@@ -69,7 +69,7 @@ BOOL WINAPI hk_get_cursor_pos(LPPOINT p)
     // (cursor - centre) delta, so a static off-centre point = a constant
     // non-zero delta = the map drifts forever (softlock). Centre = zero
     // delta = no pan.
-    if ((menu_open() || vmap_covers_map()) && !g_imgui_reading_cursor && p)
+    if (input_capture_active() && !g_imgui_reading_cursor && p)
     {
         p->x = GetSystemMetrics(SM_CXSCREEN) / 2;
         p->y = GetSystemMetrics(SM_CYSCREEN) / 2;

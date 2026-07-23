@@ -203,7 +203,12 @@ LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         break;
     }
 
-    if (menu_open())
+    // has_focus() gate (all three branches below): only intercept/swallow the game's input while the
+    // window is foreground. Alt-tabbed away with F1 open, our hooks must not commandeer input meant
+    // for another app (see input_shared.hpp input_capture_active()). The focus/gamepad-state tracking
+    // above and the CallWindowProcW passthrough below both still run when unfocused. Focus is already
+    // updated for this message (set_has_focus at the WM_SETFOCUS/KILLFOCUS handler above).
+    if (has_focus() && menu_open())
     {
         // dx-bugs F3 (2026-07-01, deterministic repro): a real Alt+Tab cycle can permanently
         // stop legacy WM_CHAR/WM_KEYDOWN/WM_KEYUP delivery to this wndproc (same RIDEV_NOLEGACY
@@ -248,7 +253,7 @@ LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             break;
         }
     }
-    else if (goblin::world_map_open() && vmap_covers_map())
+    else if (has_focus() && goblin::world_map_open() && vmap_covers_map())
     {
         // Fullscreen vmap covers the native map: feed ImGui and SWALLOW the game's mouse (moves,
         // wheel, button PRESSES) so the hidden native map can't pan/zoom/select — the vmap owns the
@@ -277,7 +282,7 @@ LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     // in-world chips (region toggles) stay clickable, and consume the L-button PRESS for the game ONLY
     // when the cursor is over a chip (map pan/select elsewhere is untouched). Releases always pass
     // through to the game (never swallow an UP → no "held forever" bug).
-    else if (goblin::world_map_open())
+    else if (has_focus() && goblin::world_map_open())
     {
         switch (msg)
         {

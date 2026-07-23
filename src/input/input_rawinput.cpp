@@ -119,7 +119,7 @@ UINT WINAPI hk_get_raw_input_data(HRAWINPUT h, UINT cmd, LPVOID data, PUINT size
     // WndProc, not from here, so the panel stays fully usable.)
     // Gate on menu OR the fullscreen vmap covering the native map. For the vmap we blank only the
     // MOUSE (the keyboard branch below stays menu-only) so the map-close key still reaches the game.
-    if ((menu_open() || vmap_covers_map()) && data && cmd == RID_INPUT)
+    if (input_capture_active() && data && cmd == RID_INPUT)
     {
         auto *ri = reinterpret_cast<RAWINPUT *>(data);
         if (ri->header.dwType == RIM_TYPEMOUSE)
@@ -177,7 +177,9 @@ UINT WINAPI hk_get_raw_input_buffer(PRAWINPUT data, PUINT size, UINT hdr)
     // batched raw here — the confirmed path). menu = drop the whole buffer below; vmap = zero the
     // MOUSE events in place but keep the buffer (keyboard survives → map-close key still works).
     const bool ri_menu = menu_open();
-    const bool ri_gate = ri_menu || vmap_covers_map();
+    // input_capture_active() folds the focus gate into (menu_open || vmap_covers_map); ri_menu stays
+    // raw menu_open for the keyboard-drop branch below (which is menu-only, not vmap).
+    const bool ri_gate = input_capture_active();
     if (ri_gate && data != nullptr && n != static_cast<UINT>(-1) && n > 0)
     {
         PRAWINPUT ri = data;

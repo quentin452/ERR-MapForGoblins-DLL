@@ -4,6 +4,11 @@ Complex bugs — resolved and open — with the durable root-cause/fix takeaway.
 **current code**, verified during the 2026-06-29 reorg. Open items are the real backlog.
 
 ## Resolved
+- **Overlay input hooks fired while game unfocused** [resolved 2026-07-23] — F1 open + alt-tab left the
+  cursor/raw-input/wndproc swallow hooks commandeering input for another app. Re-gated the INPUT path on OS
+  focus (`input_capture_active() = (menu_open||vmap_covers_map) && has_focus()`) while keeping drawing
+  focus-independent — doesn't regress the 2026-07-01 Alt+Tab cursor fix (event-driven `has_focus`, not the
+  old flapping GetForegroundWindow poll). → [overlay-input-unfocused-hooks](overlay-input-unfocused-hooks.md)
 - **vmap grace warp used the param row key, not bonfireEntityId** [resolved 2026-07-04] — double-click
   warp → infinite load (area 61/DLC stall); RPC warp worked. `warp::to_grace` needs the bonfire ENTITY
   id (`BonfireWarpParam.bonfireEntityId` @0x08, e.g. 1042362951=The First Step), but the grace layer

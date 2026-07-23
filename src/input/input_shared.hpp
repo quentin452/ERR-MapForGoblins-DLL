@@ -37,6 +37,16 @@ bool user_show();
 void set_has_focus(bool v);
 bool has_focus();
 
+// Input-capture predicate for the device hooks (cursor + raw-input): our overlay commandeers the
+// game's mouse ONLY while its UI is up (F1 menu open OR the fullscreen vmap covering the native
+// map) AND the game window holds OS focus. The has_focus() gate is the fix for "imgui input hooks
+// fire even when the window isn't focused": without it the SetCursorPos/ClipCursor/GetCursorPos +
+// raw-input hooks keep freezing/freeing the OS cursor and blanking input after the user alt-tabs
+// to another app with F1 still open. Drawing stays focus-independent (goblin_overlay.cpp's g_show)
+// so ImGui's own focus state isn't invalidated on the transition — only this INPUT path is gated.
+// See goblin_overlay.cpp's g_show assignment comment (the 2026-07-01 tradeoff this re-gates).
+inline bool input_capture_active() { return (menu_open() || vmap_covers_map()) && has_focus(); }
+
 // Mouse/keyboard vs. gamepad input-source tracking, shared between hk_wndproc (clears it on
 // real mouse/kb activity) and hk_present's gamepad-switch debounce (sets it after N
 // consecutive active frames) — see goblin_overlay.cpp's g_last_input_was_gamepad /
