@@ -1718,8 +1718,16 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     if (zoomIco < 1.0f) zoomIco = 1.0f;
     if (zoomIco > 2.2f) zoomIco = 2.2f;
     const float icoHalf = 8.0f * uiScale * zoomIco;
+    // Constant-size (no zoom growth) draw half for NPC/Merchant/boss pins, to match the NATIVE map
+    // (its icons are fixed-px, zoom-independent) — the vmap's `icoHalf` grows to ~2.2× at high zoom,
+    // which made these read too big when zoomed in (user 2026-07-23). Only the DRAW size; the spiderfy
+    // fan geometry keeps `icoHalf`.
+    const float icoHalfFixed = 8.0f * uiScale;
     const bool nativeIcons = *goblin::overlay_api::cfg_nativeItemIcons_ptr();
     constexpr int kGraceCat = static_cast<int>(goblin::generated::Category::WorldGraces);
+    constexpr int kBossCat = static_cast<int>(goblin::generated::Category::WorldBosses);
+    constexpr int kNpcCat = static_cast<int>(goblin::generated::Category::WorldQuestNPC);
+    constexpr int kMerchCat = static_cast<int>(goblin::generated::Category::WorldMerchant);
     // Hover tooltip: track the marker nearest the cursor (within a pixel radius) while drawing.
     // Graces draw ON TOP (2nd pass) so they must also WIN the hover — track a priority (grace=1) so a
     // grace within radius beats an underlying non-grace, matching the visible z-order (the tooltip/warp
@@ -1738,14 +1746,16 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         if (wz > maxz) maxz = wz;
         ImVec2 ps = w2s(wx, wz);
         if (ps.x < origin.x || ps.x > canvas_end.x || ps.y < origin.y || ps.y > canvas_end.y) return;
+        // NPC/Merchant/boss draw at a constant (native-like) size; everything else keeps the zoom-scaled icoHalf.
+        const float mIco = (cat == kBossCat || cat == kNpcCat || cat == kMerchCat) ? icoHalfFixed : icoHalf;
         if (mp && s_show_icons)
-            goblin::worldmap::draw_marker_glyph(dl, *mp, ps.x, ps.y, ctx.atlas_srv, nativeIcons, icoHalf);
+            goblin::worldmap::draw_marker_glyph(dl, *mp, ps.x, ps.y, ctx.atlas_srv, nativeIcons, mIco);
         else
         {
             const IcoRes &r = icon_for(cat);
             if (s_show_icons && r.ok)
-                dl->AddImage((ImTextureID)r.tex, ImVec2(ps.x - icoHalf, ps.y - icoHalf),
-                             ImVec2(ps.x + icoHalf, ps.y + icoHalf), r.uv0, r.uv1);
+                dl->AddImage((ImTextureID)r.tex, ImVec2(ps.x - mIco, ps.y - mIco),
+                             ImVec2(ps.x + mIco, ps.y + mIco), r.uv0, r.uv1);
             else
                 dl->AddCircleFilled(ps, 3.0f * uiScale, col ? col : IM_COL32(235, 130, 90, 255));
         }
@@ -1754,7 +1764,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         {
             float dx = ps.x - vptr.x, dy = ps.y - vptr.y, d = dx * dx + dy * dy;
             const int prio = (cat == kGraceCat) ? 1 : 0;   // graces (drawn on top) win the hover
-            if (d < icoHalf * icoHalf * 2.0f && (prio > hoverPrio || (prio == hoverPrio && d < hoverBestD)))
+            if (d < mIco * mIco * 2.0f && (prio > hoverPrio || (prio == hoverPrio && d < hoverBestD)))
             { hoverBestD = d; hoverPrio = prio; hoverName = nameId; hoverCat = cat; hoverV = vname ? vname : ""; hoverRow = rowId; hoverDisc = discFlag; hoverWx = wx; hoverWz = wz; hoverArea = mp ? mp->raw_area : -1; hoverAnon = mp && goblin::worldmap::marker_is_anonymized(*mp); }
         }
     };
@@ -1995,13 +2005,30 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         // it survives the per-frame rebuild; closes when the cursor leaves the fan extent. Gate: config flag.
         if (goblin::config::clusterSpiderfy && (hovered_eff || s_force_spiderfy))
         {
+            // Spiderfy pile source — DECOUPLED from display clustering (user 2026-07-23). When the display
+            // "Enable clustering" toggle is OFF, `s_piles` is empty (clusterWorld<0), so hovering a group of
+            // markers would never fan. Build a transient pile list here at the screen-overlap radius (the
+            // same kPilePx the display would use) so spiderfy still triggers; when clustering is ON, reuse
+            // the already-built display piles. gather_pile() below reads whichever list this points at.
+            static std::vector<MarkerQuadtree::Pile> s_spiderPiles;
+            const std::vector<MarkerQuadtree::Pile> *spiderPilesPtr = &s_piles;
+            if (!clusterOn)
+            {
+                static std::vector<const goblin::worldmap::Marker *> s_spiderSingles;
+                s_spiderPiles.clear();
+                s_spiderSingles.clear();
+                const float spiderWorld = kPilePx / (s_zoom > 1e-6f ? s_zoom : 1e-6f);
+                s_qt.query(vMinX, vMinZ, vMaxX, vMaxZ, spiderWorld, s_spiderPiles, s_spiderSingles, 2);
+                spiderPilesPtr = &s_spiderPiles;
+            }
+            const std::vector<MarkerQuadtree::Pile> &spiderPiles = *spiderPilesPtr;
             struct FanCluster { ImVec2 anchor; uint64_t key; int pileIdx; };  // pileIdx>=0 → gather from QT
             std::vector<FanCluster> clusters;
             auto qkey = [](float wx, float wz, uint64_t tag) -> uint64_t { return spiderfy_key(wx, wz, tag); };
             // Piles big enough on screen to be worth fanning (else "zoom in to expand" suffices).
-            for (int i = 0; i < (int)s_piles.size(); ++i)
+            for (int i = 0; i < (int)spiderPiles.size(); ++i)
             {
-                const MarkerQuadtree::Pile &pl = s_piles[i];
+                const MarkerQuadtree::Pile &pl = spiderPiles[i];
                 ImVec2 ps = w2s(pl.cx, pl.cz);
                 if (ps.x < origin.x || ps.x > canvas_end.x || ps.y < origin.y || ps.y > canvas_end.y) continue;
                 clusters.push_back({ps, qkey(pl.cx, pl.cz, 1), i});
@@ -2026,8 +2053,8 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             {
                 int best = -1, bestc = -1;
                 for (int i = 0; i < (int)clusters.size(); ++i)
-                    if (clusters[i].pileIdx >= 0 && s_piles[clusters[i].pileIdx].count > bestc)
-                    { bestc = s_piles[clusters[i].pileIdx].count; best = i; }
+                    if (clusters[i].pileIdx >= 0 && spiderPiles[clusters[i].pileIdx].count > bestc)
+                    { bestc = spiderPiles[clusters[i].pileIdx].count; best = i; }
                 if (best >= 0) { s_fan_open = true; s_fan_key = clusters[best].key; }
             }
             // Hit-test the cursor against a cluster anchor → (re)latch the sticky key.
@@ -2056,7 +2083,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             {
                 std::vector<const goblin::worldmap::Marker *> members;
                 if (open->pileIdx >= 0)
-                    s_qt.gather_pile(s_piles[open->pileIdx], members);
+                    s_qt.gather_pile(spiderPiles[open->pileIdx], members);
                 else
                 {
                     // rebuild the coincident group at the open anchor (cheap; a handful of markers)
