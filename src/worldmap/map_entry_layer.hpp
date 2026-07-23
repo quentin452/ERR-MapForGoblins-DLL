@@ -41,6 +41,13 @@ void rebuild_markers();
 // No new parse. Returns a summary; detail goes to the [FARRELIEF] log. RPC `far_relief_probe`.
 std::string far_relief_probe();
 
+// Enemy-name probe: dump the live MSB-scanned enemies (g_parsed.enemies) that match a query, with each
+// one's npcParam, model, tile, and RESOLVED display name + tier. Query is either a cell "area gx gz"
+// (three ints) or a case-insensitive substring of the part-name OR resolved name. Detail → [ENAME] log;
+// returns a match-count summary. RPC `vmap ename <query>`. Diagnoses why a clone (e.g. Godefroy) resolves
+// to its base's name (Godrick) and spawns a duplicate boss marker in build_live_bosses' supplement pass.
+std::string ename_probe(const std::string &query);
+
 // D-far -1 v0 — build the MSB Y-cloud ground-height field (overworld collectible posY → per-cell median
 // grid → heightfield::Cell[] with gradient normals). Consumed by the vmap hillshade (same as the near
 // raycast). cellSize in world units (default 128). RPC `far_relief [cell]`; snapshot for the renderer.

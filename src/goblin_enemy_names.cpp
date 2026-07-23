@@ -384,6 +384,14 @@ std::string goblin::enemy_display_name(int npcParam, int model)
     return resolve_enemy_name(npcParam, model).name;
 }
 
+// Tier-out variant (probe): same cached resolution, also reports which tier produced the name.
+std::string goblin::enemy_display_name(int npcParam, int model, int *tier)
+{
+    const ResolvedName &r = resolve_enemy_name(npcParam, model);
+    if (tier) *tier = r.tier;
+    return r.name;
+}
+
 // Per-type record for the reconciler. Kept in a session-static map keyed by npcParamId.
 namespace
 {

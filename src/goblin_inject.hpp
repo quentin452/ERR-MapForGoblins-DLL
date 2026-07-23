@@ -480,6 +480,10 @@ namespace goblin
     bool npc_team_and_name(uint32_t npcParamId, uint8_t *teamOut, int32_t *nameOut);
     // Enemy display name (tiers 1-3, cached). "" = nameless. Boss-marker enemy-supplement.
     GOBLIN_RENDER_API std::string enemy_display_name(int npcParam, int model);  // render (build_live_bosses) calls it
+    // Tier-out variant: same resolution, also writes the resolving tier (1=NpcParam.nameId→NpcName,
+    // 2=bestiary codex by MODEL, 3=vanilla field-boss band; 0=nameless) to *tier if non-null. Used by
+    // the `vmap ename` probe to tell a clone's name apart (model-tier vs its own param nameId).
+    GOBLIN_RENDER_API std::string enemy_display_name(int npcParam, int model, int *tier);
 
     // True iff an EquipParamGoods row is a region Map fragment (sortGroupId u8 @ +0x72 ∈
     // {190 base, 191 DLC}). The no-bake World-Maps pass routes map-good pickups to WorldMaps.

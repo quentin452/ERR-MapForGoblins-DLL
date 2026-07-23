@@ -34,6 +34,9 @@
 #include <atomic>
 #include <string>
 #include <string_view>
+#include <sstream>   // ename_probe cell-query parse
+#include <cctype>    // ename_probe tolower
+#include <cstdio>    // ename_probe snprintf
 #include <thread>
 #include <unordered_map>
 #include <map>
@@ -3777,6 +3780,53 @@ bool disk_markers_ready()
     return !disk_source_enabled() || g_disk_built.load(std::memory_order_acquire);
 }
 } // namespace
+
+// Enemy-name probe (RPC `vmap ename <query>`). Defined out here (external linkage), not in the anon
+// namespace above — panel_virtual_map's dispatcher calls it across TUs. Reads g_parsed.enemies (an anon
+// member of THIS TU, still reachable here) and reuses build_live_bosses' exact model-parse + name
+// resolution, so what it reports is what the supplement pass sees.
+std::string ename_probe(const std::string &query)
+{
+    auto lower = [](std::string s) { for (char &c : s) c = (char)std::tolower((unsigned char)c); return s; };
+    // Query form 1: three ints "area gx gz" → cell filter. Form 2: substring on part/resolved name.
+    int cellA = -1, cellGx = -1, cellGz = -1; bool by_cell = false;
+    { std::istringstream is(query); long a, gx, gz; if ((is >> a >> gx >> gz) && (is >> std::ws).eof())
+      { cellA = (int)a; cellGx = (int)gx; cellGz = (int)gz; by_cell = true; } }
+    const std::string needle = by_cell ? std::string() : lower(query);
+
+    spdlog::info("[ENAME] query='{}' ({})", query, by_cell ? "cell" : "substr");
+    size_t hits = 0;
+    for (const DiskEnemy &en : g_parsed.enemies)
+    {
+        // Same model extraction as the supplement pass (name starts "c<model>_..."). Non-'c' → skip.
+        int model = 0;
+        if (en.name.empty() || en.name[0] != 'c') continue;
+        { size_t u = en.name.find('_');
+          try { model = std::stoi(en.name.substr(1, u == std::string::npos ? std::string::npos : u - 1)); }
+          catch (...) { continue; } }
+        if (model <= 0) continue;
+
+        int tier = 0;
+        std::string nm = goblin::enemy_display_name((int)en.npcParamId, model, &tier);
+
+        bool match;
+        if (by_cell)
+            match = ((int)en.area == cellA && (int)en.gx == cellGx && (int)en.gz == cellGz);
+        else
+            match = (lower(en.name).find(needle) != std::string::npos) ||
+                    (!nm.empty() && lower(nm).find(needle) != std::string::npos);
+        if (!match) continue;
+        ++hits;
+        spdlog::info("[ENAME]   part='{}' npc={} model={} area{} grid({},{}) pos({:.0f},{:.0f}) "
+                     "-> name='{}' tier={}",
+                     en.name, en.npcParamId, model, en.area, en.gx, en.gz, en.posX, en.posZ,
+                     nm.empty() ? "<nameless>" : nm.c_str(), tier);
+    }
+    spdlog::info("[ENAME] {} match(es)", hits);
+    char out[128];
+    std::snprintf(out, sizeof(out), "ok vmap ename '%s': %zu match(es) — see [ENAME] log", query.c_str(), hits);
+    return out;
+}
 
 void prebuild_markers()
 {
