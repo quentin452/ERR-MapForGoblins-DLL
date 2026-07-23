@@ -1808,9 +1808,13 @@ namespace
                 // stay at 0 while the OS-level mouse is clearly captured (the Proton-11-frozen-cursor
                 // symptom), ER's capture is bypassing the user32 exports we hook entirely (H1 native
                 // Wayland pointer-lock, or H2 win32u-only path) -- decides which fix branch applies.
+                // Gated behind debug_cursor_diagnostic (default off): these 1 Hz [CURSORDIAG]/[KBDIAG]
+                // dumps were instrumentation for the (resolved) Proton-11 cursor-lock + Alt+Tab
+                // keyboard bugs — pure per-second spam in a normal session. Turn the flag on to bring
+                // them back while re-diagnosing input. (They fired at INFO regardless of debug_logging.)
                 static auto s_diag_last = std::chrono::steady_clock::now();
                 auto now = std::chrono::steady_clock::now();
-                if (now - s_diag_last >= std::chrono::seconds(1))
+                if (goblin::config::debugCursorDiagnostic && now - s_diag_last >= std::chrono::seconds(1))
                 {
                     s_diag_last = now;
                     spdlog::info("[CURSORDIAG] hooks/sec: set_cursor_pos={} clip_cursor={} get_cursor_pos={} "

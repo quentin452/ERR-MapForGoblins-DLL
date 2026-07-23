@@ -898,8 +898,14 @@ static std::vector<GEOFEntry> read_geof_from_memory()
     // tiles) + the immediate per-AEG +0x26B flag. Full RE:
     // docs/geom_nonactive_block_manager.md.
 
-    if (!result.empty())
+    // On-change only: this runs every marker refresh (~2 Hz); the count is near-constant, so at
+    // debug level it was a per-tick repeat. Log when the entry count changes (still debug-gated).
+    static size_t s_last_geof = SIZE_MAX;
+    if (!result.empty() && result.size() != s_last_geof)
+    {
+        s_last_geof = result.size();
         spdlog::debug("[GEOF] Memory: {} flag-save entries", result.size());
+    }
 
     return result;
 }

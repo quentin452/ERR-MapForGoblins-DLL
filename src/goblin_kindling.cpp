@@ -372,14 +372,22 @@ static std::map<uint32_t, uintptr_t> discover_kindling_conds()
 
     auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - t0).count();
-    if (!found.empty())
-        spdlog::info("[KINDLING] discovered {} live spirit cond(s) in {} ms ({} regions, {} EcTestDistance hits)",
-                     found.size(), dt, regions_scanned, hits_n);
-    else
-        spdlog::info("[KINDLING] no kindling conds found ({} ms, {} regions, {} hits, {} near-band) — "
-                     "near==0 => cond region not covered by scan filter; near>0 => eid range/offset off; "
-                     "else not in Misty Forest yet",
-                     dt, regions_scanned, hits_n, near_count);
+    // Log ONLY when the discovered-count changes — this scan runs every marker refresh (~2 Hz), so the
+    // steady-state "no kindling conds found" line was pure per-tick spam. The transitions (0 -> N found,
+    // or N -> 0 on leaving the area) are the useful signal and still log once each. (-1 = never logged.)
+    static int s_last_found = -1;
+    if ((int)found.size() != s_last_found)
+    {
+        s_last_found = (int)found.size();
+        if (!found.empty())
+            spdlog::info("[KINDLING] discovered {} live spirit cond(s) in {} ms ({} regions, {} EcTestDistance hits)",
+                         found.size(), dt, regions_scanned, hits_n);
+        else
+            spdlog::info("[KINDLING] no kindling conds found ({} ms, {} regions, {} hits, {} near-band) — "
+                         "near==0 => cond region not covered by scan filter; near>0 => eid range/offset off; "
+                         "else not in Misty Forest yet",
+                         dt, regions_scanned, hits_n, near_count);
+    }
     return found;
 }
 
