@@ -48,6 +48,12 @@ regulation edits.
 - **Collected-pickup detection** — collected Rune/Ember Pieces and gathering nodes are hidden
   automatically via real-time detection of the game's geometry-object state (GEOF singletons for unloaded
   tiles + CSWorldGeomMan flags for loaded tiles).
+- **In-world enemy names** — the game already draws the red name tag + HP bar above enemies but names
+  only bosses. MapForGoblins resolves regular (non-boss) mob names from the active install and feeds them
+  into the engine's **own native tag** (`NpcParam.nameId → NpcName`), so the game renders the name itself
+  in 3D world-space — correct font/accents, frame-synced with the bar, no overlay label. Per-category
+  toggles (regular mobs / field-bosses / hostile NPCs) under F1 → **Enemy bars**. Mod-agnostic; on by
+  default.
 
 ### UX
 - **F1 overlay panel** (ImGui) — category toggles, search, settings; usable with keyboard/mouse **or
