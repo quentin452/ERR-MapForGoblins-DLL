@@ -3474,24 +3474,28 @@ void build_buckets_impl()
     // Drop, across ALL categories, markers on a RAW source tile that isn't a real location:
     //  • grid > 0x3F — off-grid template/storage slot (ERR's Roundtable COPY m31_90 at grid 90: no conv
     //    row, no EMEVD; its whole region snapped OOB to ~22700,-280).
-    //  • raw_area 33 — ERR's Trial-of-Recollection arena: a teleport-only boss-rush COPY of the Roundtable
-    //    hall that projects onto the Roundtable's overworld spot, duplicating m11_10 (ERR wiki confirms
-    //    "teleported to a version of the Roundtable Hold's hall"). Fixed base-vs-mod map id; graces are
-    //    filtered separately at capture_live_graces. Markers with no raw tile (raw_area<0) are untouched.
+    //  • MODE-ARENA areas (raw_area 33 / 45) — teleport-only arenas whose INTERIOR isn't an overworld
+    //    location: m33 = ERR's Trial-of-Recollection boss-rush (a COPY of the Roundtable hall — ERR wiki
+    //    confirms "teleported to a version of the Roundtable Hold's hall" — so it duplicates m11_10);
+    //    m45 = the vanilla Royal Colosseum arena (declines the fold → its dummies/items pile at origin).
+    //    Both carry the same arena signature (a "Menu" NPC 10000300 + c2500 Crucible-Knight dummies +
+    //    c4191 Tear Scarabs). Fixed base/mod map ids; graces are filtered separately at
+    //    capture_live_graces. Markers with no raw tile (raw_area<0) are untouched.
     {
         int pruned = 0;
         for (auto &bucket : g_buckets)
         {
             const size_t before = bucket.size();
             bucket.erase(std::remove_if(bucket.begin(), bucket.end(), [](const Marker &m) {
-                             return m.raw_gx > 0x3F || m.raw_gz > 0x3F || m.raw_area == 33;
+                             return m.raw_gx > 0x3F || m.raw_gz > 0x3F ||
+                                    m.raw_area == 33 || m.raw_area == 45;
                          }),
                          bucket.end());
             pruned += static_cast<int>(before - bucket.size());
         }
         if (pruned)
-            spdlog::info("[LOOTDISK] pruned {} phantom-tile markers (off-grid grid>0x3F / m33 Trial arena)",
-                         pruned);
+            spdlog::info("[LOOTDISK] pruned {} phantom-tile markers (off-grid grid>0x3F / m33 Trial + "
+                         "m45 Colosseum arenas)", pruned);
     }
 
     // Item stacking: ANNOTATE co-located identical-item loot groups (e.g. a Formic Rock node cluster).

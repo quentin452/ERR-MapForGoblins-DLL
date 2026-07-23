@@ -113,3 +113,13 @@ Graces are filtered separately at `capture_live_graces` (their own layer, no `.b
 **Live-verified:** no crash; `pruned 33 phantom-tile markers`; Cipher Pata / Codex = 1 (real m11_10),
 Mad Tongue Alberich = 1, all m31_90 + m33 copies gone. See also
 [[disk-parser-coverage-gaps]] (entity-home loot filter) — the two together cover the ERR Roundtable copies.
+
+### m45 Royal Colosseum added to the arena prune (2026-07-23)
+
+Same class as m33: the vanilla **Royal Colosseum** arena interior (m45 — 2 c2500 Crucible-Knight dummies,
+c4191 Tear Scarabs, a "Menu" NPC 10000300, the "Royal Colosseum" landmark) DECLINES the fold → piles at
+origin (0,0). It is a teleport-only PvP arena, not an overworld location (vanilla shows only its entrance
+icon). Added `raw_area==45` alongside `raw_area==33` to the build_buckets_impl phantom-tile prune + the
+capture_live_graces grace filter. Live: `pruned 37 phantom-tile markers`; the area-45 (0,0) Crucible Knight
++ its co-located items are gone; the real world Crucible Knights (m30/m60/m11) stay. NOTE: only the Leyndell
+colosseum (m45) is handled — if the Limgrave/Caelid colosseums also leak, add their area ids too.
