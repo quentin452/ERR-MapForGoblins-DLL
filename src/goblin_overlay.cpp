@@ -253,6 +253,11 @@ namespace
         if (g_command_list) { g_command_list->Release(); g_command_list = nullptr; }
         if (g_atlas_tex) { g_atlas_tex->Release(); g_atlas_tex = nullptr; }
         g_atlas_ready = false;
+        // Reset the init flag too: this function nulls g_command_list / clears g_frames / releases the
+        // heaps, so leaving g_imgui_init=true would let init-dependent paths (try_upload_atlas + the
+        // per-frame draw path, which all Reset g_frames[0].allocator + g_command_list) run against
+        // freed/null resources. The next hk_present re-runs init_imgui from scratch.
+        g_imgui_init = false;
         g_atlas_gpu = D3D12_GPU_DESCRIPTOR_HANDLE{};
         if (g_rtv_heap) { g_rtv_heap->Release(); g_rtv_heap = nullptr; }
         if (g_srv_heap) { g_srv_heap->Release(); g_srv_heap = nullptr; }
@@ -264,6 +269,14 @@ namespace
     bool upload_rgba(const unsigned char *rgba, int w, int h, UINT srv_index,
                      ID3D12Resource **out_tex, D3D12_GPU_DESCRIPTOR_HANDLE *out_gpu)
     {
+        // Belt-and-suspenders: every D3D12 global this function derefs must be live. The caller
+        // (try_upload_atlas) already gates on these, but a teardown (cleanup_imgui_device) can null
+        // g_command_list / clear g_frames between the caller's check and here — bail instead of a null
+        // deref inside the driver (the intermittent boot crash: upload_rgba <- try_upload_atlas <-
+        // hk_present, fault @0x0). See docs/memory/bugs/atlas-upload-gpu-race.md.
+        if (!g_device || !g_command_queue || !g_command_list || !g_srv_heap ||
+            g_frames.empty() || !g_frames[0].allocator || !out_tex || !out_gpu)
+            return false;
         const UINT inc =
             g_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         D3D12_HEAP_PROPERTIES hp_def{};
@@ -1121,7 +1134,15 @@ namespace
     // marks ready anyway so we don't retry every frame (just falls back to circles).
     void try_upload_atlas()
     {
-        if (g_atlas_ready || !g_imgui_init || !g_command_queue || !g_device || !g_srv_heap)
+        if (g_atlas_ready || !g_imgui_init)
+            return;
+        // Upload needs the full D3D12 set (upload_rgba derefs all of these). If any is not captured/
+        // created YET, do NOT mark ready — just retry next frame; marking ready here would give up and
+        // fall back to circles permanently on a transient boot-timing miss. g_command_list +
+        // g_frames[0].allocator were previously unchecked → null deref inside upload_rgba when the atlas
+        // fired before/after the device was fully up. See docs/memory/bugs/atlas-upload-gpu-race.md.
+        if (!g_command_queue || !g_device || !g_srv_heap || !g_command_list ||
+            g_frames.empty() || !g_frames[0].allocator)
             return;
         GOBLIN_BENCH("overlay.init.atlas");
         using namespace goblin::overlay_icons;
