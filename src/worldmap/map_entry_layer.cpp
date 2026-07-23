@@ -15,6 +15,7 @@
 #include "goblin_collected.hpp" // is_original_row_collected (piece graying)
 #include "goblin_kindling.hpp"  // is_row_collected (kindling graying)
 #include "goblin_markers.hpp"   // category_name (census log)
+#include "goblin_legacy_fold.hpp" // fold()/is_terminal — boss-supplement off-map/hub guard
 #include "goblin_messages.hpp"  // lookup_text_utf8 ([BAKED-RESIDUAL] self-describing names)
 #include "goblin_config.hpp"    // goblin::config:: gates
 #include "goblin/goblin_map_flags.hpp" // flag::Story* (secondary story gate)
@@ -426,6 +427,23 @@ void build_live_bosses()
         auto it = marked.find(nm);
         if (it == marked.end()) it = marked.find(nm + "s");  // grouped-plural marker (enemy "Demi-Human Chief" → marked "Demi-Human Chiefs")
         if (it == marked.end()) continue;               // only complete boss types the native map marks
+        // Off-map / hub guard (overworld/dungeon-projectable only): a supplemented boss is placed at the
+        // enemy's raw tile, projected via the legacy fold. Skip enemies in a sub-map that does NOT project
+        // to a real overworld spot — else the marker piles off-map. Two failure modes this catches:
+        //   • fold DECLINES → the tile snaps to origin (m45 Royal Colosseum's c2500 Crucible Knights → (0,0));
+        //   • fold matches only through a FAR nearest-base fallback → an arbitrary/hub placement
+        //     (m11_10 Roundtable Hold borrows Leyndell's row 5 blocks away → its c2500 duo landed on the
+        //     overworld at Roundtable's mis-projected point).
+        // Overworld/field (terminal area ≥0x32) and base-underground (area 12, unified via
+        // conv_underground) always pass — they need no legacy fold. Real dungeons fold exactly or within
+        // 1–2 blocks (multi-tile dungeons span 1–2 blocks; see goblin_legacy_fold.cpp), so a >3 fallback is
+        // a borrow, not this dungeon's own placement. Mod-agnostic: reads live WorldMapLegacyConvParam.
+        if (!goblin::legacy_fold::is_terminal(en.area) && en.area != 12)
+        {
+            auto fr = goblin::legacy_fold::fold(en.area, en.gx, en.gz, en.posX, en.posZ);
+            if (!fr.matched || fr.max_fallback > 3)
+                continue;
+        }
         const uint32_t key = boss_cell_key(en.area, en.gx, en.gz);
         // Native-cell guard: if the native map already labelled this tile with a DIFFERENT boss, trust
         // the game's own label — don't overlay a model-guessed name (the Godefroy→Godrick clone trap).

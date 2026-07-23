@@ -20,6 +20,10 @@ struct Folded {
     float posX, posZ;       // block-local coords
     float ent_x, ent_z;     // terminal dst base-point world (the overworld entrance)
     bool matched;           // a conv chain applied (else leave the row as-is)
+    int max_fallback;       // worst nearest-base grid distance used across the chain (0 = all exact
+                            // block rows). A large value means the tile only matched by borrowing a
+                            // FAR base point (e.g. m11_10 Roundtable Hold borrows Leyndell's row 5
+                            // blocks away) — the projected point is then an unreliable/hub placement.
 };
 
 // Build the lookup from the live param if not already built. No-op (returns
@@ -37,7 +41,8 @@ bool available();
 inline bool is_terminal(uint8_t area) { return (uint8_t)(area - 0x32) < 0x27; }
 
 // Fold a block-local marker down the conv chain. matched=false when no row applies.
-Folded fold(uint8_t area, uint8_t gx, uint8_t gz, float posX, float posZ);
+// GOBLIN_RENDER_API: host exports this so render-side callers (map_entry_layer) can gate on it.
+GOBLIN_RENDER_API Folded fold(uint8_t area, uint8_t gx, uint8_t gz, float posX, float posZ);
 
 } // namespace goblin::legacy_fold
 
