@@ -39,15 +39,10 @@ inline uint32_t block_key(uint8_t a, uint8_t gx, uint8_t gz) {
 
 // Exact full-block row, else the nearest same-area base point by grid distance
 // (parity with the previous baked-table lookup; covers off-base markers).
-// out_dist (optional): the nearest-base grid distance actually used — 0 for an exact block row,
-// else the Manhattan grid distance of the borrowed base. Lets fold() report how loosely a tile
-// matched (a far borrow = a hub/annex block, not this tile's own placement).
-const ConvRow *lookup(uint8_t area, uint8_t gx, uint8_t gz, int *out_dist = nullptr) {
+const ConvRow *lookup(uint8_t area, uint8_t gx, uint8_t gz) {
     auto it = g_by_block.find(block_key(area, gx, gz));
-    if (it != g_by_block.end()) {
-        if (out_dist) *out_dist = 0;   // exact block row
+    if (it != g_by_block.end())
         return &it->second;
-    }
     auto al = g_by_area.find(area);
     if (al == g_by_area.end())
         return nullptr;
@@ -59,7 +54,6 @@ const ConvRow *lookup(uint8_t area, uint8_t gx, uint8_t gz, int *out_dist = null
         int d = dgx + dgz;
         if (d < best_dist) { best_dist = d; best = &c; }
     }
-    if (out_dist) *out_dist = best ? best_dist : 0;
     // A same-area base point MANY blocks away is a DIFFERENT dungeon, not this one's off-base
     // marker (multi-tile dungeons span 1-2 blocks). Unbounded, ERR's Roundtable copy m31_90
     // matched the m31_22 catacomb 68 blocks away, snapped out-of-range, and dumped every
@@ -151,10 +145,7 @@ Folded fold(uint8_t area, uint8_t gx, uint8_t gz, float posX, float posZ) {
     for (int guard = 0; guard < 8; ++guard) {
         if (is_terminal(a))
             break;
-        int hop_dist = 0;
-        const ConvRow *r = lookup(a, cgx, cgz, &hop_dist);
-        if (r && hop_dist > f.max_fallback)
-            f.max_fallback = hop_dist;
+        const ConvRow *r = lookup(a, cgx, cgz);
         if (!r) {
             // No forward row for `a`. If `a` is a sub-map dead-end (a DST of some row, e.g. Leyndell
             // Ashen/Elden Throne 19/34/35), lift it INTO its parent frame via that row's inverse, then

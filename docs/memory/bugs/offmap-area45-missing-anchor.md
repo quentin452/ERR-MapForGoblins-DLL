@@ -72,30 +72,3 @@ Related: `src/goblin_world_position.cpp` (`project_dungeon_row_to_overworld` / `
 `src/goblin_legacy_fold.cpp` (`WorldMapLegacyConvParam` fold), `src/worldmap/msbe_parser.cpp` (part-type
 parse to extend), the m19 Chapel "no converter accepts it" note in
 [marker-sections-spoiler-clustering](../features/marker-sections-spoiler-clustering.md).
-
----
-
-## Boss enemy-supplement OOB leak — sub-map bosses pile off-map (FIXED colosseum 2026-07-23)
-
-`build_live_bosses` (map_entry_layer.cpp) has an ENEMY-SUPPLEMENT pass: for every parsed MSB enemy whose
-model resolves to an ALREADY-marked boss name, it emits a boss marker at the enemy's raw `(area,gx,gz)`.
-It had NO check that the tile projects to a real overworld spot, so bosses in non-overworld sub-maps piled
-off-map. Two live examples (both model **c2500 Crucible Knight**, found via `vmap ename`):
-- **m45 Royal Colosseum** (c2500 ×2) — `legacy_fold` DECLINES (`matched=0`) → snapped to map ORIGIN `(0,0)`.
-- **m11_10 Roundtable Hold** (c2500 ×2) — folds via a close conv row to overworld `~(7676,8546)`; the WHOLE
-  hub (Enia/Hewg merchants too) projects there.
-
-**Fix (gate in the supplement loop):** for a sub-map source area (`!legacy_fold::is_terminal(area) &&
-area!=12`), compute `legacy_fold::fold(...)` and `continue` (skip the supplement) when `!matched` OR
-`max_fallback > 3`. Added `Folded::max_fallback` (worst nearest-base grid distance across the fold chain;
-0 = all exact rows) + `lookup()` out-param. Marked `fold()` `GOBLIN_RENDER_API` (render `map_entry_layer`
-now calls host `legacy_fold`; both split DLLs green). **Live-verified:** the m45 colosseum `(0,0)` Crucible
-Knights are GONE; legit world Crucible Knights (Ordovis m30, Devonia m61, Hirnan/Siluria m12, area60…) kept.
-
-**STILL OPEN — Roundtable m11_10:** it folds LEGITIMATELY (`matched=1`, `max_fallback≤3`) to overworld
-area 60, so the projectable gate does NOT catch it (by design — it IS projectable). Dropping it is a HUB
-policy question, not a supplement bug: ERR's `WorldMapLegacyConvParam` has a conv row placing Roundtable
-onto the overworld at ~(7676,8546), and ALL m11_10 content (merchants + bosses) follows. Note the existing
-`marker_fragment_flag` unmappable-area hider (goblin_world_position.cpp:1099) keys on the FOLDED area, which
-is 60 here → it slips through. Decide with the user whether m11_10 (Roundtable Hold) should be a
-non-mappable hub across ALL passes (like its grace already is) before hiding it.
