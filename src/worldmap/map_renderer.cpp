@@ -1747,6 +1747,14 @@ bool inworld_hovered() { return s_inworld_hot; }
 // Exported wrapper over the file-local marker_done (which lives in the anon namespace above, reachable
 // here in the same TU). Lets the vmap spiderfy drop collected/cleared members from a fan.
 bool marker_is_done(const Marker &m) { bool co = false; return marker_done(m, co); }
+
+// Public: the marker's visual footprint half (see header). Golden runes draw ~1.6x the icon
+// (golden_rune_draw_scale, worldmap) with a 1.5x glow halo — both exceed `half`, so report the larger,
+// so the spiderfy fan spaces them without the halos overlapping. is_golden_rune is anon-ns but same TU.
+float glyph_footprint_half(const Marker &m, float half)
+{
+    return is_golden_rune(m.category) ? half * 1.6f : half;
+}
 bool marker_is_anonymized(const Marker &m)
 {
     return (*goblin::overlay_api::cfg_anonymousLoot_ptr()) && anonymous_marker(m);

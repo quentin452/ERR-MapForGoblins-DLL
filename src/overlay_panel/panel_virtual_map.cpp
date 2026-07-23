@@ -2119,8 +2119,14 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                 if (n >= 2)
                 {
                     const ImVec2 c = open->anchor;
-                    const float spacing = 2.0f * icoHalf + 8.0f * uiScale;
-                    const float baseR = icoHalf * 2.4f;
+                    // Space by the LARGEST member footprint, not the plain icon — ring/glow markers
+                    // (Golden Runes draw ~1.6× + a glow halo) overlap when packed on icoHalf alone
+                    // (user 2026-07-23). glyph_footprint_half returns the decorated extent.
+                    float footHalf = icoHalf;
+                    for (const FE &e : ents)
+                        footHalf = (std::max)(footHalf, goblin::worldmap::glyph_footprint_half(*e.m, icoHalf));
+                    const float spacing = 2.0f * footHalf + 8.0f * uiScale;
+                    const float baseR = footHalf * 2.4f;
                     std::vector<ImVec2> pos(n);
                     float max_r = baseR;
                     if (n <= 12)

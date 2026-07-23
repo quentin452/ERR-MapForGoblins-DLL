@@ -19,6 +19,11 @@ namespace goblin::worldmap
 // draw instead of duplicating it. atlas = baked-atlas SRV; native = config nativeItemIcons.
 void draw_marker_glyph(ImDrawList *dl, const Marker &m, float px, float py, void *atlas, bool native, float half);
 
+// Visual footprint half-extent of a marker's glyph drawn at icon-half `half` — accounts for decorations
+// that exceed the plain icon quad (the golden-rune enlarged sprite + glow halo). The spiderfy fan spaces
+// members by this, else ring/glow markers (Golden Runes) overlap when packed on the icon size alone.
+float glyph_footprint_half(const Marker &m, float half);
+
 // Is this marker's item collected / boss cleared (the state that dims/hides it under collected_graying)?
 // Exposed wrapper over the file-local marker_done — lets the vmap spiderfy drop collected/cleared members
 // from a fan (they'd otherwise be blank slots: draw_marker_glyph hides them) → smaller, action-only fans.
