@@ -21,6 +21,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ## [Unreleased]
 
+## [v2.4.0] - 2026-07-23
+
 ### Added
 
 - Marker sections split: the crowded **World** group is now three — **World** (collectibles: maps,
@@ -75,6 +77,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
   markers with a glow halo (e.g. Golden Runes) — the fan now spaces members by their full visual
   footprint, not just the plain icon size.
 - **Minimap**: quest-NPC pins no longer dwarf the boss symbol — they're now sized to match.
+- **Overlay input no longer leaks to other apps when you Alt+Tab away with the panel open** — the
+  cursor/input hooks used to keep freezing/freeing the OS cursor and swallowing clicks/keys meant for
+  the window you switched to. They now only act while the game window is focused (the panel still draws).
+- **Intermittent crash on game boot** — the D3D12 icon-atlas upload could race GPU init and null-deref
+  (~1 in several cold boots). The upload now waits until every GPU resource is ready and retries instead
+  of crashing (falls back to plain-circle icons if it never becomes ready).
+
+### Performance
+
+- **Log spam slashed**: the mod's `MapForGoblins.log` was ~37k lines/session (88% of it a per-frame
+  `[BENCH]` timing line). Per-frame/per-tick diagnostics are now aggregate-only or gated behind a dev
+  flag — a normal session logs under ~3k lines while keeping the end-of-session timing summary and
+  lag-spike warnings. Crash/freeze dumps also no longer pile up forever (folded into the rotating log
+  archive).
 
 ## [v2.3.0] - 2026-07-08
 
