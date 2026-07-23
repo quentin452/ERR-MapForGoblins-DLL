@@ -2403,6 +2403,11 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
     // same scale settings the worldmap honors. Clamped so an extreme scale setting can't make the
     // small fixed-radius HUD unreadable or blow past its own icons.
     constexpr float kMinimapIconHalfBase = 8.0f; // bumped 6->8 (icons read too small at 1080p, 2026-07-04)
+    // WorldQuestNPC draws a native MENU_MAP glyph (iconId 80) at 2.2x kMapSymbolScale like a boss, but its
+    // art fills more of the quad, so on the small HUD it dwarfs the boss symbol (user 2026-07-23: "only NPC
+    // too big on the minimap, bosses correct"). Shrink ONLY this category ONLY on the minimap draw below —
+    // the worldmap + virtual-map paths are untouched (bosses/merchants unchanged everywhere).
+    constexpr float kMinimapNpcShrink = 0.6f;
     float half = kMinimapIconHalfBase * uiScale * cfg::overlayMasterScale * cfg::overlayIconScale;
     half = half < 3.0f * uiScale ? 3.0f * uiScale : (half > 14.0f * uiScale ? 14.0f * uiScale : half);
     // ONE inner radius for clamping icon/marker CENTERS. An icon centered exactly here has its OUTER
@@ -2481,7 +2486,10 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
         avg.y /= static_cast<float>(hits.size());
         if (hits.size() == 1)
         {
-            draw_marker(fg, *hits[0].m, hits[0].pos, icons, half);
+            float mhalf = half;
+            if (hits[0].m->category == static_cast<int>(goblin::generated::Category::WorldQuestNPC))
+                mhalf *= kMinimapNpcShrink;
+            draw_marker(fg, *hits[0].m, hits[0].pos, icons, mhalf);
         }
         else
         {
