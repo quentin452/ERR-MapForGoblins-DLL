@@ -123,3 +123,15 @@ icon). Added `raw_area==45` alongside `raw_area==33` to the build_buckets_impl p
 capture_live_graces grace filter. Live: `pruned 37 phantom-tile markers`; the area-45 (0,0) Crucible Knight
 + its co-located items are gone; the real world Crucible Knights (m30/m60/m11) stay. NOTE: only the Leyndell
 colosseum (m45) is handled — if the Limgrave/Caelid colosseums also leak, add their area ids too.
+
+---
+
+## Two co-located graces at the Roundtable — NOT a bug (2026-07-23)
+
+`vmap find` at the Roundtable spot (m11_10, w~7704,8560) shows TWO graces, both `src=Live`
+(BonfireWarpParam runtime), both `area11 grid(10,0)`: **"Table of Lost Grace"** (the Roundtable, gets
+discovered) + **"Gilded Court"** (undiscovered). This is NOT a mis-projection / copy (unlike m33/m31_90):
+**Gilded Court is real ERR content** — the endgame version of the Roundtable Hall (where you access the
+Trial of Recollection). Both graces physically live in the m11_10 hall → same grid → same overworld
+projection → they overlap. USER DECISION 2026-07-23: **KEEP both** (they're real; spiderfy separates them
+on hover). Don't "dedup" or suppress — if a future session sees two graces here, this is expected.
