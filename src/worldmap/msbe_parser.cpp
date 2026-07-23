@@ -653,6 +653,12 @@ std::vector<MsbPart> dump_parts(const uint8_t *buf, size_t len)
             if (inb(td, 0x20, len))
                 for (int k = 0; k < 8; k++) p.td[k] = (int32_t)rd32(buf, td + (size_t)k * 4);
         }
+        // Raw part-entry window (0xB0 bytes) — the sub-struct offset table lives near +0x50..0x90; the
+        // ConnectCollision MapID isn't at the +0x68 typeData we sampled, so dump the header to find it.
+        {
+            size_t n = (pe + 0xB0 <= len) ? 0xB0 : (len > pe ? len - pe : 0);
+            p.raw.assign(buf + pe, buf + pe + n);
+        }
         out.push_back(std::move(p));
     }
     return out;

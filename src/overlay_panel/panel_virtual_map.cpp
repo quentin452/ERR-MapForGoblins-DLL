@@ -2654,9 +2654,14 @@ static std::string msbparts_probe(const std::string &mapName, int typeFilter, bo
     {
         if (p.type != typeFilter) continue;
         ++hits;
-        spdlog::info("[MSBPARTS]   type={} '{}' pos({:.1f},{:.1f},{:.1f}) td=[{},{},{},{},{},{},{},{}]",
-                     p.type, p.name, p.pos[0], p.pos[1], p.pos[2], p.td[0], p.td[1], p.td[2], p.td[3],
-                     p.td[4], p.td[5], p.td[6], p.td[7]);
+        // typeData @+0x68: for a ConnectCollision (type 11) it is `int CollisionIndex; sbyte MapID[4]`,
+        // so td[0]=CollisionIndex, td[1] bytes = MapID [area,block,cc,dd] (decoded here as m<AA>_<BB>).
+        const int32_t mid = p.td[1];
+        const int mA = mid & 0xff, mB = (mid >> 8) & 0xff, mC = (mid >> 16) & 0xff, mD = (mid >> 24) & 0xff;
+        spdlog::info("[MSBPARTS]   type={} '{}' pos({:.1f},{:.1f},{:.1f}) collIdx={} MapID=m{:02d}_{:02d}_{:02d}_{:02d} "
+                     "td=[{},{},{},{}]",
+                     p.type, p.name, p.pos[0], p.pos[1], p.pos[2], p.td[0], mA, mB, mC, (int8_t)mD,
+                     p.td[0], p.td[1], p.td[2], p.td[3]);
     }
     char out[144];
     std::snprintf(out, sizeof(out), "ok vmap msbparts '%s' type=%d: %zu part(s) — see [MSBPARTS]",

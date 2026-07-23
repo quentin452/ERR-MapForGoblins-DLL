@@ -139,3 +139,37 @@ OVERWORLD tile's ConnectCollision→m45 whose referenced overworld Collision giv
 dump the OVERWORLD tile's type-11 parts, find `MapID==m45`, follow its CollisionIndex to the type-5
 Collision's position = the entrance. Validate a known catacomb's chain lands at its `fold_probe` entrance.
 The probe (`vmap msbparts`) is in place; the layout offsets are the only unknown left.
+
+## Path (b) round 2 — ConnectCollision DECODED, but a dead end for the DECLINED blocks
+
+Decoded the ConnectCollision layout (raw-hex dump of the part entry): the typeData @ part `+0x68` is
+`int CollisionIndex; sbyte MapID[4]`, i.e. `td[0]`=CollisionIndex, **`td[1]` bytes = MapID
+[area,block,cc,dd]**. Verified:
+- **m30_04_00_00** (catacomb): 4 ConnectCollisions, all `MapID = m60_43_38` (the overworld tile) →
+  catacomb → overworld tile grid `(43,38)` ≈ `(11008,9728)`. The overworld side (m60_43_38) has the
+  reverse: `h433801 → MapID m30_04`, `h433802 → MapID m31_00`. Chain proven end-to-end.
+- BUT **both the ConnectCollision AND the type-5 Collision parts have `pos=(0,0,0)`** — the collision
+  geometry lives in the HKX mesh (referenced by model), not the part position. So only the overworld
+  **tile** (256u) is cheaply available, not a precise entrance point. (Tile-level is still a big win vs
+  the origin pile.)
+
+**The wall:** the dungeons that FOLD FINE (m30_04) HAVE ConnectCollisions; the dungeons that DECLINE —
+**m31_90** (the OOB catacomb at `w(25251,8759)`), **m45** (all 3 blocks) — have **ZERO ConnectCollisions**
+(and no conv row, and m30's EMEVD had no warp). ConnectCollision presence ⇔ having a conv row. So the
+**declined "orphan" blocks have no static overworld link at all** — not conv, not ConnectCollision, not
+EMEVD warp. Their overworld entrance is simply not in the map/event data (m31_90 = a synthetic far-grid
+block; m45 = ERR custom content with no standard connection).
+
+## Conclusion — auto-anchoring declined blocks from static data is NOT possible
+
+All three static sources are exhausted for the declined blocks. Remaining options (all need the user's
+call):
+1. **Runtime capture (mod-agnostic):** when the player VISITS a declined dungeon, the engine knows the
+   overworld map position (the map centers there) — capture it live (via `coords` / the map camera) and
+   seed `entrance_anchor` for that block. Learns entrances by visiting; no static data needed. Needs the
+   anchor keyed per-BLOCK (area,gx,gz), not per-area.
+2. **Manual seed (Slice 2b):** hand-provide the few declined blocks' entrances via the `entrance_anchor`
+   RPC / a config file. ERR-specific, but the Slice-1 plumbing already supports it.
+3. **Hide/flag:** leave the orphan markers off-map-flagged (current behaviour) since they can't be placed.
+
+The `vmap msbparts` + `vmap emevd` + `fold_probe` + `entrance_anchor` probes are all committed and reusable.

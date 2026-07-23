@@ -266,7 +266,8 @@ GOBLIN_RENDER_API std::vector<EmevdInstr> emevd_all_instrs(const uint8_t *buf, s
 // int32 words of its typeData @+0x68}. Used by `vmap msbparts` to find a ConnectCollision (type ?) and
 // read its target MapID (area/block/cc/dd) — the overworld→dungeon link engine-warped dungeons omit
 // from EMEVD. Disk (non-resident) blobs only.
-struct MsbPart { int32_t type = 0; std::string name; float pos[3] = {0, 0, 0}; int32_t td[8] = {}; };
+struct MsbPart { int32_t type = 0; std::string name; float pos[3] = {0, 0, 0}; int32_t td[8] = {};
+                 std::vector<uint8_t> raw; };  // raw[] = first 0xB0 bytes of the part entry (layout RE)
 GOBLIN_RENDER_API std::vector<MsbPart> dump_parts(const uint8_t *buf, size_t len);
 
 // One InitializeCommonEvent(0, 90005702, entity, concluded, reg_lo, reg_hi) call — the
