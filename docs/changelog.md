@@ -69,6 +69,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 - Marker grouping: the **"Enable clustering" toggle + "Cluster size"** now control the Virtual World
   Map. It previously had an always-on zoom-based clustering that ignored the setting — grouping off now
   really shows every marker, and the size threshold gates how many markers a pile needs.
+- Virtual World Map: **NPC/Merchant/boss pins** no longer balloon to ~2.2x size when zoomed in — they
+  now draw at a constant, native-like size regardless of zoom level.
+- Virtual World Map: **spiderfy** (fanning out a hovered marker pile) no longer overlaps enlarged
+  markers with a glow halo (e.g. Golden Runes) — the fan now spaces members by their full visual
+  footprint, not just the plain icon size.
+- **Minimap**: quest-NPC pins no longer dwarf the boss symbol — they're now sized to match.
 
 ## [v2.3.0] - 2026-07-08
 
