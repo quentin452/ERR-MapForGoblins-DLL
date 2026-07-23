@@ -55,6 +55,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Fixed
 
+- **Duplicate boss marker on clone-boss tiles** (e.g. a 2nd "Godrick the Grafted" ringed at Godefroy's
+  evergaol, so searching "Godrick" highlighted both). A clone boss reuses a base boss's chr model
+  (Godefroy = Godrick's `c4750`) with a blank `NpcParam.nameId`, so tier-2 name resolution (bestiary
+  codex keyed on MODEL) named the clone enemy after the base boss; the boss enemy-supplement then
+  stamped the base boss onto the clone's tile. The supplement now respects a **native-cell guard**:
+  it won't overlay a boss onto a tile the native map already labelled with a different boss.
 - Spoiler-free mode: the **Virtual World Map tooltip** was still leaking the real item/boss name on
   hover (it built its own tooltip, bypassing the spoiler check). It now shows "?" like the native map.
 - Virtual World Map **gamepad** pad-mode was fragile — it exited on any cursor delta (Wine/Proton micro-

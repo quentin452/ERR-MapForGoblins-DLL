@@ -365,6 +365,13 @@ void build_live_bosses()
     int n = 0;
     // name -> the marked boss type (its icon/textId + the tiles already marked)
     std::unordered_map<std::string, MarkedBoss> marked;
+    // cell -> the name of the NATIVE (first-pass WMP) boss that owns that tile. The enemy-supplement
+    // consults this to avoid planting a DIFFERENT boss on a tile the native map already labelled — the
+    // clone-name trap: Godefroy the Grafted reuses Godrick's chr model (c4750) with a blank NpcParam
+    // nameId, so tier-2 (bestiary codex keyed on MODEL) resolves the Godefroy enemy to "Godrick the
+    // Grafted"; without this guard the supplement stamps a 2nd Godrick over the native Godefroy marker.
+    // (Diagnosed via `vmap ename` — see docs/memory/tooling/rpc-commands.md.)
+    std::unordered_map<uint32_t, std::string> native_cells;
     try
     {
         for (auto [rowId, row] :
@@ -377,6 +384,7 @@ void build_live_bosses()
             // instances FromSoft did NOT map-mark (the native map is selective: 4 of the 7 Erdtree
             // Avatars, incl. none underground). Name from the row's own textId1.
             std::string nm = goblin::overlay_api::lookup_text_utf8(row.textId1);
+            native_cells[boss_cell_key(row.areaNo, row.gridXNo, row.gridZNo)] = nm;  // native owns this tile
             if (!nm.empty())
             {
                 MarkedBoss &mb = marked[nm];
@@ -419,6 +427,11 @@ void build_live_bosses()
         if (it == marked.end()) it = marked.find(nm + "s");  // grouped-plural marker (enemy "Demi-Human Chief" → marked "Demi-Human Chiefs")
         if (it == marked.end()) continue;               // only complete boss types the native map marks
         const uint32_t key = boss_cell_key(en.area, en.gx, en.gz);
+        // Native-cell guard: if the native map already labelled this tile with a DIFFERENT boss, trust
+        // the game's own label — don't overlay a model-guessed name (the Godefroy→Godrick clone trap).
+        // A tile natively owned by THIS same boss falls through to the per-boss cell dedup just below.
+        auto nc = native_cells.find(key);
+        if (nc != native_cells.end() && nc->second != it->first) continue;
         if (!it->second.cells.insert(key).second) continue;   // tile already has this boss (marked or added)
         from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
         d.areaNo = en.area; d.gridXNo = en.gx; d.gridZNo = en.gz;
