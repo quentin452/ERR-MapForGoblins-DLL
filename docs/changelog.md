@@ -21,12 +21,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ## [Unreleased]
 
+### Added
+
+- **Gamepad zoom sensitivity** (`gamepad_zoom_sensitivity` INI) — scales the Virtual World Map's L2/R2
+  zoom speed, independent of the existing `gamepad_sensitivity` (reticle/pan).
+
 ### Fixed
 
-- **Boss markers now appear on vanilla / randomizer / any non-ERR game** (previously ERR-only). Bosses —
-  and the Great Runes derived from them — were sourced only from ERR's authored map pins, so on vanilla or
-  a randomizer run the whole boss category was empty. They're now discovered mod-agnostically from the
-  game's own field-boss data.
+- **Boss markers now appear (and are named) on vanilla / randomizer / any non-ERR game** (previously
+  ERR-only). Bosses — and the Great Runes derived from them — were sourced only from ERR's authored map
+  pins, so on vanilla or a randomizer run the whole boss category was empty. They're now discovered
+  mod-agnostically from the game's own field-boss data, with names.
 - **Player marker no longer disappears when you stand on a Site of Grace** — the pale player arrow blended
   into the gold grace icon (its highlight faded out when zoomed in); it now keeps a persistent outline on
   the world map, minimap, and Virtual World Map.
