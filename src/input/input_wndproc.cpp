@@ -278,6 +278,26 @@ LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             break; // keyboard / everything else → game (map-close key still works)
         }
     }
+    // Redirect stand-in (vmap_on_map_key / custom world): the native map is FORCE-CLOSED, so
+    // world_map_open() is false and the branch above doesn't run — the vmap is the only map surface but
+    // the game still gets keyboard, so Escape opens the SYSTEM MENU *behind* the vmap and traps the user
+    // (can't close the vmap until that hidden menu is dismissed). On Escape, close the vmap (clear the
+    // redirect — same as a second map-key press) and SWALLOW the key so no menu opens. Every other key
+    // still passes to the game, so the map key can toggle the redirect as designed. Mouse in this mode is
+    // handled by the cursor/raw-input hooks (they gate on vmap_covers_map) + hk_present's ImGui poll.
+    else if (has_focus() && goblin::overlay_api::vmap_redirect() && !goblin::world_map_open())
+    {
+        if (wp == VK_ESCAPE)
+        {
+            if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)
+            {
+                goblin::overlay_api::set_vmap_redirect(false);  // close the vmap
+                return 0;                                       // consume — game never opens the menu
+            }
+            if (msg == WM_KEYUP || msg == WM_SYSKEYUP) return 0;  // swallow the paired release too
+            if (msg == WM_CHAR) return 1;                          // and the 0x1B char, so nothing leaks
+        }
+    }
     // F1 panel CLOSED, native map open (and NOT a fullscreen-vmap stand-in): feed ImGui the mouse so
     // in-world chips (region toggles) stay clickable, and consume the L-button PRESS for the game ONLY
     // when the cursor is over a chip (map pan/select elsewhere is untouched). Releases always pass

@@ -150,17 +150,27 @@ void draw_item_search(const OverlayFrameCtx &ctx, Filter &f)
                     if (it == name_cache.end())
                     {
                         Names n;
-                        n.loc = goblin::overlay_api::lookup_text_utf8(m.name_id);
-                        // English alias resolved live from the active install's engus
-                        // FMGs on disk (mod-agnostic; empty if unavailable → search
-                        // degrades to game-language matching, no wrong-mod names).
-                        n.en = goblin::overlay_api::lookup_name_en_disk_utf8(m.name_id);
-                        // Label = game-language name; fall back to English if the
-                        // live FMG had no entry. Append "(English)" only when it adds
-                        // information (present and different from the shown name).
-                        n.label = n.loc.empty() ? n.en : n.loc;
-                        if (!n.en.empty() && n.en != n.label)
-                            n.label += " (" + n.en + ")";
+                        if (!m.live_name.empty())
+                        {
+                            // Mod-agnostic bosses carry a runtime name (no FMG id to resolve — see
+                            // Marker::live_name); use it directly. name_id is a stable synthetic key
+                            // (unique per boss type) so the dedup + on-map ring still work.
+                            n.loc = n.label = m.live_name;
+                        }
+                        else
+                        {
+                            n.loc = goblin::overlay_api::lookup_text_utf8(m.name_id);
+                            // English alias resolved live from the active install's engus
+                            // FMGs on disk (mod-agnostic; empty if unavailable → search
+                            // degrades to game-language matching, no wrong-mod names).
+                            n.en = goblin::overlay_api::lookup_name_en_disk_utf8(m.name_id);
+                            // Label = game-language name; fall back to English if the
+                            // live FMG had no entry. Append "(English)" only when it adds
+                            // information (present and different from the shown name).
+                            n.label = n.loc.empty() ? n.en : n.loc;
+                            if (!n.en.empty() && n.en != n.label)
+                                n.label += " (" + n.en + ")";
+                        }
                         it = name_cache.emplace(m.name_id, std::move(n)).first;
                     }
                     const Names &nm = it->second;

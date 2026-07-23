@@ -994,7 +994,8 @@ std::string marker_label(const Marker &m)
         if (!loc.empty()) t += "\n" + loc;
         return t;
     }
-    std::string name = goblin::overlay_api::lookup_text_utf8(m.name_id);
+    // Prefer the runtime name (mod-agnostic tier-3 bosses carry it here; no FMG id to resolve).
+    std::string name = m.live_name.empty() ? goblin::overlay_api::lookup_text_utf8(m.name_id) : m.live_name;
     // Quest-NPC pin (QuestNpcLayer): NPC name + "quest — current step" + coarse zone.
     if (m.tip_quest)
     {

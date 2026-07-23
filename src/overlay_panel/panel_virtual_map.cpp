@@ -813,6 +813,13 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     }
     if (!s_open) return;
 
+    // Hoisted above the sidebar (its value is set from stick/button input further down; here it holds
+    // last frame's) so the sidebar can gate its hover-tooltips on it: in gamepad pad-mode the reticle
+    // is the single pointer and it's clamped to the CANVAS, so a sidebar tooltip driven by the (frozen)
+    // real mouse would render at the stale cursor spot, not where the pad is looking — bug "tooltip
+    // shows at the old gamepad selection, not the reticle". Pad tooltips come only from the canvas.
+    static bool s_pad_mode = false;
+
     // Opened by the game MAP KEY (s_from_map) → draw FULLSCREEN + opaque so it stands in for the
     // native map (which still renders underneath; we cover it rather than suppress it — the native
     // render flag "does not hide the map", proven live). Otherwise a floating dev window.
@@ -1112,7 +1119,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             // too (bug: gamepad could only ever locate, never warp, despite "double-click to warp").
             if (disc && ImGui::IsItemFocused() && ImGui::IsKeyPressed(ImGuiKey_GamepadFaceUp, false))
                 s_warp_pending = g.rowId;
-            if (ImGui::IsItemHovered())
+            if (!s_pad_mode && ImGui::IsItemHovered())   // pad-mode: no stale-mouse sidebar tooltip (see s_pad_mode)
                 ImGui::SetTooltip("%s", disc ? tr("double-click / Y: warp · click: locate")
                                              : tr("undiscovered — click: locate"));
             ImGui::PopID();
@@ -1279,7 +1286,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                               h.name_id, h.state_id);
             if (ImGui::Selectable(row))
                 virtual_map_locate(h.name_id, h.group);   // centre the canvas on the hit + switch page
-            if (ImGui::IsItemHovered())
+            if (!s_pad_mode && ImGui::IsItemHovered())   // pad-mode: no stale-mouse sidebar tooltip (see s_pad_mode)
             {
                 if (h.state.empty())
                     ImGui::SetTooltip(tr("click: centre the map on it (%s)"), gname);
@@ -1466,7 +1473,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // collide with ImGui nav, which uses the LEFT stick / dpad for sidebar widget focus. A latch keeps the
     // reticle shown only while the pad is actually driving (a real mouse move exits pad-mode).
     static ImVec2 s_pad_cursor(0, 0);
-    static bool s_pad_mode = false, s_pad_cursor_init = false;
+    static bool s_pad_cursor_init = false;  // s_pad_mode hoisted to the top of draw_virtual_map
     {
         auto an = [&io](ImGuiKey k) { return io.KeysData[k - ImGuiKey_KeysData_OFFSET].AnalogValue; };
         auto ax = [&](ImGuiKey neg, ImGuiKey pos) {
@@ -1996,7 +2003,8 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                 ImVec2 ps = w2s(m->worldX, m->worldZ);
                 if (ps.x >= origin.x && ps.x <= canvas_end.x && ps.y >= origin.y && ps.y <= canvas_end.y)
                     s_single_screen.emplace_back(ps, m);
-                plot(m->worldX, m->worldZ, m->color, m->category, m->name_id, nullptr, m->row_id, m->discover_flag, m);
+                plot(m->worldX, m->worldZ, m->color, m->category, m->name_id,
+                     m->live_name.empty() ? nullptr : m->live_name.c_str(), m->row_id, m->discover_flag, m);
             }
         for (const goblin::worldmap::Marker *m : s_grace_pts)
             if (!region_gated(*m) && m->worldX >= vMinX && m->worldX <= vMaxX &&

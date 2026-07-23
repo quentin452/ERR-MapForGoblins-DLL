@@ -419,18 +419,42 @@ void build_live_bosses()
     // marker reusing the marked row's textId1/iconId at the enemy's position (same push_marker/projection
     // path as loot enemies, so the dungeon fold applies). Only KNOWN boss types are supplemented — never a
     // false boss. Dedup by tile so a multi-part arena (e.g. c4810 ×4 at m60_52_56) counts once.
-    int supp = 0;
+    int supp = 0, agnostic = 0;
+    // Synthetic per-type name_id for mod-agnostic bosses (which have no FMG id). Sequential in a high
+    // reserved band so it's UNIQUE per boss type (the search dedup + on-map ring key on name_id) and so
+    // lookup_text_utf8 returns empty for it — but the string is never actually resolved from it: every
+    // display path (map tooltip, search) prefers Marker::live_name for these. One id per type (shared by
+    // all its instances) so the search collapses a boss's N instances into one ringed result, like ERR.
+    int32_t next_syn = 0x60000000;
+    std::unordered_map<std::string, int32_t> syn_ids;  // boss name -> its synthetic id (stable per type)
     for (const DiskEnemy &en : g_parsed.enemies)
     {
         if (en.name.empty() || en.name[0] != 'c') continue;
         int model = 0;
         { size_t u = en.name.find('_'); try { model = std::stoi(en.name.substr(1, u == std::string::npos ? std::string::npos : u - 1)); } catch (...) { continue; } }
         if (model <= 0) continue;
-        std::string nm = goblin::enemy_display_name((int)en.npcParamId, model);
+        int tier = 0;
+        std::string nm = goblin::enemy_display_name((int)en.npcParamId, model, &tier);
         if (nm.empty()) continue;
         auto it = marked.find(nm);
         if (it == marked.end()) it = marked.find(nm + "s");  // grouped-plural marker (enemy "Demi-Human Chief" → marked "Demi-Human Chiefs")
-        if (it == marked.end()) continue;               // only complete boss types the native map marks
+        bool live_named = false;
+        if (it == marked.end())
+        {
+            // No ERR WorldMapPointParam boss pin (textId2==5100) for this type — but the enemy resolves
+            // via the vanilla field-boss / miniboss NpcName band (tier 3), so it IS a field boss. Seed a
+            // NEW boss type from it so bosses show on vanilla / randomizer / ANY mod, not just ERR (the
+            // mod-agnostic prime directive — the textId2==5100 seed is an ERR-only encoding, absent on
+            // vanilla → 0 bosses there before this). tier != 3 = a regular mob → never a false boss.
+            // No FMG id for the name (it lives in a raw NpcName slot the marker band-router can't resolve),
+            // so it's carried out-of-band via Marker::live_name below. iconId 0 → WorldBosses category icon.
+            if (tier != 3) continue;
+            int32_t &syn = syn_ids[nm];
+            if (syn == 0) syn = next_syn++;   // one stable synthetic id per boss type
+            MarkedBoss nb; nb.textId1 = syn; nb.iconId = 0;   // syn → marker.name_id (non-lot fallback)
+            it = marked.emplace(nm, nb).first;
+            live_named = true;
+        }
         const uint32_t key = boss_cell_key(en.area, en.gx, en.gz);
         // Native-cell guard: if the native map already labelled this tile with a DIFFERENT boss, trust
         // the game's own label — don't overlay a model-guessed name (the Godefroy→Godrick clone trap).
@@ -446,10 +470,15 @@ void build_live_bosses()
         d.iconId = (int16_t)it->second.iconId;
         const uint64_t rid = en.entityId ? (uint64_t)en.entityId : (0xB055ull << 32 | key);
         push_marker(rid, d, c, /*lotId=*/0u, /*lotType=*/0u, Source::Live);
+        // Mod-agnostic boss: no FMG id, so carry the resolved name on the just-pushed marker for the
+        // tooltip/search to display (see Marker::live_name). ERR pins keep their textId1/FMG path.
+        if (live_named && !g_buckets[c].empty()) g_buckets[c].back().live_name = nm;
         ++supp;
+        if (live_named) ++agnostic;
     }
     spdlog::info("[BOSSLIVE] built {} boss markers from live WorldMapPointParam (textId2==5100) + {} "
-                 "enemy-supplemented instances ({} marked boss types)", n, supp, (int)marked.size());
+                 "enemy-supplemented instances ({} marked boss types, {} mod-agnostic tier-3 boss types "
+                 "with no WMP pin)", n, supp, (int)marked.size(), agnostic);
 }
 
 // Build the LANDMARK buckets LIVE from WorldMapPointParam.iconId (MapGenie category-coverage

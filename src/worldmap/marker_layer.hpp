@@ -10,6 +10,7 @@
 // (ABGR) so the interface needs no imgui include.
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace goblin::worldmap
@@ -112,6 +113,13 @@ struct Marker
     // per-item icon instead of the category representative. Set by MapEntryLayer push_marker after
     // the aggregate init (default 0 keeps other ctors intact).
     int item_icon_id = 0;
+    // Runtime display name, used INSTEAD of name_id when non-empty. For markers whose name is a runtime
+    // string with no FMG id the tooltip/search band-router can resolve — e.g. mod-agnostic field bosses
+    // seeded from the tier-3 NpcName boss band on vanilla/randomizer/any-mod (no ERR WorldMapPointParam
+    // boss pin to borrow a textId1 from). Set AFTER the aggregate init (default empty keeps other ctors
+    // intact); when set, name_id is a stable synthetic key (search dedup + on-map ring) and display
+    // paths (map tooltip, search) show this string. Empty = resolve via name_id as usual.
+    std::string live_name;
     // This marker's OWN source WorldMapPointParam iconId (= the game's MENU_MAP_<NN> map-point
     // glyph); 0 = none. Set by push_marker ONLY for Source::Live rows (bosses + landmarks — true
     // WMPP rows the game itself pins, so the iconId IS a resident/on-disk map glyph). Lets the
