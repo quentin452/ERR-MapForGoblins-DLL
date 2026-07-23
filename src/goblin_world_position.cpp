@@ -1052,6 +1052,11 @@ void goblin::capture_live_graces()
             // Map". Same 0x3F guard push_marker applies to every other marker; graces have their own layer,
             // so gate them here at capture. Real graces sit on valid tiles (grid ≤ ~58). user 2026-07-23.
             if (row.gridXNo > 0x3F || row.gridZNo > 0x3F) continue;
+            // ERR Trial-of-Recollection arena (m33): a teleport-only boss-rush mode (a COPY of the
+            // Roundtable hall) that spuriously projects onto the overworld — its grace duplicates the
+            // Roundtable's spot. Drop it, like its treasures/landmarks in push_marker. ERR-specific
+            // additive filter (fixed map id); see map_entry_layer.cpp for the full rationale.
+            if (row.areaNo == 33) continue;
             if ((int)row.eventflagId <= 0 || textid1_of(row) <= 0) continue; // no flag / no name
             // dispMask00/01/02 are ALL bits 0/1/2 of the single byte 0x1e (verified in-memory:
             // dispMask00→0x01, dispMask01→0x02, dispMask02→0x04; byte 0x1f is pad). A grace shown

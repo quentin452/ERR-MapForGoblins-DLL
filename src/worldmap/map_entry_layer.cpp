@@ -211,16 +211,11 @@ void push_marker(uint64_t row_id, const from::paramdef::WORLD_MAP_POINT_PARAM_ST
                  Source source = Source::Baked, bool live_classified = false)
 {
     namespace gen = goblin::generated;
-    // Off-grid template tile guard: the engine's map tile grid is 0..0x3F (WorldMapLegacyConvParam and the
-    // fold's out-of-range clamp both cap at 0x3F). A row on a tile ABOVE that is a dead template/storage
-    // slot, not a real location — e.g. ERR parks its Roundtable Hold COPY at m31_90 (grid 90): it has no
-    // conv row (fold declines) AND no EMEVD, so its whole region (landmarks/graces/summoning/dungeon icons/
-    // 2nd Alberich) snapped OOB to ~(22700,-280). Every marker source funnels through push_marker, so one
-    // check here drops the phantom tile across ALL passes (param + disk). On-grid declines (area-45
-    // colosseum at grid 0) and low-grid underground are untouched; no legit tile exceeds 0x3F (overworld
-    // maxes ~58). user 2026-07-23.
-    if (d.gridXNo > 0x3F || d.gridZNo > 0x3F)
-        return;
+    // NOTE: DON'T early-return here to filter markers — many callers do `g_buckets[cat].back()`
+    // immediately after push_marker (smithing/elevator/spring/… builders read the just-pushed marker's
+    // cell), so skipping the push crashes them on `.back()` of an empty bucket. Off-grid template tiles
+    // (grid > 0x3F) and the ERR Trial-of-Recollection arena (m33) are dropped in ONE post-build sweep
+    // instead (see prune_phantom_tiles below), which runs after every builder so the .back() contract holds.
     int ga;
     float wx, wz;
     goblin::overlay_api::marker_world_pos(d.areaNo, d.gridXNo, d.gridZNo, d.posX, d.posZ, ga, wx, wz,
@@ -3471,6 +3466,32 @@ void build_buckets_impl()
             spdlog::info("[LOOTDISK] world features: category {} dropped {} baked twins ({})",
                          cat, (int)(before - bucket.size()), wipe ? "category-wipe" : "cell-dedup");
         }
+    }
+
+    // Phantom-tile prune — runs AFTER every builder so the `g_buckets[cat].back()` contract the builders
+    // rely on (smithing/elevator/spring/… read the just-pushed marker) stays intact; filtering inside
+    // push_marker crashes them on an empty bucket (a m33 "Smithing Anvil" did exactly that, 2026-07-23).
+    // Drop, across ALL categories, markers on a RAW source tile that isn't a real location:
+    //  • grid > 0x3F — off-grid template/storage slot (ERR's Roundtable COPY m31_90 at grid 90: no conv
+    //    row, no EMEVD; its whole region snapped OOB to ~22700,-280).
+    //  • raw_area 33 — ERR's Trial-of-Recollection arena: a teleport-only boss-rush COPY of the Roundtable
+    //    hall that projects onto the Roundtable's overworld spot, duplicating m11_10 (ERR wiki confirms
+    //    "teleported to a version of the Roundtable Hold's hall"). Fixed base-vs-mod map id; graces are
+    //    filtered separately at capture_live_graces. Markers with no raw tile (raw_area<0) are untouched.
+    {
+        int pruned = 0;
+        for (auto &bucket : g_buckets)
+        {
+            const size_t before = bucket.size();
+            bucket.erase(std::remove_if(bucket.begin(), bucket.end(), [](const Marker &m) {
+                             return m.raw_gx > 0x3F || m.raw_gz > 0x3F || m.raw_area == 33;
+                         }),
+                         bucket.end());
+            pruned += static_cast<int>(before - bucket.size());
+        }
+        if (pruned)
+            spdlog::info("[LOOTDISK] pruned {} phantom-tile markers (off-grid grid>0x3F / m33 Trial arena)",
+                         pruned);
     }
 
     // Item stacking: ANNOTATE co-located identical-item loot groups (e.g. a Formic Rock node cluster).

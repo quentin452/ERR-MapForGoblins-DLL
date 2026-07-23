@@ -94,3 +94,22 @@ colosseum at grid 0) and low-grid underground (area 12) are untouched; no legit 
 **Live-verified:** `vmap find Alberich` = 1 (was 2: the m31_90 dup at (22776,-274) gone); Codex still 1;
 Leyndell Alberich armor (grid 0) + area-45 origin markers kept. The region-extract at ~(22700,-280) that
 had 32 markers now clears.
+
+---
+
+## push_marker early-return CRASHED the smithing pass → moved to a post-build sweep (FIXED 2026-07-23)
+
+The off-grid `grid>0x3F` guard + the m33 Trial-arena filter were first put as EARLY RETURNS inside
+`push_marker`. That crashed the build worker (`0xC0000005` in `build_disk_smithing_markers` → `cell_of`,
+symbolized via `tools/resolve_crash.py`): **many builders do `g_buckets[cat].back()` immediately after
+`push_marker`** (smithing/elevator/spring/… read the just-pushed marker's cell). ERR's m33 Trial arena has
+a "Smithing Anvil" → `push_marker(area33)` returned early → `.back()` on an EMPTY smithing bucket = UB.
+
+**Fix:** removed BOTH guards from push_marker; drop phantom-tile markers in ONE post-build sweep in
+`build_buckets_impl` (after every builder, before `annotate_item_stacks`), erasing markers with
+`raw_gx>0x3F || raw_gz>0x3F || raw_area==33` from every g_buckets bucket. The `.back()` contract holds.
+Graces are filtered separately at `capture_live_graces` (their own layer, no `.back()`).
+
+**Live-verified:** no crash; `pruned 33 phantom-tile markers`; Cipher Pata / Codex = 1 (real m11_10),
+Mad Tongue Alberich = 1, all m31_90 + m33 copies gone. See also
+[[disk-parser-coverage-gaps]] (entity-home loot filter) — the two together cover the ERR Roundtable copies.
