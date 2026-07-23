@@ -570,6 +570,50 @@ std::vector<EmevdInit> emevd_inits(const uint8_t *buf, size_t len)
     return out;
 }
 
+// RE probe: dump EVERY instruction (any bank) with its raw arg words — catches direct WarpPlayer
+// (bank 2003) etc. that the bank-2000 init-dump misses. Same header/walk as emevd_inits.
+std::vector<EmevdInstr> emevd_all_instrs(const uint8_t *buf, size_t len)
+{
+    std::vector<EmevdInstr> out;
+    if (len < 0x80 || std::memcmp(buf, "EVD\0", 4) != 0) return out;
+    uint64_t eventCount  = rd64(buf, 0x10);
+    uint64_t eventsOff   = rd64(buf, 0x18);
+    uint64_t instrTblOff = rd64(buf, 0x28);
+    uint64_t argsOff     = rd64(buf, 0x78);
+    if (eventCount > 1000000u) return out;
+    constexpr size_t EVENT_SZ = 0x30, INSTR_SZ = 0x20;
+    for (uint64_t i = 0; i < eventCount; ++i)
+    {
+        size_t e = (size_t)eventsOff + (size_t)i * EVENT_SZ;
+        if (!inb(e, EVENT_SZ, len)) break;
+        uint32_t evId        = rd32(buf, e + 0x00);
+        uint64_t instrCount  = rd64(buf, e + 0x08);
+        uint64_t instrOffset = rd64(buf, e + 0x10);
+        size_t base = (size_t)instrTblOff + (size_t)instrOffset;
+        if (instrCount > 1000000u) continue;
+        for (uint64_t j = 0; j < instrCount; ++j)
+        {
+            size_t ins = base + (size_t)j * INSTR_SZ;
+            if (!inb(ins, INSTR_SZ, len)) break;
+            EmevdInstr rec;
+            rec.event = evId;
+            rec.bank  = rd32(buf, ins + 0x00);
+            rec.id    = rd32(buf, ins + 0x04);
+            uint64_t argLen = rd64(buf, ins + 0x08);
+            int32_t  argOff = (int32_t)rd32(buf, ins + 0x10);
+            if (argOff >= 0 && argLen >= 4)
+            {
+                size_t a = (size_t)argsOff + (size_t)argOff;
+                if (inb(a, (size_t)argLen, len))
+                    for (uint64_t k = 0; k + 4 <= argLen; k += 4)
+                        rec.args.push_back(rd32(buf, a + (size_t)k));
+            }
+            out.push_back(std::move(rec));
+        }
+    }
+    return out;
+}
+
 // Quest-NPC concluded/register handler: InitializeCommonEvent(0, 90005702, entity, concluded,
 // reg_lo, reg_hi). Same 64-bit EMEVD layout as parse_emevd; args at a+8/+12/+16/+20. Runtime
 // port of tools/extract_quest_npcs.py's 90005702 mine — the whole quest-NPC table comes from

@@ -256,6 +256,12 @@ std::vector<EmevdAward> parse_emevd(const uint8_t *buf, size_t len);
 struct EmevdInit { uint32_t event = 0, tmpl = 0; std::vector<uint32_t> args; };
 GOBLIN_RENDER_API std::vector<EmevdInit> emevd_inits(const uint8_t *buf, size_t len);
 
+// Every instruction (any bank), as {containing event, bank, id, raw arg words}. Unlike emevd_inits
+// (bank-2000 only) this catches DIRECT instructions like WarpPlayer (bank 2003) — the actual warp the
+// init-dump misses. Used by `vmap emevd <map> banks|bank <N>` to hunt the dungeon-transition warp.
+struct EmevdInstr { uint32_t event = 0, bank = 0, id = 0; std::vector<uint32_t> args; };
+GOBLIN_RENDER_API std::vector<EmevdInstr> emevd_all_instrs(const uint8_t *buf, size_t len);
+
 // One InitializeCommonEvent(0, 90005702, entity, concluded, reg_lo, reg_hi) call — the
 // ENGINE-standard quest-NPC "_q99 concluded/died" handler. Grouping these by
 // (concluded, regLo, regHi) across the ACTIVE install's emevds yields the quest-NPC table

@@ -2556,6 +2556,46 @@ static std::string emevd_probe(const std::string &mapName, uint32_t needle, bool
     return out;
 }
 
+// All-instruction modes (round 2): `banks` = histogram of (bank:id) pairs across ALL instructions
+// (find the warp instruction by its bank/id); `bank <N>` = dump every instruction of bank N with args
+// (e.g. bank 2003 = WarpPlayer family) → read the destination-map arg directly.
+static std::string emevd_banks(const std::string &mapName)
+{
+    std::vector<uint8_t> evd = goblin::worldmap::read_game_file_decompressed("event/" + mapName + ".emevd.dcx");
+    if (evd.size() < 0x80) return "err emevd: '" + mapName + "' not found / too small";
+    std::vector<goblin::msbe::EmevdInstr> ins = goblin::msbe::emevd_all_instrs(evd.data(), evd.size());
+    std::map<uint64_t, int> hist;  // (bank<<32|id) -> count
+    for (const auto &r : ins) hist[((uint64_t)r.bank << 32) | r.id]++;
+    spdlog::info("[EMEVDUMP] {} : {} instructions, {} distinct (bank:id)", mapName, ins.size(), hist.size());
+    for (const auto &[k, c] : hist)
+        spdlog::info("[EMEVDUMP]   bank={} id={} x{}", (uint32_t)(k >> 32), (uint32_t)(k & 0xffffffff), c);
+    char out[144];
+    std::snprintf(out, sizeof(out), "ok vmap emevd '%s' banks: %zu instrs, %zu (bank:id) — see [EMEVDUMP]",
+                  mapName.c_str(), ins.size(), hist.size());
+    return out;
+}
+
+static std::string emevd_bank_dump(const std::string &mapName, uint32_t bank)
+{
+    std::vector<uint8_t> evd = goblin::worldmap::read_game_file_decompressed("event/" + mapName + ".emevd.dcx");
+    if (evd.size() < 0x80) return "err emevd: '" + mapName + "' not found / too small";
+    std::vector<goblin::msbe::EmevdInstr> ins = goblin::msbe::emevd_all_instrs(evd.data(), evd.size());
+    size_t hits = 0;
+    for (const auto &r : ins)
+    {
+        if (r.bank != bank) continue;
+        ++hits;
+        std::string as;
+        for (size_t k = 0; k < r.args.size(); ++k)
+        { char t[24]; std::snprintf(t, sizeof(t), "%s%u", k ? "," : "", r.args[k]); as += t; }
+        spdlog::info("[EMEVDUMP]   ev={} bank={} id={} args=[{}]", r.event, r.bank, r.id, as);
+    }
+    char out[144];
+    std::snprintf(out, sizeof(out), "ok vmap emevd '%s' bank=%u: %zu instr(s) — see [EMEVDUMP]",
+                  mapName.c_str(), bank, hits);
+    return out;
+}
+
 std::string vmap_rpc_command(std::string rest)
 {
     std::string arg = vmap_next_token(rest);
@@ -2630,10 +2670,17 @@ std::string vmap_rpc_command(std::string rest)
     {
         std::string mn = vmap_next_token(rest);
         if (mn.empty())
-            return "err usage: vmap emevd <mapName e.g. m60_43_33> [needle: entityId/template/arg]";
-        std::string ns = vmap_next_token(rest);
+            return "err usage: vmap emevd <mapName> [needle | banks | bank <N>]";
+        std::string mode = vmap_next_token(rest);
+        if (mode == "banks") return emevd_banks(mn);
+        if (mode == "bank")
+        {
+            std::string bs = vmap_next_token(rest);
+            uint32_t b = 0; try { b = (uint32_t)std::stoul(bs, nullptr, 0); } catch (...) { return "err usage: vmap emevd <map> bank <N>"; }
+            return emevd_bank_dump(mn, b);
+        }
         uint32_t needle = 0; bool has = false;
-        if (!ns.empty()) { try { needle = (uint32_t)std::stoul(ns, nullptr, 0); has = true; } catch (...) {} }
+        if (!mode.empty()) { try { needle = (uint32_t)std::stoul(mode, nullptr, 0); has = true; } catch (...) {} }
         return emevd_probe(mn, needle, has);
     }
     if (arg == "relief")

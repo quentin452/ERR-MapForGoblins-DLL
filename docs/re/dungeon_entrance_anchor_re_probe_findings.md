@@ -84,3 +84,36 @@ to test:
 
 Next: (a) extend `vmap emevd` to all-instruction dump to catch bank-2003 `WarpPlayer`, and/or (b) add a
 ConnectCollision probe to the MSB parser. Validate either against a30's `(10913,8522)`.
+
+## EMEVD warp decode — round 2 (all-instruction dump): (a) RULED OUT for catacombs
+
+Extended `vmap emevd <map> banks` (bank:id histogram over ALL instructions) + `bank <N>` (dump every
+instruction of a bank with args). Dumped **every** instruction of catacomb **m30_04_00_00** (145 instrs,
+38 distinct bank:id):
+
+- All warp-plausible banks reference only the catacomb's OWN entities/flags — **zero overworld / cross-map
+  reference, no destination-map arg, no overworld coords:**
+  - `bank 2003` (flags/events): `id=43 args=[3,9111,0,1]` (flag-range), `id=66` SetEventFlag(`30040800`),
+    `id=11/12/69` — all own-map.
+  - `bank 2004` (character ctrl): `id=1/4/5/34/39 args=[30045800,…]` — enable/disable the catacomb's own
+    characters.
+  - `bank 2009 id=3 args=[300400,30041950,0,0,0,5.0f]` — `300400` = m30_04_00 packed map-id = a SELF
+    reference (spawn), not a warp out.
+- `vmap emevd m30_04_00_00 60` → 0 (no init references area 60 / overworld).
+
+**Conclusion: catacomb (loading-warp) transitions are NOT encoded as EMEVD warps.** The interior EMEVD
+has no knowledge of its overworld entrance. Path (a) — EMEVD `WarpPlayer` decode — is a **dead end for
+warp-dungeons** (it may still exist for other transition types, but not the dungeon entrance we need).
+
+## → Pivot to (b): MSB `ConnectCollision` / warp-point asset
+
+The overworld↔dungeon link is engine-handled at the MSB level. Candidates to probe next:
+1. **`ConnectCollision` (MSB part type 5)** — carries the target `MapID[4]` (area/block/cc/dd) + a
+   position. If the OVERWORLD MSB has a ConnectCollision with `MapID` area=45, its position is the
+   entrance. `msbe_parser` reads Enemy(2)/Asset(13) only — add type 5.
+2. **Entrance ASSET + its region/ObjAct** — the cave-mouth asset; needs a map link (may reference the
+   dungeon via a param or the ConnectCollision above).
+Next probe: parse the overworld MSB's ConnectCollision parts (dump `MapID` + pos), validate a known
+catacomb's ConnectCollision position ≈ its `fold_probe` entrance, then use it to seed `entrance_anchor`.
+Coverage caveat: ConnectCollision may only exist for SEAMLESS dungeons; if catacombs lack it too, the
+entrance link may live only in the asset/region layer (deeper MSB RE).
