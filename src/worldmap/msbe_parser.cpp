@@ -614,6 +614,50 @@ std::vector<EmevdInstr> emevd_all_instrs(const uint8_t *buf, size_t len)
     return out;
 }
 
+// RE probe: dump every MSB Part (type, name, pos, first 8 typeData words). Standalone section walk
+// (mirrors parse_msb 152-168), disk/non-resident only (eio = entryStart + val).
+std::vector<MsbPart> dump_parts(const uint8_t *buf, size_t len)
+{
+    std::vector<MsbPart> out;
+    if (len < 0x10 || std::memcmp(buf, "MSB ", 4) != 0) return out;
+    struct Sec { uint32_t entries; size_t entryArr; };
+    Sec secs[6] = {};
+    size_t po = rd32(buf, 0x08);
+    for (int s = 0; s < 6; s++)
+    {
+        if (!inb(po, 0x10, len)) return out;
+        uint32_t oc = rd32(buf, po + 4);
+        if (oc == 0 || oc > 1000000u) return out;
+        uint32_t entries = oc - 1;
+        size_t entryArr = po + 0x10;
+        if (!inb(entryArr, (size_t)entries * 8 + 8, len)) return out;
+        secs[s] = {entries, entryArr};
+        po = (size_t)rd64(buf, entryArr + (size_t)entries * 8);
+    }
+    const Sec &PT = secs[SEC_PARTS];
+    for (uint32_t i = 0; i < PT.entries; i++)
+    {
+        size_t pe = (size_t)rd64(buf, PT.entryArr + (size_t)i * 8);
+        if (!inb(pe, 0x70, len)) continue;
+        MsbPart p;
+        p.type = (int32_t)rd32(buf, pe + 0x0c);
+        size_t nm = pe + (size_t)rd64(buf, pe + 0x00);  // eio non-resident = entryStart + val
+        if (nm < len) p.name = rd_utf16(buf, nm, len);
+        p.pos[0] = rdf(buf, pe + 0x20);
+        p.pos[1] = rdf(buf, pe + 0x24);
+        p.pos[2] = rdf(buf, pe + 0x28);
+        uint64_t tdOff = rd64(buf, pe + 0x68);
+        if (tdOff)
+        {
+            size_t td = pe + (size_t)tdOff;
+            if (inb(td, 0x20, len))
+                for (int k = 0; k < 8; k++) p.td[k] = (int32_t)rd32(buf, td + (size_t)k * 4);
+        }
+        out.push_back(std::move(p));
+    }
+    return out;
+}
+
 // Quest-NPC concluded/register handler: InitializeCommonEvent(0, 90005702, entity, concluded,
 // reg_lo, reg_hi). Same 64-bit EMEVD layout as parse_emevd; args at a+8/+12/+16/+20. Runtime
 // port of tools/extract_quest_npcs.py's 90005702 mine — the whole quest-NPC table comes from

@@ -2596,6 +2596,41 @@ static std::string emevd_bank_dump(const std::string &mapName, uint32_t bank)
     return out;
 }
 
+// RE probe (Slice 3 path b): dump an MSB's Parts. No type → part-type histogram (find the
+// ConnectCollision type). With a type → each part's name, pos, and first 8 typeData words (read the
+// ConnectCollision's target MapID from typeData). `vmap msbparts <mapName> [partType]`.
+static std::string msbparts_probe(const std::string &mapName, int typeFilter, bool hasType)
+{
+    std::vector<uint8_t> msb =
+        goblin::worldmap::read_game_file_decompressed("map/MapStudio/" + mapName + ".msb.dcx");
+    if (msb.size() < 0x10) return "err msbparts: '" + mapName + "' msb not found / too small";
+    std::vector<goblin::msbe::MsbPart> parts = goblin::msbe::dump_parts(msb.data(), msb.size());
+    spdlog::info("[MSBPARTS] {} : {} parts", mapName, parts.size());
+    if (!hasType)
+    {
+        std::map<int, int> hist;
+        for (const auto &p : parts) hist[p.type]++;
+        for (const auto &[t, c] : hist) spdlog::info("[MSBPARTS]   type={} x{}", t, c);
+        char out[144];
+        std::snprintf(out, sizeof(out), "ok vmap msbparts '%s': %zu parts, %zu types — see [MSBPARTS]",
+                      mapName.c_str(), parts.size(), hist.size());
+        return out;
+    }
+    size_t hits = 0;
+    for (const auto &p : parts)
+    {
+        if (p.type != typeFilter) continue;
+        ++hits;
+        spdlog::info("[MSBPARTS]   type={} '{}' pos({:.1f},{:.1f},{:.1f}) td=[{},{},{},{},{},{},{},{}]",
+                     p.type, p.name, p.pos[0], p.pos[1], p.pos[2], p.td[0], p.td[1], p.td[2], p.td[3],
+                     p.td[4], p.td[5], p.td[6], p.td[7]);
+    }
+    char out[144];
+    std::snprintf(out, sizeof(out), "ok vmap msbparts '%s' type=%d: %zu part(s) — see [MSBPARTS]",
+                  mapName.c_str(), typeFilter, hits);
+    return out;
+}
+
 std::string vmap_rpc_command(std::string rest)
 {
     std::string arg = vmap_next_token(rest);
@@ -2682,6 +2717,15 @@ std::string vmap_rpc_command(std::string rest)
         uint32_t needle = 0; bool has = false;
         if (!mode.empty()) { try { needle = (uint32_t)std::stoul(mode, nullptr, 0); has = true; } catch (...) {} }
         return emevd_probe(mn, needle, has);
+    }
+    if (arg == "msbparts")
+    {
+        std::string mn = vmap_next_token(rest);
+        if (mn.empty()) return "err usage: vmap msbparts <mapName> [partType]";
+        std::string ts = vmap_next_token(rest);
+        int t = 0; bool has = false;
+        if (!ts.empty()) { try { t = std::stoi(ts); has = true; } catch (...) {} }
+        return msbparts_probe(mn, t, has);
     }
     if (arg == "relief")
     {

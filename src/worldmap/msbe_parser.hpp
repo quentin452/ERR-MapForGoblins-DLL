@@ -262,6 +262,13 @@ GOBLIN_RENDER_API std::vector<EmevdInit> emevd_inits(const uint8_t *buf, size_t 
 struct EmevdInstr { uint32_t event = 0, bank = 0, id = 0; std::vector<uint32_t> args; };
 GOBLIN_RENDER_API std::vector<EmevdInstr> emevd_all_instrs(const uint8_t *buf, size_t len);
 
+// RE probe (Slice 3 path b): every MSB Part as {type @+0x0c, name, block-local pos @+0x20, first 8
+// int32 words of its typeData @+0x68}. Used by `vmap msbparts` to find a ConnectCollision (type ?) and
+// read its target MapID (area/block/cc/dd) — the overworld→dungeon link engine-warped dungeons omit
+// from EMEVD. Disk (non-resident) blobs only.
+struct MsbPart { int32_t type = 0; std::string name; float pos[3] = {0, 0, 0}; int32_t td[8] = {}; };
+GOBLIN_RENDER_API std::vector<MsbPart> dump_parts(const uint8_t *buf, size_t len);
+
 // One InitializeCommonEvent(0, 90005702, entity, concluded, reg_lo, reg_hi) call — the
 // ENGINE-standard quest-NPC "_q99 concluded/died" handler. Grouping these by
 // (concluded, regLo, regHi) across the ACTIVE install's emevds yields the quest-NPC table

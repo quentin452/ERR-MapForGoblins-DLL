@@ -117,3 +117,25 @@ Next probe: parse the overworld MSB's ConnectCollision parts (dump `MapID` + pos
 catacomb's ConnectCollision position ≈ its `fold_probe` entrance, then use it to seed `entrance_anchor`.
 Coverage caveat: ConnectCollision may only exist for SEAMLESS dungeons; if catacombs lack it too, the
 entrance link may live only in the asset/region layer (deeper MSB RE).
+
+## Path (b) round 1 — ConnectCollision EXISTS in catacombs (new `vmap msbparts` probe)
+
+New probe `vmap msbparts <mapName> [partType]` dumps MSB Parts (type @+0x0c, name, pos @+0x20, first 8
+typeData words @+0x68). Part-type histogram of **m30_04_00_00** (541 parts, 8 types): type 0 MapPiece×2,
+2 Enemy×24, 4 Player×3, **5 Collision×7**, 9 DummyEnemy×2, 10 DummyAsset×4, **11 ConnectCollision×4**,
+13 Asset×495. So **catacombs DO have ConnectCollision (type 11)** — path (b) is viable (contrast: EMEVD
+had nothing).
+
+The 4 ConnectCollisions: names `h000100_0000`..`h000400_0000`, **pos `(0,0,0)`** (they reference a
+Collision by index, not a position), `td[0]` = 0/1/2/3 = the **CollisionIndex**. `td[1..]` at the +0x68
+sub-struct are NOT the MapID (values like `0xFF2630BC` = wrong block — +0x68 is the entity/common slot,
+not the ConnectCollision type struct).
+
+**Remaining decode (next step):** (1) find the ConnectCollision **type-struct** offset in the part header
+(the ER MSBE ConnectCollision struct is `int CollisionIndex; sbyte[4] MapID; …` — read the correct
+sub-offset, not +0x68) → the target map. (2) The entrance POSITION is not on the ConnectCollision itself
+(pos=0) — it's on the referenced **Collision (type 5)** part at `CollisionIndex`, OR (cleaner) it's the
+OVERWORLD tile's ConnectCollision→m45 whose referenced overworld Collision gives the world position. So:
+dump the OVERWORLD tile's type-11 parts, find `MapID==m45`, follow its CollisionIndex to the type-5
+Collision's position = the entrance. Validate a known catacomb's chain lands at its `fold_probe` entrance.
+The probe (`vmap msbparts`) is in place; the layout offsets are the only unknown left.
