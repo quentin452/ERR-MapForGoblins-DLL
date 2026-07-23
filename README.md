@@ -26,42 +26,77 @@ regulation edits.
 
 ### Map & markers
 - **Thousands of world-map markers** across 60+ toggleable categories — the exact set depends on the
-  loaded game/mod (read at runtime, not a fixed bake).
-- **Marker sections** — the categories are grouped into **World** (collectibles: maps, paintings, imp
-  statues, kindling, interactables), **POI** (discovery landmarks: churches, ruins, forts, castles,
-  dungeons, towers, evergaols…), and **Services** (graces, merchants, elevators, lifts, smithing,
-  summoning pools). Each section has its own visibility toggle.
-- **Virtual World Map** — a draggable, zoomable map surface with **click-to-warp** to graces, marker
-  **clustering** (with spiderfy to fan out a hovered pile), and constant-size pins across zoom levels.
-- **Minimap HUD** — a corner minimap in normal gameplay with the same markers, quest-NPC pins, boss
-  symbols, and your death marker.
-- **Marker text from the game's own files** — each marker redirects to a goods/weapon/armour/etc. name
-  by ID through a MsgRepository (FMG) hook, so labels are correct and translated for free (all 14 game
-  languages).
+  loaded game/mod (read at runtime, not a fixed bake). Categories are grouped into **World** (collectibles:
+  maps, paintings, imp statues, kindling, interactables), **POI** (discovery landmarks: churches, ruins,
+  forts, castles, towns, colosseums, rises/towers, unique sites…), and **Services** (graces, merchants,
+  elevators, lifts, smithing tables, summoning pools) — each section has its own visibility toggle.
+- **Per-item loot markers** — a lot-backed loot marker draws its **own** inventory icon and shows the
+  item quantity (`×N`); identical items within ~5 m **stack** into one pin to cut clutter.
+- **Native landmark glyphs** — landmark markers draw the game's own `MENU_MAP_*` map glyph, and the
+  matching native pins can be suppressed so they don't double up.
+- **Altitude cue** — ▲/▼ badges flag markers above/below your elevation (including on other map pages),
+  and an **icon-legibility** pass gives small icons a minimum size + dark backing disc over busy map art.
+- **Marker text from the game's own files** — each marker redirects to a goods/weapon/armour/etc. name by
+  ID through a MsgRepository (FMG) hook, so labels are correct and translated for free (all 14 languages).
 
-### Smart data
-- **Merchant pins** are joined at runtime from the game's ESD talk scripts × MSB enemy placements —
-  fully mod-agnostic, no bundled merchant table. Item search shows "sold by &lt;Merchant&gt;" attribution.
+### Virtual World Map
+- A draggable, zoomable map surface that can **optionally replace the native map** on the map key
+  (`vmap_on_map_key`); it **freezes the world** (sim + enemies) while open.
+- **Click-to-warp** graces, plus a searchable/sortable **grace warp menu** (discovered/undiscovered
+  state, double-click to travel).
+- **Custom markers** — right-click the map to drop your own pin; manage them in a sidebar (rename, go-to,
+  teleport, delete).
+- **Terrain relief** (live heightfield hillshade backdrop) + **region labels** (Limgrave, Caelid…), both
+  mod-agnostic; **auto-follows your dimension** (page-switches to underground/DLC as you cross over).
+- **Clustering** with **spiderfy** (hover a pile to fan its members out), configurable size, constant pin
+  sizing across zoom.
+
+### Minimap HUD
+- A corner minimap in normal gameplay with the same markers, a **player-direction arrow**, quest-NPC pins,
+  boss symbols, your **death marker**, and item-search hit rings clamped to the edge when off-screen.
+
+### In-game overlay tools (F1)
+- **F1 overlay panel** (ImGui) — category toggles, search, and settings, driven by keyboard/mouse **or
+  gamepad**.
+- **Quest Browser** — an ordered per-NPC quest step list with checkmarks and death-flag greying; quest
+  NPCs are pinned on the map and tagged `[quest]` in search.
+- **World Editor** — in-game, regulation-free editing of the loaded world: re-skin loot, repoint/clone
+  asset placements, move things, browse via a picker, and save edits as a **bundle** that re-applies on
+  the next launch.
+- **Item search + locate** — find a marker by name and jump the map to it; results carry seller
+  attribution ("sold by &lt;Merchant&gt;"), the `[quest]` badge, and Royal-vs-Ashen Capital state awareness.
+- **Spoiler-free mode**, two levels — **Light** (hides only randomized loot; bosses/landmarks keep names)
+  and **Aggressive** (full blackout for blind runs: every marker but graces shows a colour-coded "?").
+
+### Smart, mod-agnostic data
+- **Merchant pins** joined at runtime from the game's ESD talk scripts × MSB enemy placements — no bundled
+  merchant table.
 - **[Item & Enemy Randomizer](https://www.nexusmods.com/eldenring/mods/428) support** — loot markers read
   the loaded `ItemLotParam` from live memory, so each shows the item your seed actually placed (name +
   icon) and hides on the real pickup. Seed-agnostic, no per-seed data.
-- **Collected-pickup detection** — collected Rune/Ember Pieces and gathering nodes are hidden
-  automatically via real-time detection of the game's geometry-object state (GEOF singletons for unloaded
-  tiles + CSWorldGeomMan flags for loaded tiles).
-- **In-world enemy names** — the game already draws the red name tag + HP bar above enemies but names
-  only bosses. MapForGoblins resolves regular (non-boss) mob names from the active install and feeds them
-  into the engine's **own native tag** (`NpcParam.nameId → NpcName`), so the game renders the name itself
-  in 3D world-space — correct font/accents, frame-synced with the bar, no overlay label. Per-category
-  toggles (regular mobs / field-bosses / hostile NPCs) under F1 → **Enemy bars**. Mod-agnostic; on by
-  default.
+- **Collected-pickup detection** — collected Rune/Ember Pieces and gathering nodes hide automatically via
+  real-time detection of the game's geometry-object state.
+- A mod-agnostic **catch-all** loot category classifies items the built-in taxonomy doesn't recognize, so
+  unknown-mod items still get a marker.
+- **In-world enemy names** — the game draws the red name tag + HP bar above enemies but names only bosses.
+  MapForGoblins resolves regular (non-boss) mob names from the active install and feeds them into the
+  engine's **own native tag** (`NpcParam.nameId → NpcName`), rendered by the game in 3D world-space
+  (correct font/accents, frame-synced, no overlay label). Per-category toggles under F1 → **Enemy bars**.
 
-### UX
-- **F1 overlay panel** (ImGui) — category toggles, search, settings; usable with keyboard/mouse **or
-  gamepad** (stick/trigger/face-button navigation).
-- **Spoiler-free mode**, two levels — **Light** (hides only randomized loot; bosses/landmarks keep names)
-  and **Aggressive** (full blackout for blind runs: every marker but graces shows a colour-coded "?").
-- **Item search + locate** — find a marker by name and jump the map to it.
-- **Multi-language overlay UI** (`assets/lang/*.txt`).
+### Input & language
+- **Full gamepad support** — configurable overlay-toggle combo, D-pad/stick focus navigation in the F1
+  panel, cursor auto-recenter on transitions, and an **on-screen keyboard** (Alphabetical or QWERTY) for
+  text entry.
+- **Multi-language overlay UI** (`assets/lang/*.txt`) on top of the FMG-sourced marker text.
+
+### Advanced / power-user (all regulation.bin-free)
+- **Param overrides** (`param_overrides.ini`) — edit param fields (equipment, geometry, …) without
+  touching `regulation.bin`.
+- **Custom items** (`custom_items.toml`) — declare items as data, cloned from a template and save-safe.
+- **Custom collision bodies** (`add_collision`, dev) — inject static Havok geometry into the live world.
+- **Sidecar save** (`<save>.mfg`) — a shadow save holding the framework's custom flags / per-save state.
+- A dev-only loopback **RPC** drives/inspects the running game (warp, refresh markers, param get/set,
+  screenshot, …) — see `docs/memory/tooling/rpc-commands.md`.
 
 ## Installation
 
