@@ -162,3 +162,31 @@ when there's no prefix — the exact 3-line pattern already used by `load_lod_fe
 **Verified live (single-DLL, restart):** `vmap find White Shadow` moved from `grid(24,28) w(6030,7050)`
 → `grid(48,56) w(12174,14218)` (Mountaintops, onmap). Fixes any other award entity resolved only in a
 cross-tile supertile the same way (the pass covers all `missing_award_entities`, not just this one).
+
+---
+
+## Duplicate hub loot — shared-entity copies across map tiles (FIXED 2026-07-23)
+
+**Symptom:** ERR's Roundtable Hold loot drew MULTIPLE times — `Codex of the All-Knowing` (lot 11100720)
+appeared 3× on the map. NPCs/merchants did NOT duplicate (they dedup by entity-id); the **treasure pass
+was the only disk pass with no entity dedup**.
+
+**Diagnosed with the new `vmap prov <lot|name>` RPC** (item provenance — every disk placement's raw tile +
+projected pos + entity + part). Codex = 3 Treasure placements, ALL sharing `ent=11101672` +
+`part='AEG099_630_9002'`: `m11_10` (native → 7711,8585), `m31_90` (grid 90, no conv row + no EMEVD =
+dead template → declined/OOB), `m33_0` (→ 7684,8078). Same logical object copied into 3 map slots.
+
+**Root signal (NOT a coordinate/onmap heuristic — user rejected those):** an MSB **entity id encodes its
+home map** — leading `AABB` (`entityId/10000`) = area AA, block BB. `11101672 → 1110 → m11_10`. The copies
+in m31_90/m33 reuse `11101672` out of place.
+
+**Fix (`build_disk_loot_markers`, map_entry_layer.cpp):** for an entity appearing in **>1 tile**, keep only
+the placement whose tile == the entity-id-encoded home; drop the rest (fallback = first seen if none
+matches). **Single-tile entities are NEVER decoded** — overworld ids don't follow the AABB scheme but each
+appears once → untouched, zero false drops. Guards BOTH the main emit + the sibling-expansion loop.
+`DiskTreasure` now retains `entityId` + `partName` (also surfaced by `vmap prov`).
+
+**Live-verified:** `vmap find Codex` = 1 (was 3), at native m11_10; log `7 out-of-place entity copies
+dropped` (Codex + 5 other hub items); total 3374 vs 3381 markers. Loot now co-located with the Roundtable
+NPCs. Related open item: the Roundtable STILL projects onto Limgrave and carries a raw-area "Royal Capital"
+label (bug-2 label-by-projected-pos fix stashed) — separate from this duplication fix.

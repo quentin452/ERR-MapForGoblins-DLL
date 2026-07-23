@@ -550,8 +550,38 @@ static void build_disk_loot_markers(const std::vector<DiskTreasure> &treasures,
     std::unordered_set<uint32_t> bases;
     bases.reserve(treasures.size());
     for (const DiskTreasure &t : treasures) bases.insert(t.lotId);
-    for (const DiskTreasure &t : treasures)
+    // ── Cross-copy filter by MSB EntityID home-map ────────────────────────────────────────────────
+    // ERR stores some hubs (Roundtable Hold) in SEVERAL map tiles that reuse the SAME treasure entity —
+    // e.g. Codex of the All-Knowing (entity 11101672) sits in m11_10 (native), m31_90 and m33 (copies),
+    // so the item drew 3× (NPCs, entity-deduped, did not). The entity id ENCODES its home map: the
+    // leading digits `AABB` (entityId/10000) = area AA, block BB — 11101672 → 1110 → m11_10. So for an
+    // entity that appears in MORE THAN ONE tile, keep ONLY the placement whose tile == that home; the
+    // others are out-of-place copies. Single-tile entities are NEVER decoded (overworld ids don't follow
+    // this scheme, but each appears once → untouched). No coordinate/onmap heuristic — pure engine data.
+    auto home_match = [](const DiskTreasure &t) {
+        uint32_t pref = t.entityId / 10000;               // AABB
+        return (int)t.area == (int)(pref / 100) && (int)t.gx == (int)(pref % 100);
+    };
+    std::unordered_map<uint32_t, int> entity_count;
+    for (const DiskTreasure &t : treasures) if (t.entityId) ++entity_count[t.entityId];
+    std::unordered_map<uint32_t, size_t> keep_idx;         // multi-tile entity -> index to keep
+    for (size_t i = 0; i < treasures.size(); ++i)
     {
+        const DiskTreasure &t = treasures[i];
+        if (!t.entityId || entity_count[t.entityId] < 2) continue;
+        auto it = keep_idx.find(t.entityId);
+        if (it == keep_idx.end()) { keep_idx[t.entityId] = i; continue; }   // provisional = first seen
+        if (home_match(t) && !home_match(treasures[it->second])) it->second = i;  // upgrade to the home copy
+    }
+    auto is_copy = [&](size_t idx) {
+        const DiskTreasure &t = treasures[idx];
+        return t.entityId && entity_count[t.entityId] >= 2 && keep_idx[t.entityId] != idx;
+    };
+    int entity_copies = 0;
+    for (size_t ti = 0; ti < treasures.size(); ++ti)
+    {
+        const DiskTreasure &t = treasures[ti];
+        if (is_copy(ti)) { ++entity_copies; continue; }   // out-of-place copy of a shared-entity treasure
         from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
         d.areaNo = t.area;
         d.gridXNo = t.gx;
@@ -594,8 +624,10 @@ static void build_disk_loot_markers(const std::vector<DiskTreasure> &treasures,
     // Table 1 (_map) only; a chain stops at the next treasure base (`bases`).
     SibCounts sib;
     std::unordered_set<uint32_t> sib_seen;
-    for (const DiskTreasure &t : treasures)
+    for (size_t ti = 0; ti < treasures.size(); ++ti)
     {
+        if (is_copy(ti)) continue;   // skip siblings of the out-of-place copies too
+        const DiskTreasure &t = treasures[ti];
         from::paramdef::WORLD_MAP_POINT_PARAM_ST at{};
         at.areaNo = t.area;
         at.gridXNo = t.gx;
@@ -607,9 +639,9 @@ static void build_disk_loot_markers(const std::vector<DiskTreasure> &treasures,
     }
     spdlog::info("[LOOTDISK] emitted {} disk loot markers + {} sequence-siblings (multi-lot "
                  "treasures), {} lots covered, {} base-unclassified ({} sibling rune/ember-skipped, "
-                 "{} sibling-unclassified)",
+                 "{} sibling-unclassified), {} out-of-place entity copies dropped",
                  emitted, sib.emitted, (int)covered.size(), unclassified, sib.runeember,
-                 sib.unclassified);
+                 sib.unclassified, entity_copies);
     g_skip.unclassified += unclassified;                 // phantom lots (key<=0), correctly skipped
     g_skip.catchall += catchall + sib.unclassified;      // resolved-but-uncategorised items → Other (drawn)
     g_skip.by_design += sib.runeember;
@@ -3863,7 +3895,8 @@ std::string loot_prov_probe(const std::string &query)
 
     spdlog::info("[PROV] query='{}' ({})", query, byLot ? "lot" : "name");
     size_t hits = 0;
-    auto dump = [&](const char *src, uint32_t lot, uint8_t area, uint8_t gx, uint8_t gz, float px, float pz)
+    auto dump = [&](const char *src, uint32_t lot, uint8_t area, uint8_t gx, uint8_t gz, float px, float pz,
+                    uint32_t entityId, const std::string &partName)
     {
         if (lot == 0) return;
         int32_t key = goblin::overlay_api::resolve_loot_item_textid(lot, 1, -1);
@@ -3878,16 +3911,18 @@ std::string loot_prov_probe(const std::string &query)
                               !(area >= 40 && area <= 43);  // projected area unchanged from a sub-map = no fold
         const bool oob = (wx == 0.f && wz == 0.f) || wx < -256.f || wz < -256.f || wx > 16384.f || wz > 16384.f;
         spdlog::info("[PROV]   src={} lot={} '{}' | RAW area{} grid({},{}) pos({:.0f},{:.0f}) "
-                     "| PROJ area{} world({:.0f},{:.0f}) {}",
+                     "ent={} part='{}' | PROJ area{} world({:.0f},{:.0f}) {}",
                      src, lot, nm.empty() ? "<?>" : nm.c_str(), (int)area, (int)gx, (int)gz, px, pz,
+                     entityId, partName.empty() ? "-" : partName.c_str(),
                      ga, wx, wz, declined ? "DECLINED-oob" : (oob ? "OOB" : "onmap"));
     };
     for (const DiskTreasure &t : g_parsed.treasures)
-        dump("Treasure", t.lotId, t.area, t.gx, t.gz, t.posX, t.posZ);
+        dump("Treasure", t.lotId, t.area, t.gx, t.gz, t.posX, t.posZ, t.entityId, t.partName);
     for (const DiskTreasure &t : g_parsed.lod)
-        dump("LOD-Treasure", t.lotId, t.area, t.gx, t.gz, t.posX, t.posZ);
+        dump("LOD-Treasure", t.lotId, t.area, t.gx, t.gz, t.posX, t.posZ, t.entityId, t.partName);
     for (const DiskCollectible &c : g_parsed.collectibles)
-        dump("Collectible", goblin::overlay_api::aeg_pickup_lot(c.aegRow), c.area, c.gx, c.gz, c.posX, c.posZ);
+        dump("Collectible", goblin::overlay_api::aeg_pickup_lot(c.aegRow), c.area, c.gx, c.gz, c.posX, c.posZ,
+             c.entityId, c.name);
     spdlog::info("[PROV] {} match(es)", hits);
     char out[128];
     std::snprintf(out, sizeof(out), "ok vmap prov '%s': %zu placement(s) — see [PROV] log", query.c_str(), hits);

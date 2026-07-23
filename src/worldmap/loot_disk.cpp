@@ -544,7 +544,9 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
             d.posX = t.pos[0];
             d.posY = t.pos[1];  // altitude for the above/below-player badge
             d.posZ = t.pos[2];  // Part+0x20 X/Z
-            out.push_back(d);
+            d.entityId = t.entityId;
+            d.partName = t.partName;
+            out.push_back(std::move(d));
             ++tilePos;
         }
         withPart += tilePos;

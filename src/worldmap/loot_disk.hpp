@@ -34,6 +34,8 @@ struct DiskTreasure
     uint32_t lotId = 0;
     uint8_t  area = 0, gx = 0, gz = 0;  // from the m{AA}_{BB}_{CC}_00 filename
     float    posX = 0.0f, posY = 0.0f, posZ = 0.0f;  // Part+0x20 (block-local; Y for the altitude badge)
+    uint32_t entityId = 0;     // Treasure part's EntityID (0 = unbound) — cross-copy dedup candidate
+    std::string partName;      // MSB part name (e.g. "AEG099_990_9002") — identity across map copies
 };
 
 // One placed AEG collectible asset read from a disk MSB. The item is resolved
