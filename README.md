@@ -60,9 +60,9 @@ regulation edits.
   gamepad**.
 - **Quest Browser** — an ordered per-NPC quest step list with checkmarks and death-flag greying; quest
   NPCs are pinned on the map and tagged `[quest]` in search.
-- **World Editor** — in-game, regulation-free editing of the loaded world: re-skin loot, repoint/clone
-  asset placements, move things, browse via a picker, and save edits as a **bundle** that re-applies on
-  the next launch.
+- **World Editor** *(work in progress)* — in-game, regulation-free editing of the loaded world: re-skin
+  loot, repoint/clone asset placements, move things, browse via a picker, and save edits as a **bundle**
+  that re-applies on the next launch. Experimental — not all slices are finished.
 - **Item search + locate** — find a marker by name and jump the map to it; results carry seller
   attribution ("sold by &lt;Merchant&gt;"), the `[quest]` badge, and Royal-vs-Ashen Capital state awareness.
 - **Spoiler-free mode**, two levels — **Light** (hides only randomized loot; bosses/landmarks keep names)
