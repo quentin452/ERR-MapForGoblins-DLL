@@ -120,6 +120,11 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
         ImGui::SliderFloat(tr("Gamepad sensitivity (vmap reticle + pan)"),
                            goblin::overlay_api::cfg_gamepadSensitivity_ptr(), 0.2f, 4.0f, "%.2f");
 
+    // Gamepad ZOOM sensitivity for the vmap (L2/R2 trigger zoom speed; independent of the above).
+    if (f.match("gamepad zoom sensitivity vmap trigger l2 r2 speed controller"))
+        ImGui::SliderFloat(tr("Gamepad zoom sensitivity (vmap L2/R2)"),
+                           goblin::overlay_api::cfg_gamepadZoomSensitivity_ptr(), 0.2f, 4.0f, "%.2f");
+
     // Redify boss markers (overlay port of the legacy red-skull iconId; live,
     // persists via "Save to INI"). Tints WorldBosses markers red (overworld +
     // dungeon bosses); collected/cleared graying still takes precedence.
