@@ -42,7 +42,10 @@ Complex bugs — resolved and open — with the durable root-cause/fix takeaway.
 - **DLC loot-flag drop** [resolved] — `>= 0x40000000` cut caught one-time DLC flags; replaced by live
   `EventFlagMan` group-allocation query. → [resolve-loot-flag-dlc-bug](resolve-loot-flag-dlc-bug.md)
 - **Disk-parser coverage gaps** [resolved] — shared `emit_lot_siblings()` across all three passes;
-  EMEVD-semantics-first lesson (the 2009 "asset-lot" pass was actually "Register Ladder", reverted). → [disk-parser-coverage-gaps](disk-parser-coverage-gaps.md)
+  EMEVD-semantics-first lesson (the 2009 "asset-lot" pass was actually "Register Ladder", reverted).
+  Also: **cross-tile LOD award-entity mis-tiled off-map** [FIXED 2026-07-23] — `load_lod_award_entities`
+  stamped the LOD file tile instead of the enemy part-name prefix, dropping a Teardrop Scarab's
+  White Shadow's Lure at off-map grid(24,28) (fixed → Mountaintops grid(48,56)). → [disk-parser-coverage-gaps](disk-parser-coverage-gaps.md)
 - **Player-position pointer chain** [resolved] — static RE wrong twice; runtime-confirmed chain. → [player-pos-static-unreliable](player-pos-static-unreliable.md)
 - **Shutdown crash noise** [resolved/triage] — `eldenring.exe +0x1EB9999` teardown crash is ER's own,
   not ours; only investigate when `fault_module` is MapForGoblins.dll. → [er-shutdown-crash-noise](er-shutdown-crash-noise.md)

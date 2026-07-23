@@ -47,8 +47,10 @@ Full detail: [marker-sections-spoiler-clustering](memory/features/marker-section
    [re/dungeon_entrance_anchor_re_probe_findings.md](re/dungeon_entrance_anchor_re_probe_findings.md).
    **⚠ OFF-MAP IS MULTI-CAUSE (user-caught 2026-07-23) — do NOT just hide:** 3 classes (findings doc):
    **A** declined-orphan/ERR-dup (m31_90 = 2nd Roundtable + 2nd Mad Tongue Alberich OOB — suppress/dedupe);
-   **B** matched-but-wrong-tile REAL content (Ash of War: White Shadow's Lure, base overworld, renders at
-   `grid(24,28) w(6030,7050)` instead of Mountaintops — lot→position bug, must FIX not hide); **C** declined
+   **B** matched-but-wrong-tile REAL content (Ash of War: White Shadow's Lure — **FIXED 2026-07-23**: was a
+   Teardrop Scarab EMEVD award recovered from cross-tile supertile `m60_24_28_01` by `load_lod_award_entities`
+   stamping the LOD FILE tile (24,28) instead of the enemy part-name prefix; now `grid(48,56)` Mountaintops,
+   live-verified. See [[disk-parser-coverage-gaps]]); **C** declined
    REAL content (Ashen Leyndell m35 — `reverse_lookup` should cover it but doesn't). First next-session step:
    a classifier probe tagging each off/OOB marker by class, then fix per class.
    Corrected root-cause doc: [offmap-area45-missing-anchor](memory/bugs/offmap-area45-missing-anchor.md).

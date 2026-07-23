@@ -623,9 +623,20 @@ std::vector<DiskEnemy> load_lod_award_entities(const std::unordered_set<uint32_t
             DiskEnemy e;
             e.npcParamId = en.npcParamId;
             e.entityId = en.entityId;
-            e.area = (uint8_t)a;
-            e.gx = (uint8_t)x;
-            e.gz = (uint8_t)z;
+            // Marker tile = the enemy's TRUE fine tile, from the cross-tile part-name prefix
+            // "m{AA}_{BB}_{CC}_00-…" — a cross-tile supertile (e.g. the "Snow Town" proxy
+            // m60_24_28_01) stores the part RELATIVE to that fine tile's origin, so the file's
+            // OWN tile (24,28) is off the drawn map. Parse the prefix like the sibling LOD passes
+            // (load_lod_treasures / load_lod_feature_assets); fall back to the file tile only when
+            // the part carries no prefix (a genuine own-tile LOD proxy). Without this, a scarab-
+            // dropped award (e.g. White Shadow's Lure, lot 40524) landed at the supertile's own
+            // off-map tile instead of its Mountaintops home.
+            int fa = a, fx = x, fz = z, flod = 0;
+            if (std::sscanf(en.name.c_str(), "m%d_%d_%d_%d", &fa, &fx, &fz, &flod) != 4)
+            { fa = a; fx = x; fz = z; }
+            e.area = (uint8_t)fa;
+            e.gx = (uint8_t)fx;
+            e.gz = (uint8_t)fz;
             e.posX = en.pos[0];
             e.posZ = en.pos[2];
             e.name = en.name;

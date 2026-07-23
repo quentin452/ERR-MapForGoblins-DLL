@@ -216,12 +216,14 @@ WRONG position (not orphans). At least THREE distinct OOB classes, each needing 
   m31_90 unmatched (lifting it via area-31's Academy waygate row would snap it to 8848,11714 = worse).
   Fix candidate: dedupe/suppress the declined DUPLICATE (its content mirrors the placed m11_10).
   (~29 markers, area 31.)
-- **Class B — matched but WRONG tile (real overworld content).** `area=60` (overworld, matched — NOT
-  declined) yet the marker sits at a wrong grid. Example: **Ash of War: White Shadow's Lure** (a BASE-GAME
-  overworld ash, belongs at Mountaintops of the Giants ~grid 48,50) renders at `area60 grid(24,28)
-  w(6030,7050) g0(OW)` = far SW, off the map artwork. NOT DLC (user-confirmed), NOT declined. → a
-  **lot→position resolution bug** (the loot pass joined lot 40524 to the wrong MSB position/tile). Hiding
-  would LOSE a real item. Needs the lot/position resolution fixed, not hidden.
+- **Class B — matched but WRONG tile (real overworld content). [FIXED 2026-07-23]** `area=60` (overworld,
+  matched — NOT declined) yet the marker sat at a wrong grid. Example: **Ash of War: White Shadow's Lure**
+  (`lot 40524`) rendered at `area60 grid(24,28) w(6030,7050)` = far SW, off the map artwork, instead of
+  Mountaintops. **Root cause was NOT a lot→position join** (the earlier guess) — it's a **Teardrop Scarab
+  (c4070) EMEVD award** recovered from the cross-tile "Snow Town" supertile `m60_24_28_01` by
+  `load_lod_award_entities`, which stamped the LOD **file** tile (24,28) instead of parsing the enemy
+  part-name prefix `m60_48_56_00-…` (its sibling passes do). Fixed in `loot_disk.cpp`; live-verified moved
+  to `grid(48,56) w(12174,14218)`. Full post-mortem: [[disk-parser-coverage-gaps]].
 - **Class C — declined but REAL, fixable content.** e.g. **Ashen Leyndell (m35)** (~26 markers) — a vanilla
   sub-map dead-end that SHOULD lift via `legacy_fold`'s `reverse_lookup` (m19/m34/m35) but still declines
   here → its markers pile off-map. Fix = make reverse_lookup actually cover these blocks (it isn't firing

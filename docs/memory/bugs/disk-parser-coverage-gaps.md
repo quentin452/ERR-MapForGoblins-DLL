@@ -133,3 +133,32 @@ NOTHING ⇒ not emitted (real gap → add a `[SKIP-ROW]` per-item diag at the tr
 sites, gated by `diag_loot_pos`, to name the exact drop reason; mirror the existing `[BAKED-RESIDUAL-ROW]`
 / `[RESIDUAL-ROW]` feeds in map_entry_layer.cpp). This is the "name the blocker" step from
 [[residual-irreducible-strategy]] — do it before accepting any item as irrecoverable.
+
+---
+
+## Cross-tile LOD award-entity mis-tiled → off-map orphan (FIXED 2026-07-23)
+
+**Symptom (Class B "matched-but-wrong-tile", off-map track):** `Ash of War: White Shadow's Lure`
+(`lot 40524/1`, EMEVD-scripted award) rendered as a LONE off-map orphan at `area60 grid(24,28)
+w(6030,7050)` — SW void, off the drawn artwork — instead of Mountaintops of the Giants.
+
+**Root cause (code + live MSB dump):** the item is a **Teardrop Scarab (`c4070`) drop**. That scarab
+lives ONLY in the cross-tile **"Snow Town" supertile `m60_24_28_01`** — an LOD proxy tile whose OWN grid
+(24,28) is off-map, but which physically holds Mountaintops content via prefixed part names
+(`m60_48_56_00-c4070_9005`, plus fine tiles 48/49 × 56/57 for its 724 assets). The `_00` enemy scan
+misses the scarab, so it's recovered by `load_lod_award_entities` (loot_disk.cpp) → its award lot 40524
+is joined to the enemy pos by `build_disk_emevd_markers`. **Bug:** `load_lod_award_entities` stamped the
+marker tile with the LOD **file** tile `(a,x,z)=(24,28)` instead of parsing the enemy part-name's
+cross-tile prefix — unlike its two sibling LOD passes `load_lod_treasures` and `load_lod_feature_assets`,
+which DO `sscanf(name, "m%d_%d_%d_%d")` for the fine tile. So the scarab (and its drop) landed at the
+supertile's own off-map grid. "Orphan with nothing around it" = every OTHER thing in that supertile is
+correctly prefixed → placed at Mountaintops by the sibling passes; only the award path dropped its scarab
+in the void, so it was the sole marker there.
+
+**Fix (`loot_disk.cpp`, `load_lod_award_entities` enemy loop):** parse `en.name` for the
+`m{AA}_{BB}_{CC}_00-…` prefix and use `(fa,fx,fz)` for `e.area/gx/gz`, fall back to the file tile only
+when there's no prefix — the exact 3-line pattern already used by `load_lod_feature_assets` (:692-694).
+
+**Verified live (single-DLL, restart):** `vmap find White Shadow` moved from `grid(24,28) w(6030,7050)`
+→ `grid(48,56) w(12174,14218)` (Mountaintops, onmap). Fixes any other award entity resolved only in a
+cross-tile supertile the same way (the pass covers all `missing_award_entities`, not just this one).
