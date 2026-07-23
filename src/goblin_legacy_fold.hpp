@@ -1,5 +1,7 @@
 #pragma once
 #include <cstdint>
+#include <cstddef>
+#include "goblin_dll_export.hpp"
 
 // ─── Live legacy-dungeon -> overworld fold ───────────────────────────────────
 //
@@ -38,3 +40,21 @@ inline bool is_terminal(uint8_t area) { return (uint8_t)(area - 0x32) < 0x27; }
 Folded fold(uint8_t area, uint8_t gx, uint8_t gz, float posX, float posZ);
 
 } // namespace goblin::legacy_fold
+
+// ─── Fallback entrance anchor (Slice 1 of dungeon_entrance_fallback_anchor_plan) ─────────────
+// When legacy_fold DECLINES an area (params resident but no WorldMapLegacyConvParam row for the
+// block — a mod-added dungeon like ERR area 45), project_dungeon_row_to_overworld consults this
+// per-source-area table: an overworld ENTRANCE (a ConvRow-shaped dst) to collapse that dungeon's
+// markers onto, instead of leaving them at the block-local origin pile. Empty = no-op (today's
+// behaviour). Seeded later by Slice 2/3 (eventFlagId correlation / EMEVD warp) or manually via the
+// `entrance_anchor` debug RPC. Mirrors legacy_fold's dst (entrance world = dst_gx*256+dst_px, …).
+namespace goblin::entrance_anchor {
+
+struct Anchor { uint8_t dst_area = 0, dst_gx = 0, dst_gz = 0; float dst_px = 0.f, dst_pz = 0.f; };
+
+GOBLIN_RENDER_API void set(uint8_t src_area, Anchor a);  // register/replace the fallback for src_area
+GOBLIN_RENDER_API void reset();                          // clear all
+GOBLIN_RENDER_API const Anchor *get(uint8_t src_area);   // nullptr when no fallback for this area
+GOBLIN_RENDER_API size_t count();
+
+} // namespace goblin::entrance_anchor

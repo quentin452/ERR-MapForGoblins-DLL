@@ -149,9 +149,25 @@ static bool project_dungeon_row_to_overworld(
             d->posZ = fr.posZ;
             return true;
         }
-        // Live param resident but no row for this block → genuinely unmappable.
+        // Live param resident but no row for this block → try the Slice-1 fallback entrance
+        // anchor before giving up (a mod-added dungeon with no WorldMapLegacyConvParam row, e.g.
+        // ERR area 45). Collapse the dungeon's markers onto its overworld entrance — one pile at
+        // the right spot instead of the block-local origin pile. Empty table → unchanged (false).
         if (goblin::legacy_fold::available())
+        {
+            if (const goblin::entrance_anchor::Anchor *ea = goblin::entrance_anchor::get(d->areaNo))
+            {
+                if (out_ent_x) *out_ent_x = (float)ea->dst_gx * 256.0f + ea->dst_px;
+                if (out_ent_z) *out_ent_z = (float)ea->dst_gz * 256.0f + ea->dst_pz;
+                d->areaNo = ea->dst_area;
+                d->gridXNo = ea->dst_gx;
+                d->gridZNo = ea->dst_gz;
+                d->posX = ea->dst_px;
+                d->posZ = ea->dst_pz;
+                return true;
+            }
             return false;
+        }
     }
 
     // Warm-up window ONLY (regulation param not resident yet): the baked LEGACY_CONV

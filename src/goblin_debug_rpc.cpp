@@ -5,6 +5,7 @@
 #include "input/input_wndproc.hpp"  // wm_keydown_total — RPC key-delivery verify
 #include "goblin_inject.hpp"   // world_map_open() — status field for the driver's boot/nav loop
 #include "goblin_overlay_render_api.hpp"  // overlay_api::rebuild_markers (refresh_markers cmd)
+#include "goblin_legacy_fold.hpp"         // entrance_anchor:: (entrance_anchor cmd — Slice 1)
 #include "input/input_cursor.hpp"  // set_cursor_pos_real — pixel-exact mouse_move via the trampoline
 #include "goblin_pause.hpp"    // pause command + paused= status (unfocused-window pause escape)
 #include "goblin_freeze_watchdog.hpp"  // present_beat() — frame= heartbeat for RPC freeze detection
@@ -452,7 +453,7 @@ namespace goblin::debug_rpc
             if (cmd == "help" || cmd == "?")
                 return "ok commands: help ping status idlediag open_f1 f1_tab vmap vworld assets_probe maptile_probe pause set screenshot dumpmenu reload_overlay coop"
                        " | param_get param_set param_getf param_setf param_clone"
-                       " | loot_at refresh_markers warp coords warp_local warp_xyz warp_far load_rescue we_scan"
+                       " | loot_at refresh_markers entrance_anchor warp coords warp_local warp_xyz warp_far load_rescue we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
                        " | hp immortal exit mfg_build er_base er_version proj mem_dump mem_write mem_scan_f3 mem_scan_u32 mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset spawn_cap4e80 spawn_capreg add_collision objects hf_probe hf_probe_present hf_sample hf_shape_probe ground_at far_relief_probe far_relief w2s_probe"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
@@ -1133,6 +1134,44 @@ namespace goblin::debug_rpc
             {
                 goblin::overlay_api::rebuild_markers();
                 return "ok refresh_markers triggered (rebuild runs on the disk worker; poll the map)";
+            }
+            // entrance_anchor set <srcArea> <dstArea> <dstGx> <dstGz> <dstPx> <dstPz> | reset | list
+            //   Slice-1 fallback dungeon-entrance anchor (dungeon_entrance_fallback_anchor_plan). Registers
+            //   an overworld entrance for a fold-DECLINED dungeon area (e.g. ERR area 45) so its markers
+            //   collapse onto the entrance instead of the block-local origin pile. Triggers a rebuild.
+            if (cmd == "entrance_anchor")
+            {
+                std::string sub = next_token(rest);
+                if (sub == "reset")
+                {
+                    goblin::entrance_anchor::reset();
+                    goblin::overlay_api::rebuild_markers();
+                    return "ok entrance_anchor reset (rebuild triggered)";
+                }
+                if (sub == "list")
+                    return "ok entrance_anchor: " + std::to_string(goblin::entrance_anchor::count()) + " anchor(s)";
+                if (sub == "set")
+                {
+                    std::string sa = next_token(rest), da = next_token(rest), gx = next_token(rest),
+                                gz = next_token(rest), px = next_token(rest), pz = next_token(rest);
+                    if (sa.empty() || da.empty() || gx.empty() || gz.empty() || px.empty() || pz.empty())
+                        return "err usage: entrance_anchor set <srcArea> <dstArea> <dstGx> <dstGz> <dstPx> <dstPz>";
+                    goblin::entrance_anchor::Anchor a;
+                    try
+                    {
+                        a.dst_area = (uint8_t)std::stoi(da);
+                        a.dst_gx = (uint8_t)std::stoi(gx);
+                        a.dst_gz = (uint8_t)std::stoi(gz);
+                        a.dst_px = std::stof(px);
+                        a.dst_pz = std::stof(pz);
+                        goblin::entrance_anchor::set((uint8_t)std::stoi(sa), a);
+                    }
+                    catch (...) { return "err bad number (srcArea/dstArea/dstGx/dstGz/dstPx/dstPz)"; }
+                    goblin::overlay_api::rebuild_markers();
+                    return "ok entrance_anchor set area=" + sa + " -> " + da + "/" + gx + "/" + gz +
+                           " (rebuild triggered)";
+                }
+                return "err usage: entrance_anchor set <srcArea> <dstArea> <dstGx> <dstGz> <dstPx> <dstPz> | reset | list";
             }
             // warp <graceId> [offset] — fast-travel to a site of grace (dev-world nav). graceId = the
             // bonfire entity id (e.g. 1042362951 = The First Step, 10002951 = Margit). Optional offset

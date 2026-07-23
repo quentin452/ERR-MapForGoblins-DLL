@@ -3,6 +3,7 @@
 #include <cmath>
 #include <unordered_map>
 #include <vector>
+#include <mutex>
 
 #include <spdlog/spdlog.h>
 
@@ -208,3 +209,37 @@ Folded fold(uint8_t area, uint8_t gx, uint8_t gz, float posX, float posZ) {
 }
 
 } // namespace goblin::legacy_fold
+
+// ─── Fallback entrance anchor store (Slice 1) ────────────────────────────────
+namespace goblin::entrance_anchor {
+namespace {
+std::mutex g_ea_mtx;
+std::unordered_map<uint8_t, Anchor> g_ea;   // src_area -> overworld entrance
+}
+
+void set(uint8_t src_area, Anchor a)
+{
+    std::lock_guard<std::mutex> lk(g_ea_mtx);
+    g_ea[src_area] = a;
+}
+
+void reset()
+{
+    std::lock_guard<std::mutex> lk(g_ea_mtx);
+    g_ea.clear();
+}
+
+const Anchor *get(uint8_t src_area)
+{
+    std::lock_guard<std::mutex> lk(g_ea_mtx);
+    auto it = g_ea.find(src_area);
+    return it == g_ea.end() ? nullptr : &it->second;
+}
+
+size_t count()
+{
+    std::lock_guard<std::mutex> lk(g_ea_mtx);
+    return g_ea.size();
+}
+
+} // namespace goblin::entrance_anchor
