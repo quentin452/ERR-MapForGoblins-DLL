@@ -35,7 +35,7 @@ ERR - MapForGoblins - DLL - v*/
 Vanilla - MapForGoblins - DLL - v*/
 Convergence - MapForGoblins - DLL - v*/
 ERTE - MapForGoblins - DLL - v*/
-release/
+/release/
 pre-release/
 pre-release-vanilla/
 pre-release-convergence/
@@ -68,7 +68,8 @@ tools/config.ini
 # IDE / OS
 .vs/
 .vscode/*
-.claude/
+.claude/*
+!.claude/skills/
 .idea/
 Thumbs.db
 desktop.ini
