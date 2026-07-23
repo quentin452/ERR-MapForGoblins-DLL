@@ -1046,6 +1046,12 @@ void goblin::capture_live_graces()
              from::params::get_param<from::paramdef::BONFIRE_WARP_PARAM_ST>(L"BonfireWarpParam"))
         {
             if (row.areaNo == 0) continue;                 // not a placed grace
+            // Off-grid template slot: the engine tile grid is 0..0x3F. A grace parked ABOVE that is a
+            // dead template row (like ERR's off-grid map-copy tiles) — e.g. row 32901950 at m32 grid(90,0)
+            // whose textId1 lands on the "World Map" menu string, drawing a phantom grace named "World
+            // Map". Same 0x3F guard push_marker applies to every other marker; graces have their own layer,
+            // so gate them here at capture. Real graces sit on valid tiles (grid ≤ ~58). user 2026-07-23.
+            if (row.gridXNo > 0x3F || row.gridZNo > 0x3F) continue;
             if ((int)row.eventflagId <= 0 || textid1_of(row) <= 0) continue; // no flag / no name
             // dispMask00/01/02 are ALL bits 0/1/2 of the single byte 0x1e (verified in-memory:
             // dispMask00→0x01, dispMask01→0x02, dispMask02→0x04; byte 0x1f is pad). A grace shown
