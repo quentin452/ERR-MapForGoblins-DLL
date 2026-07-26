@@ -11,6 +11,14 @@ Complex bugs — resolved and open — with the durable root-cause/fix takeaway.
   WITH names on any mod — BUT tier-3 is a name-source tier, not an "is-boss" signal → dups/wrong names
   (multiple "Mimic Tear", clone models collapse). Real fix = RE: `docs/re/cross_mod_boss_naming_re_prompt.md`.
   → [mod-agnostic-boss-markers](mod-agnostic-boss-markers.md)
+- **MapForGoblins killed other mods' overlays** [resolved 2026-07-26, in-game retest pending] — three
+  independent causes: (1) the raw-input / DirectInput8 / cursor hooks blanked input for EVERY caller in the
+  process, not just the game (other overlays went unresponsive with F1 open) → now gated on
+  `goblin::caller_is_game(_ReturnAddress())`; (2) `MH_Uninitialize()` restored pristine prologue bytes,
+  erasing any mod that hooked the same slot after us; (3) `uninstall_wndproc_hook` restored the WndProc
+  unconditionally, dropping later subclassers out of the chain. Same defects existed in ER-DeathCounter-Mod.
+  Adds a Present hook-chain diagnostic (target/detour/trampoline/owner) to both mods.
+  → [multimod-hook-coexistence](multimod-hook-coexistence.md)
 - **Overlay input hooks fired while game unfocused** [resolved 2026-07-23] — F1 open + alt-tab left the
   cursor/raw-input/wndproc swallow hooks commandeering input for another app. Re-gated the INPUT path on OS
   focus (`input_capture_active() = (menu_open||vmap_covers_map) && has_focus()`) while keeping drawing

@@ -329,8 +329,20 @@ void install_wndproc_hook(HWND hwnd)
 
 void uninstall_wndproc_hook(HWND hwnd)
 {
-    if (hwnd && o_orig_wndproc)
-        SetWindowLongPtrW(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(o_orig_wndproc));
+    if (!hwnd || !o_orig_wndproc) return;
+    // Only unlink if we are STILL the head of the subclass chain. Any mod that subclassed
+    // after us stored OUR hk_wndproc as its "original"; restoring o_orig_wndproc here would
+    // erase it from the chain outright (its overlay stops receiving every message — the
+    // "MapForGoblins hides other overlays" report). When we are no longer head, the correct
+    // and only safe move is to stay in the chain: hk_wndproc keeps forwarding via
+    // CallWindowProcW, so leaving it installed is harmless.
+    if (reinterpret_cast<WNDPROC>(GetWindowLongPtrW(hwnd, GWLP_WNDPROC)) != &hk_wndproc)
+    {
+        spdlog::warn("[OVERLAY] wndproc unhook skipped: another module subclassed after us "
+                     "(unlinking would erase it from the chain)");
+        return;
+    }
+    SetWindowLongPtrW(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(o_orig_wndproc));
 }
 
 unsigned diag_wm_char_exchange() { return g_diag_wm_char.exchange(0, std::memory_order_relaxed); }

@@ -5,10 +5,13 @@
 
 #include <atomic>
 #include <cstdint>
+#include <intrin.h>   // _ReturnAddress() — caller-module gate (see goblin::caller_is_game)
 
 #include <MinHook.h>
 #include <spdlog/spdlog.h>
 #include <imgui.h>
+
+#include "goblin_crashdump.hpp"  // goblin::caller_is_game() — blank only the GAME's own reads
 
 namespace goblin::input
 {
@@ -114,6 +117,10 @@ void accumulate_virtual_cursor(LONG dx, LONG dy, USHORT flags)
 // keyboard/mouse via the WndProc + cursor hooks.
 UINT WINAPI hk_get_raw_input_data(HRAWINPUT h, UINT cmd, LPVOID data, PUINT size, UINT hdr)
 {
+    // Who is reading? Other overlay mods (EROverlay.dll, ...) poll this exact API for their
+    // own UI; blanking THEIR read is what makes our F1 panel look like it "steals"/kills them.
+    // Only the game's own reads get falsified. Must be taken before any other call.
+    const bool for_game = goblin::caller_is_game(_ReturnAddress());
     g_diag_get_raw_input_data.fetch_add(1, std::memory_order_relaxed);
     UINT ret = o_get_raw_input_data(h, cmd, data, size, hdr);
     // While the menu is open, blank the raw event so the game sees no mouse
@@ -121,7 +128,7 @@ UINT WINAPI hk_get_raw_input_data(HRAWINPUT h, UINT cmd, LPVOID data, PUINT size
     // WndProc, not from here, so the panel stays fully usable.)
     // Gate on menu OR the fullscreen vmap covering the native map. For the vmap we blank only the
     // MOUSE (the keyboard branch below stays menu-only) so the map-close key still reaches the game.
-    if (input_capture_active() && data && cmd == RID_INPUT)
+    if (for_game && input_capture_active() && data && cmd == RID_INPUT)
     {
         auto *ri = reinterpret_cast<RAWINPUT *>(data);
         if (ri->header.dwType == RIM_TYPEMOUSE)
@@ -175,6 +182,9 @@ UINT WINAPI hk_get_raw_input_data(HRAWINPUT h, UINT cmd, LPVOID data, PUINT size
 
 UINT WINAPI hk_get_raw_input_buffer(PRAWINPUT data, PUINT size, UINT hdr)
 {
+    // Same caller gate as the singular read above — another mod's batched poll must come back
+    // untouched (real events, real count), or its overlay goes dead while our panel is open.
+    const bool for_game = goblin::caller_is_game(_ReturnAddress());
     g_diag_get_raw_input_buffer.fetch_add(1, std::memory_order_relaxed);
     // Always call through for the real data first — needed for our own virtual-cursor
     // tracking (see accumulate_virtual_cursor's comment). Previously this short-circuited to
@@ -189,7 +199,7 @@ UINT WINAPI hk_get_raw_input_buffer(PRAWINPUT data, PUINT size, UINT hdr)
     const bool ri_menu = menu_open();
     // input_capture_active() folds the focus gate into (menu_open || vmap_covers_map); ri_menu stays
     // raw menu_open for the keyboard-drop branch below (which is menu-only, not vmap).
-    const bool ri_gate = input_capture_active();
+    const bool ri_gate = input_capture_active() && for_game;
     if (ri_gate && data != nullptr && n != static_cast<UINT>(-1) && n > 0)
     {
         PRAWINPUT ri = data;
@@ -237,7 +247,7 @@ UINT WINAPI hk_get_raw_input_buffer(PRAWINPUT data, PUINT size, UINT hdr)
     // (data != null); pass size-queries through so the game's buffer sizing stays correct. For the
     // vmap we DON'T drop the buffer (keyboard must survive) — the mouse events were zeroed in place
     // above, so the game sees no mouse but still gets the close key.
-    if (ri_menu && data != nullptr) return 0;
+    if (ri_menu && for_game && data != nullptr) return 0;
     return n;
 }
 } // namespace

@@ -2443,6 +2443,33 @@ void goblin::overlay::initialize()
     MH_EnableHook(resize_addr);
     MH_EnableHook(eclist_addr);
 
+    // HOOK-CHAIN DIAGNOSTIC (multi-mod). Several mods hook this same
+    // IDXGISwapChain::Present vtable slot with their own MinHook copy; they chain only if each
+    // trampoline lands on the previous detour. Log where our trampoline actually points and
+    // which module owns it: `o_present owner=eldenring.exe` (or dxgi.dll) = we are FIRST in the
+    // chain; any other module name = someone hooked before us and we must call through them;
+    // if THEIR log says the same about us, the chain is fine. A mod whose overlay never draws
+    // while ours does is a broken chain, and this line is the evidence.
+    {
+        auto owner_of = [](void *addr) -> std::string {
+            HMODULE m = nullptr;
+            char name[MAX_PATH] = {0};
+            if (addr && GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                               GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                           reinterpret_cast<LPCSTR>(addr), &m) &&
+                m && GetModuleFileNameA(m, name, MAX_PATH))
+            {
+                const char *slash = strrchr(name, '\\');
+                return slash ? slash + 1 : name;
+            }
+            return "<unknown>";
+        };
+        spdlog::info("[OVERLAY] hook chain: Present target={} detour={} trampoline={} owner={}",
+                     present_addr, reinterpret_cast<void *>(&hk_present),
+                     reinterpret_cast<void *>(o_present),
+                     owner_of(reinterpret_cast<void *>(o_present)));
+    }
+
     // Cursor hooks (SetCursorPos/ClipCursor/GetCursorPos) — extracted to
     // src/input/input_cursor.cpp (docs/plans/input_module_refactor_plan.md).
     goblin::input::install_cursor_hooks();

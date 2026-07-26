@@ -28,6 +28,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Fixed
 
+- **Other mods' overlays keep working alongside MapForGoblins.** MapForGoblins used to deaden every other
+  mod loaded in the same game: opening the F1 panel blanked mouse/keyboard/cursor reads process-wide (so
+  overlays like EROverlay went unresponsive), and shutting down restored the original DXGI/user32 bytes and
+  the original window procedure, erasing any mod that had hooked after us. Input is now blanked only for the
+  game's own reads, and teardown never unhooks over another mod.
+
 - **Player marker no longer disappears when you stand on a Site of Grace** — the pale player arrow blended
   into the gold grace icon (its highlight faded out when zoomed in); it now keeps a persistent outline on
   the world map, minimap, and Virtual World Map.

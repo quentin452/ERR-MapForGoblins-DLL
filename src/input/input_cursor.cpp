@@ -2,9 +2,12 @@
 #include "input_shared.hpp"
 
 #include <atomic>
+#include <intrin.h>   // _ReturnAddress() — caller-module gate
 
 #include <MinHook.h>
 #include <spdlog/spdlog.h>
+
+#include "goblin_crashdump.hpp"  // goblin::caller_is_game() — falsify only the GAME's own reads
 
 namespace goblin::input
 {
@@ -40,11 +43,15 @@ std::atomic<unsigned> g_diag_get_cursor_pos{0};
 // ── Cursor hooks (free the OS cursor while the menu is open) ──────────
 BOOL WINAPI hk_set_cursor_pos(int x, int y)
 {
+    // user32!SetCursorPos is process-wide: swallowing ANOTHER mod's cursor move (it may be
+    // positioning its own UI) is not ours to do. Only the GAME's recenter gets swallowed.
+    // Our own recenter bypasses this detour entirely via set_cursor_pos_real().
+    const bool for_game = goblin::caller_is_game(_ReturnAddress());
     g_diag_set_cursor_pos.fetch_add(1, std::memory_order_relaxed);
     g_diag_set_cursor_pos_live.fetch_add(1, std::memory_order_relaxed);
     g_diag_last_set_cursor_pos_x.store(x, std::memory_order_relaxed);
     g_diag_last_set_cursor_pos_y.store(y, std::memory_order_relaxed);
-    if (input_capture_active())
+    if (for_game && input_capture_active())
     {
         g_diag_set_cursor_pos_swallowed.store(true, std::memory_order_relaxed);
         return TRUE;                    // swallow the game's recenter-to-middle
@@ -61,6 +68,10 @@ BOOL WINAPI hk_clip_cursor(const RECT *rc)
 
 BOOL WINAPI hk_get_cursor_pos(LPPOINT p)
 {
+    // Reporting a frozen screen-centre to ANOTHER mod's overlay pins its mouse cursor at the
+    // middle of the screen (every click lands there) — the exact symptom our own hooks cause
+    // when they fail, see install_cursor_hooks' comment. Freeze only for the game.
+    const bool for_game = goblin::caller_is_game(_ReturnAddress());
     g_diag_get_cursor_pos.fetch_add(1, std::memory_order_relaxed);
     BOOL r = o_get_cursor_pos(p);
     // Freeze the cursor the GAME sees while the menu is open (so the 2D map
@@ -69,7 +80,7 @@ BOOL WINAPI hk_get_cursor_pos(LPPOINT p)
     // (cursor - centre) delta, so a static off-centre point = a constant
     // non-zero delta = the map drifts forever (softlock). Centre = zero
     // delta = no pan.
-    if (input_capture_active() && !g_imgui_reading_cursor && p)
+    if (for_game && input_capture_active() && !g_imgui_reading_cursor && p)
     {
         p->x = GetSystemMetrics(SM_CXSCREEN) / 2;
         p->y = GetSystemMetrics(SM_CYSCREEN) / 2;

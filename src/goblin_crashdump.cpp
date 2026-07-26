@@ -349,4 +349,26 @@ std::pair<uintptr_t, uintptr_t> self_module_range()
 {
     return {g_self_base, g_self_end};
 }
+
+std::pair<uintptr_t, uintptr_t> game_module_range()
+{
+    // install_crash_handler() fills these from "eldenring.exe"; resolve lazily and
+    // name-agnostically here so the input hooks (which can fire before the handler is
+    // installed, and must work on any host exe) never see a {0,0} range. The race on a
+    // concurrent first call is benign — both threads compute the same values.
+    if (!g_er_base)
+    {
+        g_er_base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+        g_er_end = image_end(g_er_base);
+    }
+    return {g_er_base, g_er_end};
+}
+
+bool caller_is_game(const void *ret_addr)
+{
+    const auto [base, end] = game_module_range();
+    if (!base || !end) return true; // unknown host image → fail open (blank as before)
+    const uintptr_t ra = reinterpret_cast<uintptr_t>(ret_addr);
+    return ra >= base && ra < end;
+}
 } // namespace goblin

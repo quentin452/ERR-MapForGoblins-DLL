@@ -74,7 +74,17 @@ void modutils::initialize()
 
 void modutils::deinitialize()
 {
-    MH_Uninitialize();
+    // DELIBERATELY does NOT call MH_Uninitialize()/MH_DisableHook(MH_ALL_HOOKS).
+    //
+    // MinHook uninstalls by writing the PRISTINE prologue bytes back over the target. In a
+    // multi-mod process that is not "undo my hook", it is "erase whatever is at the head of
+    // the chain" — if another mod (EROverlay.dll, ER-DeathCounter, ...) hooked the same
+    // IDXGISwapChain::Present / user32 entry AFTER us, its JMP is what sits there, and we
+    // wipe it: its overlay dies instantly and the user blames it on us. This fires on the
+    // setup_mod() error path (dllmain.cpp), i.e. exactly when the game keeps running.
+    //
+    // Leaving the trampolines in place costs nothing: the only two callers are that error
+    // path and DLL_PROCESS_DETACH-at-process-exit, where the address space is going away.
 }
 
 void *modutils::scan(const ScanArgs &args)

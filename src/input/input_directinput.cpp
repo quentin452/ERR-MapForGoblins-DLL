@@ -6,8 +6,12 @@
 #define DIRECTINPUT_VERSION 0x0800
 #include <dinput.h>
 
+#include <intrin.h>   // _ReturnAddress() — caller-module gate
+
 #include <MinHook.h>
 #include <spdlog/spdlog.h>
+
+#include "goblin_crashdump.hpp"  // goblin::caller_is_game() — zero only the GAME's own reads
 
 namespace goblin::input
 {
@@ -28,8 +32,11 @@ DIGetDeviceDataFn o_di_get_device_data = nullptr;
 HRESULT STDMETHODCALLTYPE hk_di_get_device_state(IDirectInputDevice8 *dev, DWORD cb,
                                                  LPVOID data)
 {
+    // The DI8 device vtable is process-wide: any other mod polling the same mouse/keyboard
+    // lands here too. Zero the state ONLY for the game's own reads — see goblin::caller_is_game.
+    const bool for_game = goblin::caller_is_game(_ReturnAddress());
     HRESULT hr = o_di_get_device_state(dev, cb, data);
-    if (menu_open() && data && SUCCEEDED(hr))
+    if (for_game && menu_open() && data && SUCCEEDED(hr))
         memset(data, 0, cb);   // no axes / no buttons / no keys
     return hr;
 }
@@ -37,8 +44,9 @@ HRESULT STDMETHODCALLTYPE hk_di_get_device_data(IDirectInputDevice8 *dev, DWORD 
                                                 LPDIDEVICEOBJECTDATA rg, LPDWORD inout,
                                                 DWORD flags)
 {
+    const bool for_game = goblin::caller_is_game(_ReturnAddress());
     HRESULT hr = o_di_get_device_data(dev, cb, rg, inout, flags);
-    if (menu_open() && inout)
+    if (for_game && menu_open() && inout)
         *inout = 0;            // report zero buffered events
     return hr;
 }
