@@ -281,6 +281,32 @@ the field layout (`foundBossFlagId` +0x34, `bossChallengeFlagId` +0x40, `defeatB
 `bossPosX/Y/Z` +0x48/4C/50, `bossMapAreaNo/BlockNo/MapNo` +0x54/55/56). The positions and text ids
 are still unused — a future boss layer could take them from here instead of the MSB+EMEVD join.
 
+### Final measured state (vanilla, 2026-07-27)
+
+```
+[LOOTDISK] GameAreaParam: 212 boss rows (11 corrected an EMEVD-derived flag, 5 fights the EMEVD scan never saw)
+[LOOTDISK] boss defeats: 221 entities -> 216 distinct fights (451 literal 2003[12] + 1 call site;
+                          14 entities carry a flag that is NOT their own id)
+[RUN] bosses 6/216 defeated (16 registered fights have no map marker, flag API live)
+```
+
+Nine ids came into agreement with EROverlay's curated list that previously did not: `1038520800`,
+`1041510800` (Altus duo), `1043370800`, `1044320800`, `1044320850`, `1248550800`, `1252380800`
+(Radahn), `1254560800` (Borealis), `2051450800` (Count Ymir).
+
+**Remaining disagreement, 5 cases — the two sources genuinely differ, and OURS follows the game.**
+Death Rite Bird `1036450340`, Night's Cavalry `1036480340` / `1039430340`, Deathbird `1037420340`,
+Dryleaf Dane `2049440710`: `GameAreaParam.defeatBossFlagId` returns **the entity itself** for these,
+while EROverlay's baked list uses the tile's `x800`. We follow the param — it is the game's own
+declaration — but note the tension: those same ids are in `common.emevd`'s 236-flag reset group
+(event 6901, whose trigger was never identified; it is NOT the NG+ reset, since Godrick's
+`10000800` is absent from it). If a defeated Death Rite Bird ever un-ticks, event 6901 is the thing
+to identify, and EROverlay's `x800` becomes the better answer for those five.
+
+Other differences are ordinary list divergence: 18 fights the engine registers that their curated
+list omits, and 2 near-misses where they name a different tile (`12030390` vs our `12020390`
+Crucible Knight Siluria, `30200800` vs our `30200810` Stray Mimic Tear).
+
 ### Probe 1 ran and FAILED — both gaps needed the same missing capability
 
 Idea: take the persistent flag from the `SetEventFlag(..., ON)` instructions of the event that
