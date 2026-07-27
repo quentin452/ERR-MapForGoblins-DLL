@@ -55,6 +55,7 @@ namespace goblin::overlay_render_loader
         using DrawWorldmapMarkersFn = void (*)(bool, const goblin::overlay::OverlayFrameCtx *);
         using DrawMinimapHudFn = void (*)(const goblin::overlay::OverlayFrameCtx *);
         using DrawVirtualMapFn = void (*)(const goblin::overlay::OverlayFrameCtx *);
+        using DrawRunHudFn = void (*)(const goblin::overlay::OverlayFrameCtx *);
         using PrebuildMarkersFn = void (*)();
         using InworldHoveredFn = int (*)();
         using RefreshOverlayCensusFn = void (*)();
@@ -74,6 +75,7 @@ namespace goblin::overlay_render_loader
             DrawWorldmapMarkersFn draw_worldmap_markers = nullptr;
             DrawMinimapHudFn draw_minimap_hud = nullptr;
             DrawVirtualMapFn draw_virtual_map = nullptr;
+            DrawRunHudFn draw_run_hud = nullptr;
             PrebuildMarkersFn prebuild_markers = nullptr;
             InworldHoveredFn inworld_hovered = nullptr;
             RefreshOverlayCensusFn refresh_overlay_census = nullptr;
@@ -163,6 +165,7 @@ namespace goblin::overlay_render_loader
                 reinterpret_cast<DrawWorldmapMarkersFn>(GetProcAddress(m, "MFG_DrawWorldmapMarkers"));
             e.draw_minimap_hud = reinterpret_cast<DrawMinimapHudFn>(GetProcAddress(m, "MFG_DrawMinimapHud"));
             e.draw_virtual_map = reinterpret_cast<DrawVirtualMapFn>(GetProcAddress(m, "MFG_DrawVirtualMap"));
+            e.draw_run_hud = reinterpret_cast<DrawRunHudFn>(GetProcAddress(m, "MFG_DrawRunHud"));
             e.prebuild_markers = reinterpret_cast<PrebuildMarkersFn>(GetProcAddress(m, "MFG_PrebuildMarkers"));
             e.inworld_hovered = reinterpret_cast<InworldHoveredFn>(GetProcAddress(m, "MFG_InworldHovered"));
             e.refresh_overlay_census =
@@ -363,6 +366,11 @@ namespace goblin::overlay_render_loader
         SharedGuard g;
         if (g_cur.draw_virtual_map) g_cur.draw_virtual_map(&ctx);  // null-guarded: absent in an old module
     }
+    void call_draw_run_hud(const goblin::overlay::OverlayFrameCtx &ctx)
+    {
+        SharedGuard g;
+        if (g_cur.draw_run_hud) g_cur.draw_run_hud(&ctx);  // null-guarded: absent in an old module
+    }
     void call_prebuild_markers()
     {
         SharedGuard g;
@@ -429,6 +437,7 @@ namespace goblin::overlay_render_loader
     }
     void call_draw_minimap_hud(const goblin::overlay::OverlayFrameCtx &ctx) { goblin::overlay::draw_minimap_hud(ctx); }
     void call_draw_virtual_map(const goblin::overlay::OverlayFrameCtx &ctx) { goblin::overlay::draw_virtual_map_entry(ctx); }
+    void call_draw_run_hud(const goblin::overlay::OverlayFrameCtx &ctx) { goblin::overlay::draw_run_hud(ctx); }
     void call_prebuild_markers() { goblin::worldmap::prebuild_markers(); }
     bool call_inworld_hovered() { return goblin::worldmap::inworld_hovered(); }
     void call_refresh_overlay_census() { goblin::worldmap::refresh_overlay_census(); }

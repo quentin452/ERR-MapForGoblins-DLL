@@ -305,6 +305,18 @@ namespace goblin
         extern GOBLIN_RENDER_API float minimapOffsetX;
         extern GOBLIN_RENDER_API float minimapOffsetY;
 
+        // In-game RUN HUD (deaths / in-game time / boss count). A compact click-through line,
+        // toggled by its OWN key so it can be read mid-fight — unlike the F1 panel, which grabs
+        // the cursor and covers the screen. Same corner idiom as the minimap above.
+        extern GOBLIN_RENDER_API bool runHud;
+        extern GOBLIN_RENDER_API uint32_t runHudKey;
+        extern GOBLIN_RENDER_API bool runHudBosses;      // include the boss count in the line
+        extern GOBLIN_RENDER_API float runHudOpacity;    // background opacity 0..1
+        extern GOBLIN_RENDER_API bool runHudAnchorRight;
+        extern GOBLIN_RENDER_API bool runHudAnchorBottom;
+        extern GOBLIN_RENDER_API float runHudOffsetX;
+        extern GOBLIN_RENDER_API float runHudOffsetY;
+
         // In-game per-section visibility (the 7 display groups). The section_*
         // bools are the persisted runtime state, driven live by the overlay menu
         // (F1) and written back on Save. See goblin_config_schema [Display Sections].

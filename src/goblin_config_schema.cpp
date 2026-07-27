@@ -74,6 +74,15 @@ namespace goblin::config
 
     bool enableMarkerDump = false;
     uint32_t markerDumpKey = 0x78; // VK_F9
+    // Run HUD — its own key (F1 is taken by the panel, F8/F9 by the marker dev dumps).
+    bool runHud = false;
+    uint32_t runHudKey = 0x79;     // VK_F10
+    bool runHudBosses = true;
+    float runHudOpacity = 0.55f;
+    bool runHudAnchorRight = false;   // top-LEFT by default: the minimap owns the top-right corner
+    bool runHudAnchorBottom = false;
+    float runHudOffsetX = 16.0f;
+    float runHudOffsetY = 16.0f;
     uint8_t freezeWatchdogSecs = 20;
     uint8_t loadWatchdogSecs = 30;
     // (ui_exclusion_rects + ERR dial exclusion (dial_*) retired with the vmap-only collapse.)
@@ -581,6 +590,37 @@ namespace
                   false, nullptr, -2000.0f, 2000.0f},
                 IniEntry{"minimap_offset_y", IniType::F32, &cfg::minimapOffsetY, "0",
                   "Minimap Y offset (px) from the anchored corner. 0 = default.",
+                  false, nullptr, -2000.0f, 2000.0f},
+            }},
+
+            {"Run Tracker",
+             "In-game RUN HUD (F1 > Run). A compact click-through line with your death\n"
+             "count, in-game time and boss progress, on its own key so it can be read\n"
+             "mid-fight — the F1 panel grabs the cursor and covers the screen.",
+             false, {
+                IniEntry{"run_hud", IniType::Bool, &cfg::runHud, "false",
+                  "Show the in-game Run HUD (deaths / in-game time / bosses). Toggled live by\nrun_hud_key; this is the persisted state. Off by default.",
+                  false, nullptr},
+                IniEntry{"run_hud_key", IniType::VkKey, &cfg::runHudKey, "F10",
+                  "Key that shows/hides the Run HUD. Default: F10 (F1 opens the panel, F8/F9\nare the marker dev dumps). Key names: F1-F24, A-Z, 0-9, Space, Escape, Tab,\nEnter, Home, End, PageUp, PageDown, Insert, Delete, arrows.",
+                  false, nullptr},
+                IniEntry{"run_hud_bosses", IniType::Bool, &cfg::runHudBosses, "true",
+                  "Include the boss count (defeated/total) in the HUD line. Turn off for a\nspoiler-free or shorter line — and note the count reads 0/0 on an install\nwhose bosses carry no defeat flag.",
+                  false, nullptr},
+                IniEntry{"run_hud_opacity", IniType::F32, &cfg::runHudOpacity, "0.55",
+                  "Run HUD background opacity, 0..1. 0.55 = default.",
+                  false, nullptr, 0.0f, 1.0f},
+                IniEntry{"run_hud_anchor_right", IniType::Bool, &cfg::runHudAnchorRight, "false",
+                  "Run HUD corner: anchor to the RIGHT edge (false = left). Default false —\nthe minimap defaults to the top-right corner.",
+                  false, nullptr},
+                IniEntry{"run_hud_anchor_bottom", IniType::Bool, &cfg::runHudAnchorBottom, "false",
+                  "Run HUD corner: anchor to the BOTTOM edge (false = top). Default false.",
+                  false, nullptr},
+                IniEntry{"run_hud_offset_x", IniType::F32, &cfg::runHudOffsetX, "16",
+                  "Run HUD X offset (px) from the anchored corner. 16 = default.",
+                  false, nullptr, -2000.0f, 2000.0f},
+                IniEntry{"run_hud_offset_y", IniType::F32, &cfg::runHudOffsetY, "16",
+                  "Run HUD Y offset (px) from the anchored corner. 16 = default.",
                   false, nullptr, -2000.0f, 2000.0f},
             }},
 

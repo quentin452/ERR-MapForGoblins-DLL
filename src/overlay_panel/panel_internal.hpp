@@ -69,6 +69,7 @@ void draw_sections_categories(const OverlayFrameCtx &ctx, Filter &f, bool with_e
 bool markers_panel_open();  // vmap is hosting the categories sidebar → F1 skips its copy (single source)
 void draw_quest_browser(Filter &f);                                  // Quest navigation / Quest Browser
 void draw_run_tracker(Filter &f);                                    // Run: deaths / in-game time / boss checklist
+void draw_run_hud_window();                                          // Run HUD: compact click-through in-game line
 void draw_clustering(Filter &f);                                     // Clustering
 void draw_dev_tools_danger(Filter &f);                               // Debug, Dev tools, Danger zone
 void draw_world_editor(Filter &f);                                   // World Editor (live loot/asset edit)

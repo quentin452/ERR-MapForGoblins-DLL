@@ -16,6 +16,7 @@
 #include "panel_internal.hpp"
 #include "goblin_i18n.hpp"
 #include "goblin_overlay_render_api.hpp"
+#include "goblin_config.hpp"             // run HUD placement / toggle
 #include "goblin_inventory.hpp"          // read_run_stats (host-side, GameDataMan)
 #include "goblin_map_data.hpp"           // generated::Category
 #include "worldmap/marker_layer.hpp"
@@ -75,6 +76,17 @@ std::string format_igt(uint32_t ms)
     return buf;
 }
 
+// Display name for the HUD key. Only the reverse direction is missing from the config layer
+// (goblin::parse_vk_code parses name -> VK, nothing maps back), and the binding is edited in the
+// INI, so this stays a local label: F-keys by name, anything else as its raw VK.
+std::string key_label(uint32_t vk)
+{
+    char buf[16];
+    if (vk >= 0x70 && vk <= 0x87) std::snprintf(buf, sizeof(buf), "F%u", vk - 0x70 + 1);
+    else                          std::snprintf(buf, sizeof(buf), "VK 0x%02X", vk);
+    return buf;
+}
+
 // Rebuild the encounter set from the live marker layers. Walks every marker once and hits the
 // event-flag reader once per DISTINCT flag, so it is O(markers) with ~one flag read per fight —
 // fine on demand, too heavy for every frame (the map can hold >1000 boss markers), hence the
@@ -122,6 +134,62 @@ void rebuild()
     s.last_refresh = ImGui::GetTime();
 }
 }  // namespace
+
+// In-game HUD: one compact CLICK-THROUGH line (NoInputs — it must never eat a click or a
+// gamepad focus while you are fighting), on its own key. This is the in-game surface; the F1
+// tab below is the detailed one. Same corner/anchor idiom as the minimap HUD.
+void draw_run_hud_window()
+{
+    if (!goblin::config::runHud) return;
+
+    RunSnapshot &s = snap();
+    uint32_t d = 0, t = 0;
+    if (goblin::inventory::read_run_stats(d, t))
+    {
+        s.deaths = d;
+        s.igt_ms = t;
+        s.stats_ok = true;
+    }
+    if (!s.stats_ok) return;  // title screen / loading — draw nothing rather than zeros
+
+    // The boss count reuses the panel's snapshot and its 1 s throttle, but the HUD must NOT
+    // trigger the rebuild walk on its own every second while the player is just walking around:
+    // it shows whatever the last rebuild produced (0/0 until the map/panel built it once).
+    if (goblin::config::runHudBosses && !s.built && ImGui::GetTime() - s.last_refresh > 5.0)
+        rebuild();
+
+    char line[160];
+    if (goblin::config::runHudBosses && !s.bosses.empty())
+        std::snprintf(line, sizeof(line), "%s %u   %s   %s %d/%d", tr("Deaths"), s.deaths,
+                      format_igt(s.igt_ms).c_str(), tr("Bosses"), s.killed,
+                      static_cast<int>(s.bosses.size()));
+    else
+        std::snprintf(line, sizeof(line), "%s %u   %s", tr("Deaths"), s.deaths,
+                      format_igt(s.igt_ms).c_str());
+
+    const ImGuiIO &io = ImGui::GetIO();
+    const ImVec2 pad = ImGui::GetStyle().WindowPadding;
+    const ImVec2 sz = ImGui::CalcTextSize(line);
+    const float w = sz.x + pad.x * 2.0f, h = sz.y + pad.y * 2.0f;
+    const float x = goblin::config::runHudAnchorRight
+                        ? io.DisplaySize.x - w - goblin::config::runHudOffsetX
+                        : goblin::config::runHudOffsetX;
+    const float y = goblin::config::runHudAnchorBottom
+                        ? io.DisplaySize.y - h - goblin::config::runHudOffsetY
+                        : goblin::config::runHudOffsetY;
+
+    ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(goblin::config::runHudOpacity);
+    // NoInputs is the whole point of this surface: click-through, no nav focus, no cursor grab.
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
+                                   ImGuiWindowFlags_AlwaysAutoResize |
+                                   ImGuiWindowFlags_NoSavedSettings |
+                                   ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav |
+                                   ImGuiWindowFlags_NoMove;
+    if (ImGui::Begin("##mfg_run_hud", nullptr, flags))
+        ImGui::TextUnformatted(line);
+    ImGui::End();
+}
 
 void draw_run_tracker(Filter &f)
 {
@@ -185,6 +253,22 @@ void draw_run_tracker(Filter &f)
         ImGui::TextDisabled("%d %s", s.unflagged,
                             tr("boss marker(s) carry no defeat flag on this install, so their "
                                "state is unknown."));
+    }
+
+    // In-game HUD controls. The HUD, not this tab, is the surface meant for actual play — F1
+    // takes the cursor and covers the screen, so it is the wrong place to watch a timer.
+    ImGui::Separator();
+    ImGui::Checkbox(tr("Show the compact HUD in game"), &goblin::config::runHud);
+    ImGui::SameLine();
+    ImGui::TextDisabled("(%s: %s)", tr("key"), key_label(goblin::config::runHudKey).c_str());
+    if (goblin::config::runHud)
+    {
+        ImGui::Checkbox(tr("Include the boss count in the HUD"), &goblin::config::runHudBosses);
+        ImGui::Checkbox(tr("HUD: anchor to the right edge"), &goblin::config::runHudAnchorRight);
+        ImGui::SameLine();
+        ImGui::Checkbox(tr("bottom edge"), &goblin::config::runHudAnchorBottom);
+        ImGui::SetNextItemWidth(120.0f);
+        ImGui::SliderFloat(tr("HUD opacity"), &goblin::config::runHudOpacity, 0.0f, 1.0f, "%.2f");
     }
 
     if (total > 0 && ImGui::TreeNode(tr("Boss checklist")))

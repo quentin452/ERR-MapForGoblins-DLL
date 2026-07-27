@@ -1,7 +1,16 @@
 # Run tracker (deaths / in-game time / boss checklist)
 
-Status: **shipped (v1)** — F1 panel ▸ **Run** tab (also drawn in the flat list when the settings
-search filter is active). `src/overlay_panel/panel_run.cpp`.
+Status: **shipped (v1)** — two surfaces, both in `src/overlay_panel/panel_run.cpp`:
+
+- **In-game HUD** (the one meant for play): one compact line, own key (**F10**, `run_hud_key`),
+  `ImGuiWindowFlags_NoInputs` → click-through, no cursor grab, no nav focus. Own per-frame render
+  entry (`draw_run_hud` → `MFG_DrawRunHud`), so it draws with the F1 panel CLOSED.
+- **F1 ▸ Run tab**: the detailed view (counters + per-region boss checklist + the HUD settings).
+  Also drawn in the flat list when the settings-search filter is active.
+
+The split exists because F1 is the wrong surface for run info: it takes the cursor and covers the
+screen, so it cannot be read mid-fight (user feedback, 2026-07-27). Do not "simplify" by folding
+the HUD back into the panel.
 
 ## Why it lives in MapForGoblins
 
@@ -50,6 +59,19 @@ Consequence: on ERR the checklist is complete; on vanilla / another mod the name
 checkmarks are missing. The panel counts those markers separately ("N boss marker(s) carry no defeat
 flag on this install") instead of reporting them as alive — do not "fix" that by defaulting them to
 not-defeated, it would silently under-report a finished run.
+
+**Measured 2026-07-27, first live test** — this is not a corner case, it is the DEFAULT on a
+non-ERR install. The test install logged:
+
+```
+[BOSSLIVE] built 0 boss markers from live WorldMapPointParam (textId2==5100)
+           + 235 enemy-supplemented instances (222 boss types total,
+             222 seeded mod-agnostically from the game's own boss health bar)
+```
+
+Zero WMP boss rows → zero cleared flags → the panel showed `0/0` with 235 markers "state unknown".
+The boss half of the tracker is therefore **inert on any install without ERR-style boss pins**, and
+closing the gap below is a prerequisite, not a nice-to-have.
 
 **Lead to close it:** the EMEVD event that raises the boss health bar (already parsed for tier-4
 naming, `emevd_boss_bar_name_id`) is usually the same one that sets the defeat flag. Harvesting the

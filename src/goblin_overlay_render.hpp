@@ -73,6 +73,8 @@ namespace goblin::overlay
     // the module Slice D reloads; see the plan's "Host → render" design note).
     void draw_worldmap_markers(bool menu_open, const OverlayFrameCtx &ctx);
     void draw_minimap_hud(const OverlayFrameCtx &ctx);
+    // Compact in-game run HUD (deaths / in-game time / bosses). Own per-frame entry, own key.
+    void draw_run_hud(const OverlayFrameCtx &ctx);
     void draw_panel(const OverlayFrameCtx &ctx);
     // Virtual world map (mod page) — drawn on its own per-frame entry, independent of the F1 panel
     // (self-gates on virtual_map_open). See panel_virtual_map.cpp + slice D.

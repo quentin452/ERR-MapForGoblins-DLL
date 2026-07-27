@@ -23,11 +23,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Added
 
-- **Run tracker (F1 ▸ Run).** Shows your death count, in-game time and how many bosses you have
-  beaten, with a per-region boss checklist. The boss list is the one MapForGoblins already builds
-  from your actual install, so it names the bosses your mod names — no baked vanilla list. On an
-  install whose bosses carry no defeat flag the names still show and those markers are reported as
-  "state unknown" rather than counted as alive.
+- **Run tracker.** A compact in-game HUD — deaths, in-game time, bosses defeated — on its own key
+  (**F10** by default, `run_hud_key`). It is click-through: it never takes the cursor or eats an
+  input, so it can sit on screen while you play. Corner, opacity and whether the boss count shows
+  are configurable (`[Run Tracker]` in the INI, or F1 ▸ Run).
+- **Run tab (F1 ▸ Run)** — the detailed view behind the HUD: the same counters plus a per-region
+  boss checklist. The boss list is the one MapForGoblins already builds from your actual install,
+  so it names the bosses your mod names — no baked vanilla list. On an install whose bosses carry
+  no defeat flag the names still show and those markers are reported as "state unknown" rather
+  than counted as alive.
 
 ## [v2.5.0] - 2026-07-27
 

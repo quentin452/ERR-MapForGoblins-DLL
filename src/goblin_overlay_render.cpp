@@ -474,6 +474,10 @@ void goblin::overlay::request_f1_tab(int idx) { g_requested_tab = idx; }
     // when a custom world is active (slice D). No-op while closed (draw_virtual_map self-gates on open).
     void goblin::overlay::draw_virtual_map_entry(const OverlayFrameCtx &ctx) { panel::draw_virtual_map(ctx); }
 
+    // Run HUD — its OWN per-frame entry (not inside draw_panel) so it shows during play with the
+    // F1 panel closed: that is the whole point, F1 grabs the cursor. Self-gates on config::runHud.
+    void goblin::overlay::draw_run_hud(const OverlayFrameCtx &) { panel::draw_run_hud_window(); }
+
 #if defined(GOBLIN_OVERLAY_HOTRELOAD_BUILD)
 // Host→render direction: stable-name extern "C" exports so the host can resolve these via
 // GetProcAddress (not ordinary dllimport — Slice D reloads this module, so the host must be able
@@ -518,6 +522,11 @@ extern "C"
     {
         apply_imgui_bindings(ctx);
         goblin::overlay::draw_virtual_map_entry(*ctx);
+    }
+    __declspec(dllexport) void MFG_DrawRunHud(const goblin::overlay::OverlayFrameCtx *ctx)
+    {
+        apply_imgui_bindings(ctx);
+        goblin::overlay::draw_run_hud(*ctx);
     }
 }
 #endif

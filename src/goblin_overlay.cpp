@@ -1402,6 +1402,22 @@ namespace
             g_toggle_kb_armed = true;
         }
 
+        // Run HUD key (default F10). Same foreground gate as F1 above — GetAsyncKeyState is global,
+        // so without it the HUD would toggle while the game is alt-tabbed. Plain edge detect: this
+        // only flips a bool that a NoInputs window reads, so it needs none of F1's debounce/arming
+        // machinery (which exists because the toggle also drives the cursor hooks).
+        {
+            static bool s_run_hud_down = false;
+            const bool now_down =
+                fg && (GetAsyncKeyState(static_cast<int>(goblin::config::runHudKey)) & 0x8000) != 0;
+            if (now_down && !s_run_hud_down)
+            {
+                goblin::config::runHud = !goblin::config::runHud;
+                spdlog::info("[RUNHUD] toggled -> {}", goblin::config::runHud);
+            }
+            s_run_hud_down = now_down;
+        }
+
         // Gamepad support (dx-bugs-backlog PR C, items 2/3/6): combo toggle + cursor recenter.
         // XInput has no window messages, so — like the keyboard key above — it must be polled
         // here every frame rather than driven off hk_wndproc. Loaded + hooked once via
@@ -2047,6 +2063,10 @@ namespace
             }
             if (minimap)
                 goblin::overlay_render_loader::call_draw_minimap_hud(frame_ctx);   // minimap HUD (self-gates overworld-only)
+
+            // Run HUD — drawn every frame regardless of the F1 panel (that's the point: it is the
+            // in-game surface, F1 is the detailed one). Self-gates on config::runHud + a loaded save.
+            goblin::overlay_render_loader::call_draw_run_hud(frame_ctx);
 
             // 3D world-to-screen calibration dot (present-thread; self-gates off unless `w2s_probe dot on`).
             // Reads the live camera VIEW + player pos on THIS frame → no read-tearing. See goblin_w2s.
