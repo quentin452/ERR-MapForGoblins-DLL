@@ -71,7 +71,16 @@ without an entity id) is mutex-guarded; the present thread must never call `emev
 |---|---|---|---|---|
 | tier-3 seeding (before) | **1197** | 241 | 269 | 194 |
 | + tier-4-only seed gate | 273 | 202 | 31 | 186 |
-| + tier-4 types reject tier-3 members, + real `ModelName` | **215** | 202 | **3** | 191 |
+| + tier-4 types reject tier-3 members, + real `ModelName` | 215 | 202 | **3** | 191 |
+| + `c0000` accepted as a real model | **235** | 222 | 3 | — |
+
+**The gap to the game's own count is now fully accounted for** (251 boss-bar entities):
+`251 − 6 (present only in a non-_00 LOD tile) − 5 (not MSB Enemy parts — event-spawned) = 240`
+reachable by the `_00` enemy scan, and **all 240 resolve at tier 4**; 235 markers survive the
+per-(type,tile) dedup. Closing the last 16 would need an LOD-supertile scan (the
+`load_lod_award_entities` mechanism already exists for loot) and per-ENCOUNTER identity keyed on
+`entityId` instead of name+tile. **Non-boss markers were 7361 in all four dumps** — none of these
+fixes had collateral.
 
 215 markers against 251 boss-bar entities on that install, and no type stamped on more than 3 tiles
 (a recurring boss legitimately has 3-4). Non-boss markers were byte-identical across the last two

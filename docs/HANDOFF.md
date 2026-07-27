@@ -36,11 +36,16 @@ two passes (7361) and the spoiler audit unchanged (97.6 %) → no collateral. Th
 [[msb-enemy-model-vs-partname]] — we were reading the chr model from the part NAME, wrong for **84.7 %**
 of placements on this mod, which is what let tier 3 hallucinate bosses in the first place.
 
-**STILL OPEN — 251 boss-bar entities vs 215 markers (~36).** Causes not yet split: boss entities absent
-from the `_00` MSB enemy scan (event-spawned / LOD-only), and losses to the per-(type,tile) dedup — a
-tile holding two same-named encounters keeps one. Join `vmap dump_markers` against
-`tools/_probe_boss_enum.py` output to separate them. Per-ENCOUNTER identity (key on `entityId` instead
-of name+tile) is the structural answer if it turns out to be dedup.
+**GAP CLOSED + EXPLAINED (2026-07-27).** Final: **235 markers / 222 types**, tier 4 resolving **240**
+instances. Decomposition of the 251 boss-bar entities, verified live and offline:
+`251 − 6 (only in a non-_00 LOD tile) − 5 (not MSB Enemy parts, event-spawned) = 240` reachable, all
+240 now tier 4; 235 survive the per-(type,tile) dedup. The last fix was
+[[msb-enemy-model-vs-partname]]'s twin: **`c0000` (the player body) is a real model** and
+`enemy_model_id() <= 0` was discarding those 22 boss placements outright.
+
+Residual, low priority: the 6 LOD-only entities would need a supertile scan (`load_lod_award_entities`
+already does this for loot), the 5 event-spawned ones have no MSB anchor at all, and the 5 dedup losses
+would go away with per-ENCOUNTER identity keyed on `entityId` instead of name+tile.
 
 Then confirm a couple of boss names in-world and move the changelog line out of the "NOT YET CONFIRMED"
 comment block.
