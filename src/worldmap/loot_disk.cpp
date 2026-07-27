@@ -1163,6 +1163,18 @@ const std::unordered_map<uint32_t, uint32_t> &emevd_boss_bars()
             ++defeat_sites;
             defeats()[c.entity] = c.flag;  // call site WINS (persistent flag; sees param'd handlers)
         }
+        // Handler discovery: over common_func.emevd this names THIS install's shared defeat
+        // handlers. Hardcoding them is what failed — the ids taken from an ERR decompile matched a
+        // single call site on vanilla. Logged so the real ids can drive the call-site pass.
+        if (lower.rfind("common_func", 0) == 0)
+        {
+            std::string ids;
+            for (const auto &h : msbe::parse_emevd_defeat_handlers(evd.data(), evd.size()))
+                ids += (ids.empty() ? "" : ", ") + std::to_string(h.eventId) + "(entity=" +
+                       std::to_string(h.rawEntity) + ")";
+            spdlog::info("[LOOTDISK] defeat handlers in {}: {}", lower,
+                         ids.empty() ? "none" : ids);
+        }
         ++parsed;
     }
     loaded = true;

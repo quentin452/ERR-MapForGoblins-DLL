@@ -777,6 +777,53 @@ std::vector<uint32_t> parse_emevd_boss_defeats(const uint8_t *buf, size_t len)
 // (`SetEventFlagID(1043370340, OFF)`) — using it would let a beaten boss un-tick itself, while the
 // call site's `x800` persists. Measured over the decompiled corpus: 102 call sites, 93 entities,
 // X0_4 = x800/x850 in 85 of them where X8_4 is x340 in 8.
+// Which EVENTS in this emevd contain a boss-defeat instruction at all — run over `common_func.emevd`
+// it yields the install's shared defeat HANDLERS, whose ids must never be hardcoded: the four found
+// in an ERR decompile (9005840 / 90005860 / 90005861 / 90005880) matched exactly ONE call site on a
+// vanilla install, i.e. they are that mod's handlers, not the engine's. Also reports the entity arg
+// as it sits in the file, so a placeholder (0 / a repeated value) is visible: that is the tell that
+// the entity comes from a parameter and only the CALL SITE knows it.
+std::vector<BossDefeatHandler> parse_emevd_defeat_handlers(const uint8_t *buf, size_t len)
+{
+    std::vector<BossDefeatHandler> out;
+    if (len < 0x80 || std::memcmp(buf, "EVD\0", 4) != 0) return out;
+
+    uint64_t eventCount  = rd64(buf, 0x10);
+    uint64_t eventsOff   = rd64(buf, 0x18);
+    uint64_t instrTblOff = rd64(buf, 0x28);
+    uint64_t argsOff     = rd64(buf, 0x78);
+    if (eventCount > 1000000u) return out;
+
+    constexpr uint32_t DEFEAT_BANK = 2003, DEFEAT_ID = 12;
+    constexpr size_t EVENT_SZ = 0x30, INSTR_SZ = 0x20;
+    for (uint64_t i = 0; i < eventCount; ++i)
+    {
+        size_t e = (size_t)eventsOff + (size_t)i * EVENT_SZ;
+        if (!inb(e, EVENT_SZ, len)) break;
+        uint64_t eventId     = rd64(buf, e + 0x00);
+        uint64_t instrCount  = rd64(buf, e + 0x08);
+        uint64_t instrOffset = rd64(buf, e + 0x10);
+        size_t base = (size_t)instrTblOff + (size_t)instrOffset;
+        if (instrCount > 1000000u) continue;
+        for (uint64_t j = 0; j < instrCount; ++j)
+        {
+            size_t ins = base + (size_t)j * INSTR_SZ;
+            if (!inb(ins, INSTR_SZ, len)) break;
+            if (rd32(buf, ins + 0x00) != DEFEAT_BANK || rd32(buf, ins + 0x04) != DEFEAT_ID) continue;
+            uint64_t argLen = rd64(buf, ins + 0x08);
+            int32_t  argOff = (int32_t)rd32(buf, ins + 0x10);
+            uint32_t raw = 0;
+            if (argOff >= 0 && argLen >= 4)
+            {
+                size_t a = (size_t)argsOff + (size_t)argOff;
+                if (inb(a, 4, len)) raw = rd32(buf, a + 0);
+            }
+            out.push_back({(uint32_t)eventId, raw});
+        }
+    }
+    return out;
+}
+
 std::vector<BossDefeatCall> parse_emevd_boss_defeat_calls(const uint8_t *buf, size_t len)
 {
     std::vector<BossDefeatCall> out;

@@ -139,8 +139,9 @@ Reconciled our EMEVD `2003[12]` set (vanilla install, `[LOOTDISK] boss defeat id
 `soarqin/EROverlay`'s baked `bosses.json` (207 entries, whose `flag_id` is an entity id too, so the
 sets compare directly). **193 shared, 22 only ours, 14 only theirs.** Four distinct causes:
 
-> **Causes 1 and 4 were FIXED the same day by mining the common-func call sites** (see below); this
-> section records the measurement that found them. Re-run the diff after the fix.
+> **Causes 1 and 4 are still OPEN.** The first attempt (mining the common-func call sites with the
+> handler ids read off an ERR decompile) MISSED — see the post-mortem below. Re-run the diff after
+> any further attempt; this section records the measurement that found the defects.
 
 **1. Same fight, different id — 10 cases. WE ARE WRONG HERE (open defect).**
 Night/roaming bosses (Death Rite Bird, Night's Cavalry ×3, Deathbird ×2, Tibia Mariner) plus two
@@ -197,11 +198,43 @@ entity whose death raises the banner. So `parse_emevd_boss_defeat_calls` mines t
 | literal `2003[12]` | `emplace(e, e)` — never overwrites | flag = entity, the common case |
 | common-func call site | `defeats()[entity] = X0_4` — **wins** | only source for param'd handlers, and its flag is the persistent one |
 
-Consequences to keep in mind:
+Consequences to keep in mind (the plumbing landed and is correct — only the handler ids were wrong):
 - **A fight's flag is no longer always its entity id.** Look names up with the ENTITY
   (`boss_bar_display_name`), and state with the FLAG. Mixing them silently breaks the 10.
 - **Distinct FLAGS = distinct fights**, not distinct entities: two bodies can share one flag, so the
   panel and the coverage diagnostic both dedup on the flag.
+
+### ⚠ Post-mortem — the handler ids were ERR's, not the engine's
+
+Measured on the vanilla install right after shipping the above:
+
+```
+[LOOTDISK] boss defeats: 216 entities -> 216 distinct fights (from 451 literal 2003[12] calls
+           + 1 common-func call sites; 0 entities carry a flag that is NOT their own id)
+```
+
+**1 call site, 0 re-flagged.** The four handler ids (`9005840`, `90005860`, `90005861`, `90005880`)
+came from the only decompiled corpus on the dev box — `D:/tools/emevd_js/err`, which is **ERR**.
+They are that overhaul's handlers. Vanilla routes its shared defeats through different events, so
+the pass matched almost nothing and neither defect moved.
+
+**The lesson generalises well beyond this feature:** a decompiled corpus is an *install*, not the
+engine. Instruction encodings (`2003[11]`, `2003[12]`, the EVD layout) are engine-level and transfer;
+**event and common-func IDs are content and do not**. The literal `2003[12]` scan worked on vanilla
+precisely because it depends only on the instruction. Anything keyed on an event id must be
+DISCOVERED from the active install.
+
+So `parse_emevd_defeat_handlers()` now enumerates, from the install's OWN `common_func.emevd`, every
+event containing a `2003[12]` plus that instruction's entity arg as stored — a placeholder value
+means the entity comes from a parameter and only the call site knows it. Logged as
+`[LOOTDISK] defeat handlers in common_func.emevd.dcx: <id>(entity=<raw>), …`. The call-site pass
+must be driven by those discovered ids, not by a constant. Hardcoding is what failed; do not
+re-introduce it when wiring this up.
+
+Also unresolved, and dependent on the same discovery: whether vanilla's night/roaming bosses reach
+`2003[12]` literally with their transient `x340` entity (they are in the 215, so probably yes) —
+in which case the persistent flag has to come from the call site's parameters, exactly as the ERR
+corpus showed, but keyed on vanilla's handler ids.
 
 ## Not done (deliberate)
 

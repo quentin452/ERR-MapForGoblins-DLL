@@ -319,6 +319,12 @@ std::vector<uint32_t> parse_emevd_boss_defeats(const uint8_t *buf, size_t len);
 // One boss-defeat COMMON-FUNC call site: the persistent flag (X0_4) and the entity whose death
 // raises the banner (X8_4). Needed because the shared handlers take the entity as a parameter, so
 // the literal scan above cannot see them — and because X0_4 outranks the entity id as the flag.
+// One boss-defeat instruction seen inside an event, with the entity arg AS STORED in the file.
+// Over common_func.emevd this enumerates the install's shared defeat handlers (never hardcode
+// their ids — they differ per mod) and shows whether the entity is a literal or a placeholder.
+struct BossDefeatHandler { uint32_t eventId = 0, rawEntity = 0; };
+std::vector<BossDefeatHandler> parse_emevd_defeat_handlers(const uint8_t *buf, size_t len);
+
 struct BossDefeatCall { uint32_t flag = 0, entity = 0; };
 std::vector<BossDefeatCall> parse_emevd_boss_defeat_calls(const uint8_t *buf, size_t len);
 
