@@ -39,6 +39,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Fixed
 
+- **Ashen Capital markers are on the map again.** Markers inside sub-maps whose local coordinates run
+  far negative — Ashen Capital most visibly — were stacked in the far corner of the map instead of over
+  Leyndell. Markers that collided there could also be silently dropped, so a few went missing entirely
+  elsewhere.
 - **No more markers for loot that cannot exist.** A handful of map pickups pointed at item ids with no
   entry in the game's item tables — the game grants nothing there, so the marker sent you to an empty
   spot. Those are dropped now, and a marker whose live id is dead falls back to its known name instead
