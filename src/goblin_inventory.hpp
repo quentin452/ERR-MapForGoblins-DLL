@@ -1,4 +1,6 @@
 #pragma once
+#include "goblin_dll_export.hpp"  // GOBLIN_RENDER_API (read_run_stats is called from the render module)
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -46,6 +48,15 @@ namespace goblin::inventory
     // — the inventory the SAVE serialize reads (sidecar Phase-2 strip-bracket RE target). nullptr
     // before the world loads / on fault. SEH-guarded chain walk.
     void *equip_game_data();
+
+    // Run-tracker counters, off the SAME GameDataMan static slot the equip chain walks:
+    // `deaths` = GameDataMan+0x94 (u32), `igt_ms` = GameDataMan+0xA0 (u32, MILLISECONDS).
+    // Both are save-serialized, so they survive a reload and match the game's own load screen.
+    // Mod-agnostic by construction — engine save data, not param/FMG content, so it reads the
+    // same on vanilla, ERR or any other mod. Returns false (outputs untouched) before the world
+    // loads / on fault; callers should keep their last good values rather than showing 0.
+    GOBLIN_RENDER_API bool read_run_stats(uint32_t &deaths, uint32_t &igt_ms);
+
     // Native persistent bloodstain (dropped runes on death). 2.6.2.0 layout, Ghidra-verified
     // (docs/re/windows_bloodstain_read_drift_re_findings.md): `exists` = the flag byte
     // GameDataMan+0x40 — the ENGINE's own icon gate, set on ANY death incl. a 0-rune one —

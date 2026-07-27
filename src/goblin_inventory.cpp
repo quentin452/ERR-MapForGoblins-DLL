@@ -147,6 +147,35 @@ void *equip_game_data()
     return egd;
 }
 
+// Run-tracker counters (deaths + in-game time) off the same cached GameDataMan slot. Both fields
+// live in the block the save serializer streams, next to the bloodstain record below: deaths at
+// +0x94, in-game time at +0xA0 as u32 milliseconds. RPM-guarded like the equip walk, so a call
+// before the world loads (slot resolved, pointer still null) just returns false.
+//
+// The two offsets are the ones soarqin/EROverlay's boss overlay reads (its `kDeathCount`/
+// `kInGameTime`); +0x94 is additionally proven here by the death-marker path. Read-only.
+bool read_run_stats(uint32_t &deaths, uint32_t &igt_ms)
+{
+    void **gdm_slot = game_data_man_slot();
+    if (!gdm_slot) return false;
+    HANDLE self = GetCurrentProcess();
+    void *gdm = nullptr;
+    SIZE_T got = 0;
+    if (!ReadProcessMemory(self, gdm_slot, &gdm, sizeof(gdm), &got) || got != sizeof(gdm) ||
+        reinterpret_cast<uintptr_t>(gdm) < 0x10000)
+        return false;  // title screen / loading — no game data yet
+    uint32_t d = 0, t = 0;
+    SIZE_T n1 = 0, n2 = 0;
+    if (!ReadProcessMemory(self, reinterpret_cast<uint8_t *>(gdm) + 0x94, &d, sizeof(d), &n1) ||
+        n1 != sizeof(d) ||
+        !ReadProcessMemory(self, reinterpret_cast<uint8_t *>(gdm) + 0xA0, &t, sizeof(t), &n2) ||
+        n2 != sizeof(t))
+        return false;
+    deaths = d;
+    igt_ms = t;
+    return true;
+}
+
 // Native persistent bloodstain (dropped runes on death) — 2.6.2.0 Ghidra-verified layout
 // (docs/re/windows_bloodstain_read_drift_re_findings.md; supersedes the Hexinton-CT note):
 // GameDataMan+0x40 (u8) = EXISTS flag — the engine's own gate (setter er+0x259060, read by the

@@ -121,6 +121,7 @@ set(GOBLIN_RENDER_SOURCES
   src/overlay_panel/panel_search.cpp
   src/overlay_panel/panel_categories.cpp
   src/overlay_panel/panel_quests.cpp
+  src/overlay_panel/panel_run.cpp
   src/overlay_panel/panel_clustering.cpp
   src/overlay_panel/panel_dev_tools.cpp
   src/overlay_panel/panel_world_editor.cpp

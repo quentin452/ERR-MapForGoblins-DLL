@@ -392,6 +392,7 @@ void goblin::overlay::request_f1_tab(int idx) { g_requested_tab = idx; }
                 panel::draw_item_search(ctx, f);         // find item / object
                 panel::draw_sections_categories(ctx, f); // categories grid + ERR
                 panel::draw_quest_browser(f);            // quest browser
+                panel::draw_run_tracker(f);              // run tracker (deaths / IGT / bosses)
                 panel::draw_clustering(f);               // clustering
                 panel::draw_dev_tools_danger(f);         // debug / dev tools / danger
                 panel::draw_world_editor(f);             // world editor
@@ -450,6 +451,13 @@ void goblin::overlay::request_f1_tab(int idx) { g_requested_tab = idx; }
                     panel::draw_dev_icon_sections(ctx, f);
                     panel::draw_dev_tools_danger(f);
                     panel::draw_world_editor(f);
+                    ImGui::EndTabItem();
+                }
+                // Run — deaths / in-game time / boss checklist. LAST so the existing f1_tab RPC
+                // indices (0 Markers … 4 Dev) keep pointing at the same tabs.
+                if (ImGui::BeginTabItem(tr("Run"), nullptr, tab_flag(5)))
+                {
+                    panel::draw_run_tracker(f);
                     ImGui::EndTabItem();
                 }
                 ImGui::EndTabBar();

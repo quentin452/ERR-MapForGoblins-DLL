@@ -13,6 +13,7 @@ into a single current-truth entry. Status reflects the **current code**, not the
 - **Item/object search bar** [shipped] — name search + locate/pan inside the hooked map step → [overlay-item-search-bar](overlay-item-search-bar.md)
 - **Minimap HUD** [shipped] — player-centred corner minimap, reuses the marker/atlas chain → [minimap-future-feature](minimap-future-feature.md)
 - **Unicode font** [shipped] — embedded DejaVu Sans TTF over ImGui's Latin-1 default → [imgui-unicode-font](imgui-unicode-font.md)
+- **Run tracker** [shipped v1] — F1 ▸ Run: deaths + in-game time (GameDataMan +0x94/+0xA0) and a boss checklist off the live WorldBosses bucket; defeat flag still ERR-only → [run-tracker](run-tracker.md)
 
 ## World-map RE (live projection / position / icons / fog)
 - **Live world→map projection** [shipped] — `liveProjection=true`; baked LegacyConv kept as map-closed fallback → [worldmap-projection-re-solved](worldmap-projection-re-solved.md)
