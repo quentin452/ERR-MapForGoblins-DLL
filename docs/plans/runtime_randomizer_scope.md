@@ -232,9 +232,25 @@ unblocked.
 
 ---
 
-## UNDECIDED — module of MapForGoblins, or separate mod?
+## DECIDED 2026-07-27 — a MODULE of MapForGoblins
 
-Not decided. The trade-off as it stands:
+**Decision (quentin): module, not a separate mod.** Conditions that come with it, so the cost side of
+the trade-off below is actually paid and not just acknowledged:
+
+- **Off by default**, behind one hard gate. A user who never enables it must be unable to reach any of
+  this code.
+- **Its own config section**, not N new toggles sprinkled into the existing schema — the
+  complexity-ceiling rule in `CLAUDE.md` applies the moment the randomizer starts growing options.
+- **Write surface stays bounded by invariant 5**: params at boot + `<save>.mfg`. Nothing else, ever.
+
+The argument that had been carrying the "separate mod" side **does not hold**: a separate mod runs in
+the SAME process, so it isolates *code*, not *runtime* — a solver crash takes Elden Ring down either
+way. Separation would have bought no containment while costing either a shared library (the unresolved
+ER-DeathCounter Bug 6 conversation) or a second Present hook (`multimod-hook-coexistence.md`). What
+actually contains the blast radius is the write surface, which invariant 5 already bounds identically
+in both architectures. Symmetric with, and for the same reason as, the ER-DeathCounter absorb decision.
+
+The trade-off as it stood, kept for the record:
 
 **As a module.** Reuses all of the above with zero glue; ships with the map that already displays
 the randomized world; one DLL to install. Cost: scope creep in a map mod, a much bigger blast radius
@@ -250,7 +266,8 @@ Note the symmetry with the ER-DeathCounter decision earlier today: the same ques
 answer was "absorb it, because the standalone would have to port half the data stack". The difference
 here is blast radius — a tracker cannot break a save, a randomizer can.
 
-**Do not start implementing before this is settled**, because it decides where the solver lives.
+This was the gate on implementation, because it decides where the solver lives. **It is now open: the
+solver lives in MapForGoblins.** Next is its spec — graph-first (see the measured graph source above).
 
 ---
 

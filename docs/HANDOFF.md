@@ -3,25 +3,20 @@
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
 
-## ⇒ NEXT SESSION — runtime randomizer: graph source ANSWERED, one decision left
+## ⇒ NEXT SESSION — runtime randomizer: graph source ANSWERED, architecture DECIDED
 
-State: `docs/plans/runtime_randomizer_scope.md` is scoping-only, now with both axes MEASURED (commit
-`63aed60`). Nothing implemented, nothing deployed, no build touched. Resume in this order:
+State: `docs/plans/runtime_randomizer_scope.md` is scoping-only, with both axes MEASURED (`63aed60`)
+and the architecture settled — **a MODULE of MapForGoblins**, off by default, own config section, write
+surface bounded by invariant 5 (params + `<save>.mfg`, never the `.sl2`). Nothing implemented, nothing
+deployed, no build touched. Resume in this order:
 
-1. **DECIDE: module of MapForGoblins, or separate mod?** The doc says do not implement before this is
-   settled, because it decides where the solver lives. Analysis is done and sits in the doc's UNDECIDED
-   section — with one correction from this session: the blast-radius argument that favoured separation
-   **does not hold**, because a separate mod runs in the SAME process (it isolates code, not runtime),
-   while the write surface is already bounded by invariant 5 (params + `<save>.mfg`, never the `.sl2`).
-   Recommendation: **module, behind an off-by-default gate, with its own config section** (not N new
-   toggles — the complexity-ceiling rule). Symmetric with the ER-DeathCounter absorb decision.
-2. **Then spec the solver GRAPH-FIRST.** Not for the fog-gate reuse (speculative), but because the
+1. **Spec the solver, GRAPH-FIRST.** Not for the fog-gate reuse (speculative), but because the
    invariants ARE graph statements: invariant 2 (no transitive cycle) cannot even be *expressed*
    item-first. Nodes = regions/slots, edges = "passable if holding S", solve parameterized by the save's
    already-set flags (invariant 6). Input is in hand: ~19 item locks + ~175 boss-death edges.
-3. **Optional sharpening, not a blocker:** the flag probe attributes a gate by CO-OCCURRENCE inside an
+2. **Optional sharpening, not a blocker:** the flag probe attributes a gate by CO-OCCURRENCE inside an
    event, so 2089 is a ceiling. Following the EMEVD condition-group wiring would give the true edge set.
-4. **Enemy randomization — measure before promising.** Out of v1, and unknown #2 in the doc decides
+3. **Enemy randomization — measure before promising.** Out of v1, and unknown #2 in the doc decides
    whether it is worth anything: `modelIndex` indexes the TILE's own MODEL section, so if a tile only
    declares 3 chr models the shuffle is worthless. Count the per-tile candidate set FIRST.
 
