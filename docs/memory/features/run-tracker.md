@@ -95,8 +95,30 @@ Returning 0 for an entity with **no** 2003[12] registration is deliberate: its f
 set, so treating it as a valid flag would report a beaten boss as alive forever. Those stay in the
 "state unknown" bucket.
 
-**Still to verify in-game (vanilla):** that the count is non-zero and that killing a boss ticks it.
-Check `[LOOTDISK] boss defeats: N entities registered` in the log first — N ≈ 140 on vanilla.
+**Verified in-game on VANILLA, 2026-07-27:** `[LOOTDISK] boss defeats: 215 entities registered
+(from 451 2003[12] calls)`, markers carry 201 distinct defeat flags, panel reads `6/201` on a
+played save. The mod-agnostic path works with no ERR param rows at all.
+
+### Reading the three counts (they are SUPPOSED to differ)
+
+| Count | Meaning |
+|---|---|
+| 251 | entities with a health bar — `2003[11]` |
+| 215 | entities with a defeat registration — `2003[12]` |
+| 201 | distinct defeat flags actually attached to a boss marker |
+
+**251 → 215 is correct behaviour, not loss.** Measured over the decompiled corpus: defeat entities
+end in `x800` (114) or `x850` (17) — the *primary* body of a fight; the bar-only ones end in `x801`
+(22), `x802` (4), `x851/852/853` (9), `x810-813`… — the *secondary bodies* of multi-part fights
+(Godskin Duo, Crucible Knight + Misbegotten, the Gargoyles). **48 of the 51 bar-only entities have
+their `x800`/`x850` primary in the defeat set.** The remaining ones are degenerate: entity `0`, and
+`10000` = the PLAYER (a boss bar drawn on the player). Since the tracker's unit is the FIGHT, giving
+companions their own flag would make the Godskin Duo count as 2 — do not "fix" this gap.
+
+**215 → 201 is ours** and is measured per build by `[BOSSLIVE] defeat flags: N of M registered
+entities are on a marker; K unmatched — sample: …`. A registered entity only becomes a marker if it
+is placed in a scanned MSB, resolves at tier 4, and survives the per-tile dedup. Read the sample ids
+before assuming it is a bug.
 
 ## Not done (deliberate)
 

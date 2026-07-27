@@ -267,6 +267,11 @@ GOBLIN_RENDER_API uint32_t emevd_boss_bar_name_id(uint32_t entityId);
 // default). Mod-agnostic: works wherever the engine's own boss events do, no param encoding needed.
 GOBLIN_RENDER_API uint32_t emevd_boss_defeat_flag(uint32_t entityId);
 
+// The whole defeat-registered entity set, for the build-time coverage diagnostic: an entity the
+// ENGINE records a defeat for, but which produced no boss marker, is a fight the tracker silently
+// cannot count. Same one-time EMEVD walk; empty before it has run.
+GOBLIN_RENDER_API const std::unordered_set<uint32_t> &emevd_boss_defeat_entities();
+
 // ── Map-dir discovery state (F1 error + CreateFileW fallback) ──────────────────
 // With loot_from_disk_msb on, the map dir is resolved by ancestor-walk at init
 // (Found). If that finds nothing we fall back to OBSERVING the game's own map

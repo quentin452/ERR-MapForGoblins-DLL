@@ -1170,6 +1170,12 @@ uint32_t emevd_boss_defeat_flag(uint32_t entityId)
     return defeats().count(entityId) ? entityId : 0u;
 }
 
+const std::unordered_set<uint32_t> &emevd_boss_defeat_entities()
+{
+    emevd_boss_bars();
+    return defeats();
+}
+
 uint32_t emevd_boss_bar_name_id(uint32_t entityId)
 {
     if (!entityId) return 0;

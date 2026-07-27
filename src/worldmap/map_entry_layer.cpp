@@ -541,6 +541,26 @@ void build_live_bosses()
         ++supp;
         if (live_named) ++agnostic;
     }
+    // Defeat-flag coverage. An entity the ENGINE registers a defeat for but that produced no boss
+    // marker is a fight the run tracker cannot count, and the count alone ("201 of 215") does not
+    // say WHICH — so list a sample. Expected non-zero: a registered entity still has to be placed
+    // in a scanned MSB, resolve at tier 4, and survive the per-tile dedup to become a marker.
+    {
+        std::unordered_set<uint32_t> attached;
+        for (const Marker &m : g_buckets[c])
+            if (m.cleared_flag) attached.insert((uint32_t)m.cleared_flag);
+        const auto &reg = emevd_boss_defeat_entities();
+        std::vector<uint32_t> missing;
+        for (uint32_t e : reg)
+            if (!attached.count(e)) missing.push_back(e);
+        std::sort(missing.begin(), missing.end());
+        std::string sample;
+        for (size_t k = 0; k < missing.size() && k < 15; ++k)
+            sample += (k ? ", " : "") + std::to_string(missing[k]);
+        spdlog::info("[BOSSLIVE] defeat flags: {} of {} registered entities are on a marker; {} "
+                     "unmatched{}{}", (int)attached.size(), (int)reg.size(), (int)missing.size(),
+                     sample.empty() ? "" : " — sample: ", sample);
+    }
     spdlog::info("[BOSSLIVE] built {} boss markers from live WorldMapPointParam (textId2==5100) + {} "
                  "enemy-supplemented instances ({} boss types total, {} seeded mod-agnostically from "
                  "the game's own boss health bar, {} instances resolved at tier 4)",
