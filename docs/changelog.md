@@ -21,6 +21,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ## [Unreleased]
 
+## [v2.6.0] - 2026-07-27
+
 ### Added
 
 - **Run tracker.** A compact in-game HUD — deaths, in-game time, bosses defeated — on its own key
@@ -35,6 +37,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
   anywhere. The item counters are derived the same way, which is how they pick up the DLC's
   Remembrances without being told about them. A fight the engine registers no defeat for is shown
   as "state unknown" rather than counted as alive.
+
+### Changed
+
+- **The Dev tab is tinted amber and no longer sits between the player-facing tabs.** It holds the
+  danger zone and the live world editor, so it should not read as a peer of Markers or Run.
 
 ## [v2.5.0] - 2026-07-27
 
