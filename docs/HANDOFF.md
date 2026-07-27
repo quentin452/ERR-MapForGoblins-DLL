@@ -35,6 +35,38 @@ and removed.
 **Marker audit vs the seed's spoiler log — new tooling:** `tools/audit_markers_vs_spoiler.py` +
 [[spoiler-log-marker-audit]]. 97.6 % coverage on precisely-located items, 0 projection failures.
 
+## ⇒ 2026-07-27 (Windows, vanilla+DLC) — RUN TRACKER, branch `feat/run-tracker`
+
+Absorbed the standalone `ER-DeathCounter-Mod` feature set instead of growing a second overlay mod
+(rationale + every measurement: [[run-tracker]]). Shipped: F10 click-through HUD, F1 ▸ Run tab with a
+region-grouped boss checklist, Great Runes / Remembrances counters. **Not merged to master yet.**
+
+The RE that came out of it is worth more than the feature:
+
+- **`GameAreaParam` is the game's own boss table** — row id = boss ENTITY id, `defeatBossFlagId`
+  @+0x44, `bossPosX/Z` @+0x48/50, `bossMapAreaNo/BlockNo/MapNo` @+0x54/55/56. 212 boss rows. It
+  supersedes three EMEVD attempts at the defeat flag and makes the planned EVD parameter-table
+  parser unnecessary. **It was nearly written off as empty** because ids were SAMPLED (0..399) rather
+  than enumerated — hence the new `param_rows` RPC verb. Do not repeat that: enumerate.
+- New RPC verbs, all generally useful: **`param_rows`** (real row ids + true count), **`flag`**
+  (read / range-scan / write event flags), **`text`** (resolve an FMG string).
+- Remembrances = `goodsType 3` (25 rows with the DLC), Great Runes = `goodsType 15` (6). Both
+  derived live, 1:1 verified against the item names, no id table, locale-independent.
+- The Hexinton CE table's DLC remembrance ids (2900-2914) are WRONG — they are Golden Runes.
+
+Left open, deliberately (all small, all documented in [[run-tracker]]):
+
+- **9 of 216 fights have no region** — no map marker AND no `GameAreaParam` row. "(no region)" is an
+  honest label; the fix, if wanted, is the source EMEVD's FILENAME (`m60_49_44` = the tile), NOT the
+  entity-id digit encoding (validated 103/106, but that is extrapolation).
+- **8 rows read "(unnamed boss)"** — no boss-bar name for that entity. `foundBossTextId` @+0x38 is
+  not a usable substitute: 0 on most rows, and where set it points at an FMG bank `lookup_text_utf8`
+  does not resolve.
+- **5 night/roaming bosses disagree with EROverlay's list** — `GameAreaParam` gives the entity as its
+  own defeat flag while their baked list uses the tile's `x800`. We follow the param, but those ids
+  are in `common.emevd` event 6901's 236-flag reset group, whose trigger was never identified. If a
+  beaten Death Rite Bird ever un-ticks in play, identify 6901.
+
 ## OPEN — next session
 
 1. ~~Audit leads~~ — **ALL 3 DONE 2026-07-27** (see [[spoiler-log-marker-audit]]): the 7 markers on

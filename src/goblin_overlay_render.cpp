@@ -436,8 +436,22 @@ void goblin::overlay::request_f1_tab(int idx) { g_requested_tab = idx; }
                     panel::draw_general_settings(ctx, f);
                     ImGui::EndTabItem();
                 }
+                // Run — deaths / in-game time / boss checklist. Sits BEFORE Dev because it is a
+                // player-facing tab and Dev is not; its f1_tab index stays 5 regardless, since
+                // tab_flag() keys on the argument, not on the position in this list.
+                if (ImGui::BeginTabItem(tr("Run"), nullptr, tab_flag(5)))
+                {
+                    panel::draw_run_tracker(f);
+                    ImGui::EndTabItem();
+                }
                 // Dev — RE/debug tooling: icon census, dev tools + danger zone, live world editor.
-                if (ImGui::BeginTabItem(tr("Dev"), nullptr, tab_flag(4)))
+                // Tinted amber: everything else in this bar is for playing, this one can break a
+                // save (danger zone, live world editor), so it should not read as a peer of Markers
+                // or Run at a glance.
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.72f, 0.30f, 1.0f));
+                const bool dev_open = ImGui::BeginTabItem(tr("Dev"), nullptr, tab_flag(4));
+                ImGui::PopStyleColor();
+                if (dev_open)
                 {
                     // Mod-owned virtual world map (WIP) — opens a pannable/zoomable custom-world canvas.
                     if (ImGui::Button(panel::virtual_map_open() ? tr("Virtual World Map: OPEN")
@@ -451,13 +465,6 @@ void goblin::overlay::request_f1_tab(int idx) { g_requested_tab = idx; }
                     panel::draw_dev_icon_sections(ctx, f);
                     panel::draw_dev_tools_danger(f);
                     panel::draw_world_editor(f);
-                    ImGui::EndTabItem();
-                }
-                // Run — deaths / in-game time / boss checklist. LAST so the existing f1_tab RPC
-                // indices (0 Markers … 4 Dev) keep pointing at the same tabs.
-                if (ImGui::BeginTabItem(tr("Run"), nullptr, tab_flag(5)))
-                {
-                    panel::draw_run_tracker(f);
                     ImGui::EndTabItem();
                 }
                 ImGui::EndTabBar();

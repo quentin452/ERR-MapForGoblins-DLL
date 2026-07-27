@@ -27,12 +27,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
   (**F10** by default, `run_hud_key`). It is click-through: it never takes the cursor or eats an
   input, so it can sit on screen while you play. Corner, opacity and whether the boss count shows
   are configurable (`[Run Tracker]` in the INI, or F1 ▸ Run).
-- **Run tab (F1 ▸ Run)** — the detailed view behind the HUD: the same counters plus a per-region
-  boss checklist. The boss list is the one MapForGoblins already builds from your actual install,
-  so it names the bosses your mod names — no baked vanilla list — and which ones you have beaten
-  comes from the game's own boss-defeat events, so it works on vanilla and modded installs alike.
-  A boss the engine registers no defeat for is shown as "state unknown" rather than counted as
-  alive.
+- **Run tab (F1 ▸ Run)** — the detailed view behind the HUD: the same counters, a **boss checklist
+  grouped into collapsible regions** (each header carries its own `killed/total`, and the region you
+  are standing in opens itself), plus the **Great Runes** and **Remembrances** you are carrying.
+  Which bosses count, and which flag says one is beaten, come from the game's own boss table — so
+  the list is right on vanilla, on the DLC and on mods that add or move bosses, with no baked list
+  anywhere. The item counters are derived the same way, which is how they pick up the DLC's
+  Remembrances without being told about them. A fight the engine registers no defeat for is shown
+  as "state unknown" rather than counted as alive.
 
 ## [v2.5.0] - 2026-07-27
 
