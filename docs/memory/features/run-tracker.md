@@ -249,20 +249,40 @@ into a measurement, and it is the check to re-run on any install where the count
 x340 night-boss flags are in that list while ordinary boss flags are not (checked `10000800`
 Godrick, `1042360800` — `NONE`). So those 8 rows can un-tick; the other 208 cannot.
 
-**Both remaining gaps need something the ERR corpus cannot supply**, since ERR routes these through
-the handlers and vanilla does not. Two concrete next probes, in value order:
+### Probe 1 ran and FAILED — both gaps need the same missing capability
 
-1. **Persistent flag for the x340 bosses:** within the EVENT that carries the `2003[12]`, collect
-   the flags it sets ON (the `SetEventFlag` instruction) and prefer one of those over the entity id.
-   Principled — no `x340 → x800` naming guess, which is the same class of assumption that already
-   misfired once.
-2. **The Altus duo:** its `2003[12]` is presumably inside a MAP-LOCAL **parameterized** event
-   (ERR's equivalent is `$Event(1041512800)`, initialized by
-   `InitializeEvent(0, 1041512800, 1041510800, …)`). Reading it needs the EVD **parameter table**
-   (event entry `+0x18` count / `+0x20` offset) to map an instruction's placeholder arg back to the
-   caller's argument. That is the general fix for every parameterized registration, not just this one.
+Idea: take the persistent flag from the `SetEventFlag(..., ON)` instructions of the event that
+carries the `2003[12]`. Shipped, measured on vanilla:
 
-Impact if neither is done: 8 of 216 rows may un-tick, 1 fight is missing. The counter is usable.
+```
+[LOOTDISK] defeat flags: 24 resettable entities (0 rescued, 24 ambiguous); reset group = 236 flags
+[LOOTDISK]   ambiguous (kept entity): 1036450340[], 1036450340[], 1036450340[], 1036480340[] …
+```
+
+**Every candidate list is empty** (the 24 are 6 entities × 4 — one `2003[12]` per banner type, a
+switch). The reset group is real (236 flags) and those entities are in it, so the defect is
+confirmed — but the persistent flag is NOT readable from the event as a literal.
+
+The reason is visible in ERR's equivalent event: the flag set is `SetEventFlagID(X0_4, ON)` —
+**parameterized**. Our reader sees a placeholder (0) and drops it. So probe 1 could never have
+worked, and it converges with probe 2:
+
+> **Both remaining gaps — the 6-8 resettable night bosses and the missing Altus duo — need EVD
+> PARAMETER RESOLUTION.** Nothing else will do: the values are not in the instruction, they are in
+> the caller's arguments.
+
+Implementing it means reading the parameter table (event entry `+0x18` count, `+0x20` offset into a
+table whose header offset still has to be confirmed; entries are believed to be
+`{instrIndex u64, destStartByte u64, srcStartByte u64, byteCount u32}`), then substituting the
+caller's `InitializeEvent`/`InitializeCommonEvent` args. Validate the layout with a self-check
+(instrIndex < instrCount, byteCount ∈ {1,2,4}) BEFORE trusting any value — the offsets above are
+reconstructed, not measured.
+
+Keep the probe-1 machinery: `parse_emevd_flags_cleared` is what proved the reset group exists on the
+ACTIVE install (236 flags), and the ambiguity log is how the next attempt will be judged.
+
+Impact while this is open: **6-8 of 216 rows may un-tick, 1 fight (Altus Tree Sentinel ×2) is
+missing**. Everything else counts correctly.
 
 ## Not done (deliberate)
 
