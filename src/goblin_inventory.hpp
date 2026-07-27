@@ -57,6 +57,13 @@ namespace goblin::inventory
     // loads / on fault; callers should keep their last good values rather than showing 0.
     GOBLIN_RENDER_API bool read_run_stats(uint32_t &deaths, uint32_t &igt_ms);
 
+    // How many goods of an ER goodsType the player CARRIES, and how many exist. Counted host-side
+    // on purpose: the id set comes from a param walk and the count from N inventory reads, so doing
+    // it here keeps both off the render module and lets a single call cross the DLL boundary with
+    // no container. `held` is 0 (and `total` still filled) before the world loads.
+    // 15 = Great Runes, 3 = Remembrances — see goblin::goods_ids_of_type.
+    GOBLIN_RENDER_API void goods_type_progress(int goods_type, int &held, int &total);
+
     // Native persistent bloodstain (dropped runes on death). 2.6.2.0 layout, Ghidra-verified
     // (docs/re/windows_bloodstain_read_drift_re_findings.md): `exists` = the flag byte
     // GameDataMan+0x40 — the ENGINE's own icon gate, set on ANY death incl. a 0-rune one —

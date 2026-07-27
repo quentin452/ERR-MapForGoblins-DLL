@@ -4,6 +4,7 @@
 #include "from/params.hpp"
 #include "goblin_map_data.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <map>
 #include <optional>
@@ -349,6 +350,29 @@ static int goods_type_live(int32_t goods_id)
     if (!s_ok || goods_id <= 0) return -1;
     RawGoodsRow *r = s_seq->try_get((uint64_t)goods_id);
     return r ? (int)r->b[goods_type_offset()] : -1;
+}
+
+// Every goods id of a given ER goodsType, from the LIVE param. The run tracker uses it for the two
+// collection counters, and neither carries an id table:
+//   goodsType 15 = Great Runes    — measured live 2026-07-27: exactly 6 rows (191-196)
+//   goodsType  3 = Remembrances   — measured live: exactly 15 rows (2950-2964), and the match is
+//                                    1:1 in BOTH directions (every type-3 row resolves to a name
+//                                    containing "Remembrance", every such name is type 3)
+// Deriving the set beats naming it: a mod that adds, renames or renumbers one is still counted, and
+// nothing here reads a string, so it is locale-independent (the name check was research, not code).
+std::vector<int32_t> goblin::goods_ids_of_type(int goods_type)
+{
+    std::vector<int32_t> out;
+    try
+    {
+        const ptrdiff_t off = goods_type_offset();
+        for (auto [rowId, row] : from::params::get_param<RawGoodsRow>(L"EquipParamGoods"))
+            if ((int)row.b[off] == goods_type && (int32_t)rowId > 0)
+                out.push_back((int32_t)rowId);
+    }
+    catch (...) { out.clear(); }
+    std::sort(out.begin(), out.end());
+    return out;
 }
 
 // sortGroupId (u8 @ +0x72) of an EquipParamGoods row, or -1 if absent. This is ER's OWN

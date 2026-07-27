@@ -69,6 +69,9 @@ struct RunSnapshot
     std::string current_region, auto_open;
     int killed = 0;
     int unflagged = 0;            // registered fights with no map marker (no region header)
+    // Collection counters — HELD, not obtained (see rebuild()).
+    int runes_held = 0, runes_total = 0, remembrances_held = 0, remembrances_total = 0;
+    bool collections_ready = false;
     bool built = false;
     // The game's event-flag API answers false for EVERY id until it is warm (before the world is
     // up, and on a cold API right after load). Without this, a run with 200 bosses beaten reads
@@ -219,6 +222,14 @@ void rebuild()
         ++g.count;
         if (s.bosses[i].defeated) ++g.killed;
     }
+    // Collection counters. The id SETS are derived once from ER's own taxonomy (goodsType) and
+    // cached; only the held counts are re-read. Both are "currently HELD", which is the honest
+    // thing to show: a Remembrance can be spent at the Finger Reader or duplicated, so "held" and
+    // "obtained" genuinely differ, and the tracker must not claim the one it cannot see.
+    goblin::inventory::goods_type_progress(15, s.runes_held, s.runes_total);          // Great Runes
+    goblin::inventory::goods_type_progress(3, s.remembrances_held, s.remembrances_total);
+    s.collections_ready = s.runes_total > 0 || s.remembrances_total > 0;
+
     // Auto-expand only on a CHANGE of region, so a section the player collapsed stays collapsed
     // while they stand there.
     if (!nearest_region.empty() && nearest_region != s.current_region)
@@ -373,6 +384,22 @@ void draw_run_tracker(Filter &f)
         // survived for it, so it has no region header. Informational, not a warning.
         ImGui::TextDisabled("%d %s", s.unflagged,
                             tr("of them have no map marker (counted, but not placed on the map)."));
+    }
+
+    // Collections. Labelled "held" on purpose: a Remembrance can be spent or duplicated, so this is
+    // not the same as "obtained", and the panel says which one it knows.
+    if (s.collections_ready)
+    {
+        ImGui::Text("%s: %d/%d", tr("Great Runes held"), s.runes_held, s.runes_total);
+        ImGui::SameLine(0.0f, 24.0f);
+        ImGui::Text("%s: %d/%d", tr("Remembrances held"), s.remembrances_held,
+                    s.remembrances_total);
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
+            ImGui::SetTooltip("%s", tr("Counted from the items you CARRY. A Remembrance you spent\n"
+                                       "at the Finger Reader (or duplicated) no longer counts —\n"
+                                       "the game keeps no separate 'obtained' record we can read.\n"
+                                       "The item sets come from the game's own item taxonomy, so\n"
+                                       "a mod that adds or renames one is counted too."));
     }
 
     // In-game HUD controls. The HUD, not this tab, is the surface meant for actual play — F1

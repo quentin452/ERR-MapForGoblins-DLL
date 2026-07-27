@@ -1,6 +1,7 @@
 #include "goblin_inventory.hpp"
 
 #include "goblin_debug_events.hpp"  // last_inventory_accessor — fallback inv
+#include "goblin_inject.hpp"        // goods_ids_of_type — the live goodsType id sets
 #include "modutils.hpp"
 #include "re_signatures.hpp"
 
@@ -8,6 +9,8 @@
 
 #include <atomic>
 #include <cstdint>
+#include <map>
+#include <mutex>
 #include <cstdio>
 #include <cstring>
 
@@ -145,6 +148,31 @@ void *equip_game_data()
         spdlog::info("[EQUIP] chain: GameDataMan={} PlayerGameData={} EquipGameData={}", gdm, pgd, egd);
     }
     return egd;
+}
+
+// Collection progress for an ER goodsType. The id set is derived live from the goods param
+// (goblin::goods_ids_of_type — no id table, so mod-added or renumbered items count), and each id is
+// tested against the carried inventory. Cached per type: the set cannot change within a session,
+// and the param walk is far too heavy for a panel refresh.
+//
+// This is HELD, not obtained — a Remembrance spent at the Finger Reader stops counting. The game
+// keeps no readable "was obtained" record, so the UI says "held" rather than implying otherwise.
+void goods_type_progress(int goods_type, int &held, int &total)
+{
+    static std::mutex mtx;
+    static std::map<int, std::vector<int32_t>> cache;
+    std::vector<int32_t> ids;
+    {
+        std::lock_guard<std::mutex> lk(mtx);
+        auto it = cache.find(goods_type);
+        if (it == cache.end()) it = cache.emplace(goods_type, goblin::goods_ids_of_type(goods_type)).first;
+        ids = it->second;
+    }
+    total = (int)ids.size();
+    held = 0;
+    if (!equip_game_data()) return;   // not in-world: report the set size, hold no opinion on counts
+    for (int32_t id : ids)
+        if (goods_count(0x40000000u | (uint32_t)id) > 0) ++held;
 }
 
 // Run-tracker counters (deaths + in-game time) off the same cached GameDataMan slot. Both fields

@@ -429,6 +429,11 @@ namespace goblin
     // sortGroupId) only — no per-item bake, no curated exception table.
     // Lets the disk-MSB loot path bucket a live-resolved lot item without any bake.
     int item_marker_category(int32_t key);
+    // Every goods id of an ER goodsType, live from EquipParamGoods. 15 = Great Runes (6 rows),
+    // 3 = Remembrances (15 rows on a base install) — both measured live, both 1:1 with the item
+    // family. Derived, never tabulated: a mod that adds or renumbers one is still counted, and no
+    // string is read, so it does not depend on the game language.
+    GOBLIN_RENDER_API std::vector<int32_t> goods_ids_of_type(int goods_type);
 
     // Real inventory iconId (MENU_ItemIcon_<id> atlas index) for an offset-encoded item key, read
     // LIVE from the owning EquipParam at the cross-verified iconId offset (Goods@0x30, Weapon@0xBE,
