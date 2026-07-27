@@ -190,6 +190,19 @@ void rebuild()
         // No marker (or a marker with no name): the boss-bar name resolves from the ENTITY, which
         // is not always the flag — hence looking it up with `entity`, not `r.flag`.
         if (r.name.empty()) r.name = goblin::boss_bar_display_name(entity);
+        // Still no region? A fight with no surviving marker has no region label from that side, so
+        // take GameAreaParam's own boss position through the SAME region lookup push_marker uses.
+        // 16 of 216 fights have no marker, which is what filled the "(no region)" bucket.
+        if (r.region.empty())
+        {
+            goblin::worldmap::BossArea ba;
+            if (goblin::worldmap::boss_area_of(entity, ba))
+            {
+                int pname = -1;
+                goblin::overlay_api::marker_cluster_key(ba.area, ba.gx, ba.gz, ba.px, ba.pz, &pname);
+                if (pname >= 0) r.region = goblin::overlay_api::lookup_text_utf8(pname);
+            }
+        }
         r.defeated = s.flags_live && goblin::overlay_api::read_event_flag(flag);
         seen.emplace(r.flag, rows.size());
         rows.push_back(std::move(r));

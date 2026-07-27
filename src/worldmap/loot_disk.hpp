@@ -273,6 +273,13 @@ GOBLIN_RENDER_API uint32_t emevd_boss_defeat_flag(uint32_t entityId);
 // for display; the build-time coverage diagnostic compares the two. Empty before the walk has run.
 GOBLIN_RENDER_API const std::unordered_map<uint32_t, uint32_t> &emevd_boss_defeats();
 
+// Where GameAreaParam places a boss: the same (area, gridX, gridZ, posX, posZ) tuple push_marker
+// and marker_cluster_key take (bossMapAreaNo/BlockNo/MapNo @+0x54/55/56, bossPosX/Z @+0x48/50).
+// Feeds a region label for fights that produced no map marker — verified live: Malenia -> m15_00_00,
+// the Consecrated Snowfield Night's Cavalry -> m60_48_55.
+struct BossArea { uint8_t area = 0, gx = 0, gz = 0; float px = 0.0f, pz = 0.0f; };
+GOBLIN_RENDER_API bool boss_area_of(uint32_t entityId, BossArea &out);
+
 // ── Map-dir discovery state (F1 error + CreateFileW fallback) ──────────────────
 // With loot_from_disk_msb on, the map dir is resolved by ancestor-walk at init
 // (Found). If that finds nothing we fall back to OBSERVING the game's own map

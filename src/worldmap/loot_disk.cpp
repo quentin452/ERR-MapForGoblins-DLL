@@ -1108,6 +1108,16 @@ static std::unordered_map<uint32_t, uint32_t> &defeats()
     return m;
 }
 
+// Where GameAreaParam says each boss stands. Same one-time pass as the defeat flags. Lets a fight
+// that produced NO map marker still be placed in a region: the marker layer is the only other
+// source of a region label, and 16 of 216 fights have no marker (deduped per tile, LOD-tile-only,
+// or not an MSB Enemy part), which is exactly how 17 rows ended up under "(no region)".
+static std::unordered_map<uint32_t, goblin::worldmap::BossArea> &boss_areas()
+{
+    static std::unordered_map<uint32_t, goblin::worldmap::BossArea> m;
+    return m;
+}
+
 const std::unordered_map<uint32_t, uint32_t> &emevd_boss_bars()
 {
     // Built by the marker-build worker; the returned map is read-only + stable afterwards, so only
@@ -1261,6 +1271,13 @@ const std::unordered_map<uint32_t, uint32_t> &emevd_boss_bars()
                 if (!flag || (int32_t)flag <= 0) continue;   // stub rows (0/1/9999991/9999992)
                 ++rows;
                 const uint32_t entity = (uint32_t)rowId;
+                BossArea ba;
+                ba.area = row.b[0x54];
+                ba.gx   = row.b[0x55];
+                ba.gz   = row.b[0x56];
+                std::memcpy(&ba.px, row.b + 0x48, sizeof(float));
+                std::memcpy(&ba.pz, row.b + 0x50, sizeof(float));
+                if (ba.area) boss_areas()[entity] = ba;
                 auto it = defeats().find(entity);
                 if (it == defeats().end()) ++added;
                 else if (it->second != flag) ++differ;
@@ -1312,6 +1329,16 @@ const std::unordered_map<uint32_t, uint32_t> &emevd_boss_defeats()
 {
     emevd_boss_bars();
     return defeats();
+}
+
+bool boss_area_of(uint32_t entityId, BossArea &out)
+{
+    if (!entityId) return false;
+    emevd_boss_bars();  // shared one-time pass fills the area table too
+    auto it = boss_areas().find(entityId);
+    if (it == boss_areas().end()) return false;
+    out = it->second;
+    return true;
 }
 
 uint32_t emevd_boss_bar_name_id(uint32_t entityId)
