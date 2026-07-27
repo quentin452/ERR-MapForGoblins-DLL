@@ -237,6 +237,33 @@ the persistent `x800`. That defect needs a different vanilla-side source — the
 Keep `parse_emevd_defeat_handlers()` anyway: it is what turned a wrong guess ("our ids are ERR's")
 into a measurement, and it is the check to re-run on any install where the counts look off.
 
+### State after the vanilla id dump (216 fights)
+
+| | |
+|---|---|
+| `215 → 216` | the one call-site hit is **`1038540800`**, not the Altus duo |
+| `1041510800` (Tree Sentinel ×2, Altus) | **still absent** — neither literal nor via a handler call site |
+| `1036450340, 1036480340, 1037420340, 1038520340, 1039430340, 1043370340, 1044320340, 1044320342` | **still keyed on the transient entity** |
+
+**The reset is real and targeted.** In `common.emevd`, event **6901** turns 94 flags OFF, and the
+x340 night-boss flags are in that list while ordinary boss flags are not (checked `10000800`
+Godrick, `1042360800` — `NONE`). So those 8 rows can un-tick; the other 208 cannot.
+
+**Both remaining gaps need something the ERR corpus cannot supply**, since ERR routes these through
+the handlers and vanilla does not. Two concrete next probes, in value order:
+
+1. **Persistent flag for the x340 bosses:** within the EVENT that carries the `2003[12]`, collect
+   the flags it sets ON (the `SetEventFlag` instruction) and prefer one of those over the entity id.
+   Principled — no `x340 → x800` naming guess, which is the same class of assumption that already
+   misfired once.
+2. **The Altus duo:** its `2003[12]` is presumably inside a MAP-LOCAL **parameterized** event
+   (ERR's equivalent is `$Event(1041512800)`, initialized by
+   `InitializeEvent(0, 1041512800, 1041510800, …)`). Reading it needs the EVD **parameter table**
+   (event entry `+0x18` count / `+0x20` offset) to map an instruction's placeholder arg back to the
+   caller's argument. That is the general fix for every parameterized registration, not just this one.
+
+Impact if neither is done: 8 of 216 rows may un-tick, 1 fight is missing. The counter is usable.
+
 ## Not done (deliberate)
 
 - **Remembrances obtained.** The natural source is `EquipParamGoods` + carried inventory
