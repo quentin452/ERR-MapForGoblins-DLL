@@ -204,7 +204,7 @@ Consequences to keep in mind (the plumbing landed and is correct — only the ha
 - **Distinct FLAGS = distinct fights**, not distinct entities: two bodies can share one flag, so the
   panel and the coverage diagnostic both dedup on the flag.
 
-### ⚠ Post-mortem — the handler ids were ERR's, not the engine's
+### Why the call-site pass looks like it did nothing (it didn't fail)
 
 Measured on the vanilla install right after shipping the above:
 
@@ -213,28 +213,29 @@ Measured on the vanilla install right after shipping the above:
            + 1 common-func call sites; 0 entities carry a flag that is NOT their own id)
 ```
 
-**1 call site, 0 re-flagged.** The four handler ids (`9005840`, `90005860`, `90005861`, `90005880`)
-came from the only decompiled corpus on the dev box — `D:/tools/emevd_js/err`, which is **ERR**.
-They are that overhaul's handlers. Vanilla routes its shared defeats through different events, so
-the pass matched almost nothing and neither defect moved.
+**1 call site, 0 re-flagged** — but nothing is broken. The handler-discovery probe answered it:
 
-**The lesson generalises well beyond this feature:** a decompiled corpus is an *install*, not the
-engine. Instruction encodings (`2003[11]`, `2003[12]`, the EVD layout) are engine-level and transfer;
-**event and common-func IDs are content and do not**. The literal `2003[12]` scan worked on vanilla
-precisely because it depends only on the instruction. Anything keyed on an event id must be
-DISCOVERED from the active install.
+```
+[LOOTDISK] defeat handlers in common_func.emevd.dcx:
+    9005840(entity=0), 90005860(entity=0) x4, 90005861(entity=0) x4, 90005880(entity=0)
+```
 
-So `parse_emevd_defeat_handlers()` now enumerates, from the install's OWN `common_func.emevd`, every
-event containing a `2003[12]` plus that instruction's entity arg as stored — a placeholder value
-means the entity comes from a parameter and only the call site knows it. Logged as
-`[LOOTDISK] defeat handlers in common_func.emevd.dcx: <id>(entity=<raw>), …`. The call-site pass
-must be driven by those discovered ids, not by a constant. Hardcoding is what failed; do not
-re-introduce it when wiring this up.
+**Vanilla ships the SAME four handlers** (`entity=0` = the entity really is parameter-substituted),
+so the ids were never ERR-specific. And the mechanism works: the sibling parser finds
+`139 90005702 calls` over the same 589 files with the identical bank + arg layout.
 
-Also unresolved, and dependent on the same discovery: whether vanilla's night/roaming bosses reach
-`2003[12]` literally with their transient `x340` entity (they are in the 215, so probably yes) —
-in which case the persistent flag has to come from the call site's parameters, exactly as the ERR
-corpus showed, but keyed on vanilla's handler ids.
+The difference is usage, and the two numbers agree: **vanilla inlines its boss defeats** (451 literal
+`2003[12]`, ~1 handler call site) while **ERR refactored them into the shared handlers** (175 literal,
+102 call sites). So the call-site pass is correct and necessary — it is simply near-empty on vanilla
+and will carry real weight on ERR-like installs. Its one vanilla hit raised the total 215 → 216.
+
+**Consequence for the night/roaming bosses: on vanilla the call site cannot fix them.** They reach
+`2003[12]` literally with their transient `x340` entity, and there is no handler invocation carrying
+the persistent `x800`. That defect needs a different vanilla-side source — the event that sets the
+`x800` flag on their death — and remains OPEN.
+
+Keep `parse_emevd_defeat_handlers()` anyway: it is what turned a wrong guess ("our ids are ERR's")
+into a measurement, and it is the check to re-run on any install where the counts look off.
 
 ## Not done (deliberate)
 
