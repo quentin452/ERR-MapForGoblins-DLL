@@ -1090,6 +1090,22 @@ namespace goblin::debug_rpc
             // goods_count <id> — how many of the category-encoded `id` the player HOLDS (carried
             // inventory), read-only. The sidecar clean-save oracle (grant→save→empty .mfg→reload→
             // assert 0). Reports not-in-world separately from a real 0 (chain unresolved).
+            // text <id> — resolve an FMG string id through the same lookup the markers use. The
+            // research counterpart to param_get: a param says an item is goodsType 3, only the FMG
+            // says it is a Remembrance. Marker/goods encoding: GoodsName = 500000000 + goodsId.
+            if (cmd == "text")
+            {
+                std::string id_s = next_token(rest);
+                if (id_s.empty()) return "err usage: text <fmg id> (goods: 500000000+goodsId)";
+                int32_t id = 0;
+                try { id = static_cast<int32_t>(std::stol(id_s, nullptr, 0)); }
+                catch (...) { return "err bad id"; }
+                std::string s = goblin::overlay_api::lookup_text_utf8(id);
+                if (s.empty()) return "ok text <empty>";
+                // One reply line: strip anything that would break the driver's line framing.
+                for (char &c : s) if (c == '\n' || c == '\r') c = ' ';
+                return "ok text " + s;
+            }
             // param_rows <ParamName> [max] — the param's REAL row ids, straight from its table.
             // Exists because probing ids with `param_get` answers a different question than it
             // looks: sampling 0..399 and finding two rows says nothing about a param numbered by
