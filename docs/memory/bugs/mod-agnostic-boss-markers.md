@@ -55,7 +55,27 @@ Full method, counts, live validation and wiring notes: `docs/re/cross_mod_boss_n
 (no `gameArea*` field in any of the 194 paramdefs), and `GameAreaParam` alone carries neither name nor
 position.
 
-**Tier-3 is WRONG, not merely imprecise — proven live 2026-07-27.** At Gatefront (area60 grid 42,36) the
+**IMPLEMENTED 2026-07-27 (tier 4).** `msbe::parse_emevd_boss_bars` extracts `2003[11]`;
+`worldmap::emevd_boss_bars()` caches `entityId → nameId` (its own EMEVD walk, deliberately NOT gated on
+any loot toggle — the quest-pin gating bug two blocks up in `map_entry_layer` is the same trap);
+`enemy_display_name(npcParam, model, &tier, entityId)` gains **tier 4**, ranked above everything.
+`build_live_bosses` passes the entity, and **only tier 4 may SEED a boss type** (see below).
+Cross-thread note: the marker build runs on the disk WORKER while the enemy-tag reconciler runs on the
+PRESENT thread, so the `npcParam → nameId` registry (`register_boss_bar_name`, how the tag reaches tier 4
+without an entity id) is mutex-guarded; the present thread must never call `emevd_boss_bars()` itself
+(that first call walks ~589 emevds).
+
+**Tier 3 must never decide WHO is a boss — measured live 2026-07-27.** With tier 3 allowed to seed, the
+map drew **1197** boss markers over 241 types on vanilla+randomizer, against **251** boss-bar entities on
+that install (~5x). The shape: 194 types had exactly 1 marker, while **20 types produced 891 markers**
+(worst: 269, then 120, 91, 61…). Cause: tier 3 scans 1000 suffixes of `900000000 + model*1000` and calls
+any hit a field boss — a MODEL property. `vmap ename 12 1 0` on one underground tile: 327 enemies → 224
+tier-0 (correct), **98 tier-3 "bosses" over 12 models (c3320 alone 52 placements)**, 4 tier-4, 1 tier-1.
+Since a type is then stamped on every tile holding that model, a common model explodes into hundreds of
+markers. Fix: `if (tier != 4) continue;` — tier 3 survives only as a NAME fallback. ERR's WMP pins keep
+their own seeding path (name match), unaffected.
+
+**Tier-3 is WRONG for NAMES too, not merely imprecise — proven live 2026-07-27.** At Gatefront (area60 grid 42,36) the
 mod named the boss `Tree Sentinel` (tier 3) while the game's own health bar read **`Black Tree Kindred
 Sentinel`**. Cause, read live: `NpcParam[47701242].nameId == 0` → the resolver falls through to the
 `900000000 + model*1000` band, which names the **vanilla chr model** (c3251), so any mod that reskins or

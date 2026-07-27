@@ -278,6 +278,30 @@ GOBLIN_RENDER_API std::vector<MsbPart> dump_parts(const uint8_t *buf, size_t len
 struct QuestNpcEmevd { uint32_t entity = 0, concluded = 0, regLo = 0, regHi = 0; };
 std::vector<QuestNpcEmevd> parse_emevd_quest_npcs(const uint8_t *buf, size_t len);
 
+// One boss health-bar registration — instruction 2003[11]
+// `HandleBossHealthBar(state, entityId, hpBarSlot, nameId)`, args at a+0/+4/+8/+12.
+//
+// This is the GAME'S OWN per-encounter boss table: whatever the engine raises a boss bar for IS a
+// boss, and the id it labels the bar with IS that encounter's name — both authored per entity in
+// the ACTIVE install's emevds, so a mod that reskins, renames or relocates a boss is followed
+// automatically. It is the mod-agnostic source the WorldBosses markers + the world-space enemy
+// tag should name from; the NpcName model band (resolve_enemy_name tier 3) names the vanilla CHR
+// MODEL and is therefore WRONG on any boss-randomizing mod, not merely imprecise.
+// Method, counts and the live validation: docs/re/cross_mod_boss_naming_re_findings.md.
+//
+// `nameId` is NOT band-filtered on purpose: vanilla uses the 9e8 NpcName boss band, but a mod may
+// author its bar name at any NpcName id (ERR uses 5763010) — the opcode identity is the filter,
+// and the raw NpcName lookup resolves either.
+struct BossBar
+{
+    uint32_t entityId = 0;  // MSB Enemy EntityID this bar belongs to (the per-encounter identity)
+    uint32_t nameId   = 0;  // NpcName FMG id the bar displays
+    uint8_t  slot     = 0;  // HP-bar slot; multi-boss arenas use 1/2 (e.g. the Godskin Duo)
+};
+// Extract every 2003[11] boss-bar registration. Same pinned 64-bit layout as parse_emevd_quest_npcs.
+// A boss commonly has 2+ calls (show/hide); the caller dedups by entityId. Empty on malformed.
+std::vector<BossBar> parse_emevd_boss_bars(const uint8_t *buf, size_t len);
+
 // Richer EMEVD parse for the event-1200 recovery (mechanism B) on top of the direct awards
 // (mechanism A). Same pinned layout as parse_emevd. Returns direct awards, RunEvent(1200)
 // (flag,lot) pairs, and per-event SetEventFlag(.,1) records with their entity candidates.

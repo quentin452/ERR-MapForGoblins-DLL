@@ -26,6 +26,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 - **Gamepad zoom sensitivity** (`gamepad_zoom_sensitivity` INI) — scales the Virtual World Map's L2/R2
   zoom speed, independent of the existing `gamepad_sensitivity` (reticle/pan).
 
+- **Boss markers now work on ANY install and carry the game's own boss names.** Until v2.4.0 boss markers
+  came only from ERR's map pins, so vanilla, randomizer and other mods showed none. They are now built
+  from the boss health bar the engine itself raises, which means one marker per real boss encounter,
+  named exactly as the game names it — including on seeds that reskin, rename or move bosses, where a
+  name guessed from the creature model would be wrong.
+
 ### Fixed
 
 - **Other mods' overlays keep working alongside MapForGoblins.** MapForGoblins used to deaden every other
@@ -42,9 +48,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
   now closes the VWM.
 
 <!-- NOT YET CONFIRMED against the latest build — tracked in docs/HANDOFF.md, add here once verified:
-     bug 1 gamepad tooltip teleport, bug 2 Y-warp on sidebar focus, bug 4 Y+R3 combo warp,
-     bug 5 mod-agnostic boss markers (names work but the tier-3 discriminator dups; real fix is the RE
-     task docs/re/cross_mod_boss_naming_re_prompt.md). -->
+     bug 1 gamepad tooltip teleport, bug 2 Y-warp on sidebar focus, bug 4 Y+R3 combo warp.
+     bug 5 (mod-agnostic boss markers) is RESOLVED — RE + implementation landed 2026-07-27, see
+     docs/re/cross_mod_boss_naming_re_findings.md; the marker-count drop still needs one in-game read. -->
 
 ## [v2.4.0] - 2026-07-23
 

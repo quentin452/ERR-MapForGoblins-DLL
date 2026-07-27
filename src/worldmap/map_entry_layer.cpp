@@ -419,7 +419,7 @@ void build_live_bosses()
     // marker reusing the marked row's textId1/iconId at the enemy's position (same push_marker/projection
     // path as loot enemies, so the dungeon fold applies). Only KNOWN boss types are supplemented — never a
     // false boss. Dedup by tile so a multi-part arena (e.g. c4810 ×4 at m60_52_56) counts once.
-    int supp = 0, agnostic = 0;
+    int supp = 0, agnostic = 0, bossbar = 0;
     // Synthetic per-type name_id for mod-agnostic bosses (which have no FMG id). Sequential in a high
     // reserved band so it's UNIQUE per boss type (the search dedup + on-map ring key on name_id) and so
     // lookup_text_utf8 returns empty for it — but the string is never actually resolved from it: every
@@ -434,21 +434,44 @@ void build_live_bosses()
         { size_t u = en.name.find('_'); try { model = std::stoi(en.name.substr(1, u == std::string::npos ? std::string::npos : u - 1)); } catch (...) { continue; } }
         if (model <= 0) continue;
         int tier = 0;
-        std::string nm = goblin::enemy_display_name((int)en.npcParamId, model, &tier);
+        // Pass the MSB EntityID so the resolver can reach TIER 4 — the name the game itself puts on
+        // this entity's boss health bar (EMEVD 2003[11]). That is the only per-ENCOUNTER source: the
+        // model-keyed tiers name the vanilla creature, which is plain wrong on a boss randomizer
+        // (docs/re/cross_mod_boss_naming_re_findings.md).
+        std::string nm = goblin::enemy_display_name((int)en.npcParamId, model, &tier, en.entityId);
         if (nm.empty()) continue;
+        if (tier == 4)
+        {
+            ++bossbar;
+            // The world-space enemy TAG resolves by npcParamId only (its CSFeMan probe carries no
+            // entity id), so hand it the pair we just resolved — otherwise the in-world label keeps
+            // showing the vanilla model name while the map marker shows the right one.
+            goblin::register_boss_bar_name((int)en.npcParamId, emevd_boss_bar_name_id(en.entityId));
+        }
         auto it = marked.find(nm);
         if (it == marked.end()) it = marked.find(nm + "s");  // grouped-plural marker (enemy "Demi-Human Chief" → marked "Demi-Human Chiefs")
         bool live_named = false;
         if (it == marked.end())
         {
-            // No ERR WorldMapPointParam boss pin (textId2==5100) for this type — but the enemy resolves
-            // via the vanilla field-boss / miniboss NpcName band (tier 3), so it IS a field boss. Seed a
-            // NEW boss type from it so bosses show on vanilla / randomizer / ANY mod, not just ERR (the
-            // mod-agnostic prime directive — the textId2==5100 seed is an ERR-only encoding, absent on
-            // vanilla → 0 bosses there before this). tier != 3 = a regular mob → never a false boss.
-            // No FMG id for the name (it lives in a raw NpcName slot the marker band-router can't resolve),
-            // so it's carried out-of-band via Marker::live_name below. iconId 0 → WorldBosses category icon.
-            if (tier != 3) continue;
+            // No ERR WorldMapPointParam boss pin (textId2==5100) for this type — but the game itself
+            // raises a boss HEALTH BAR for this entity (tier 4), so seed a NEW boss type from it and
+            // bosses show on vanilla / randomizer / ANY mod, not just ERR (the mod-agnostic prime
+            // directive — the textId2==5100 seed is an ERR-only encoding, absent on vanilla → 0 bosses
+            // there before this).
+            //
+            // TIER 4 ONLY — tier 3 must NOT seed a type (measured live 2026-07-27). The tier-3 band
+            // scans 1000 suffixes of `900000000 + model*1000` and calls ANY hit a field boss, which is
+            // a MODEL property, not an encounter: one underground tile alone had 98 tier-3 "bosses"
+            // over 12 models (c3320 by itself 52 placements) against 4 real boss bars. Because a type
+            // is then stamped on every tile holding that model, 20 such types produced 891 of the 1197
+            // markers — the map showed ~5x the game's own boss count (251 boss-bar entities on that
+            // install). Tier 3 survives only as a NAME fallback inside enemy_display_name, never as the
+            // "is a boss" test. An entity the engine never gives a bar is not a boss.
+            //
+            // The name doesn't survive as an FMG id either: a tier-4 bar id sits in the 9e8 band that
+            // the marker text router decodes as TutorialTitle, so it is carried out-of-band via
+            // Marker::live_name below. iconId 0 → WorldBosses category icon.
+            if (tier != 4) continue;
             int32_t &syn = syn_ids[nm];
             if (syn == 0) syn = next_syn++;   // one stable synthetic id per boss type
             MarkedBoss nb; nb.textId1 = syn; nb.iconId = 0;   // syn → marker.name_id (non-lot fallback)
@@ -481,8 +504,9 @@ void build_live_bosses()
         if (live_named) ++agnostic;
     }
     spdlog::info("[BOSSLIVE] built {} boss markers from live WorldMapPointParam (textId2==5100) + {} "
-                 "enemy-supplemented instances ({} marked boss types, {} mod-agnostic tier-3 boss types "
-                 "with no WMP pin)", n, supp, (int)marked.size(), agnostic);
+                 "enemy-supplemented instances ({} boss types total, {} seeded mod-agnostically from "
+                 "the game's own boss health bar, {} instances resolved at tier 4)",
+                 n, supp, (int)marked.size(), agnostic, bossbar);
 }
 
 // Build the LANDMARK buckets LIVE from WorldMapPointParam.iconId (MapGenie category-coverage

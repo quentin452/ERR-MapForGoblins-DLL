@@ -707,6 +707,48 @@ std::vector<QuestNpcEmevd> parse_emevd_quest_npcs(const uint8_t *buf, size_t len
     return out;
 }
 
+std::vector<BossBar> parse_emevd_boss_bars(const uint8_t *buf, size_t len)
+{
+    std::vector<BossBar> out;
+    if (len < 0x80 || std::memcmp(buf, "EVD\0", 4) != 0) return out;
+
+    uint64_t eventCount  = rd64(buf, 0x10);
+    uint64_t eventsOff   = rd64(buf, 0x18);
+    uint64_t instrTblOff = rd64(buf, 0x28);
+    uint64_t argsOff     = rd64(buf, 0x78);
+    if (eventCount > 1000000u) return out;
+
+    constexpr uint32_t BOSS_BAR_BANK = 2003, BOSS_BAR_ID = 11;  // HandleBossHealthBar
+    constexpr size_t EVENT_SZ = 0x30, INSTR_SZ = 0x20;
+    for (uint64_t i = 0; i < eventCount; ++i)
+    {
+        size_t e = (size_t)eventsOff + (size_t)i * EVENT_SZ;
+        if (!inb(e, EVENT_SZ, len)) break;
+        uint64_t instrCount  = rd64(buf, e + 0x08);
+        uint64_t instrOffset = rd64(buf, e + 0x10);
+        size_t base = (size_t)instrTblOff + (size_t)instrOffset;
+        if (instrCount > 1000000u) continue;
+        for (uint64_t j = 0; j < instrCount; ++j)
+        {
+            size_t ins = base + (size_t)j * INSTR_SZ;
+            if (!inb(ins, INSTR_SZ, len)) break;
+            if (rd32(buf, ins + 0x00) != BOSS_BAR_BANK || rd32(buf, ins + 0x04) != BOSS_BAR_ID)
+                continue;
+            uint64_t argLen = rd64(buf, ins + 0x08);
+            int32_t  argOff = (int32_t)rd32(buf, ins + 0x10);
+            if (argOff < 0 || argLen < 16) continue;  // need nameId @ a+12..16
+            size_t a = (size_t)argsOff + (size_t)argOff;
+            if (!inb(a, (size_t)argLen, len)) continue;
+            uint32_t entity = rd32(buf, a + 4);
+            uint32_t slot   = rd32(buf, a + 8);
+            uint32_t nameId = rd32(buf, a + 12);
+            if ((int32_t)entity > 0 && (int32_t)nameId > 0)
+                out.push_back({entity, nameId, (uint8_t)(slot & 0xffu)});
+        }
+    }
+    return out;
+}
+
 // Flag-award templates (World-feature graying) — distinct from the item-lot templates above:
 // the event init carries (entity, FLAG) instead of (entity, lot). Hero's Tomb instruction
 // statue = template 90005683 (args: visgate@8, entity@12, sfx@16, activated_flag@20; matches

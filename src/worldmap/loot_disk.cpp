@@ -1092,6 +1092,66 @@ std::vector<QuestNpcRuntime> load_quest_npcs()
     return out;
 }
 
+const std::unordered_map<uint32_t, uint32_t> &emevd_boss_bars()
+{
+    // Built by the marker-build worker; the returned map is read-only + stable afterwards, so only
+    // the one-time fill needs guarding (the enemy-tag path on the present thread deliberately never
+    // calls this — it goes through register_boss_bar_name instead).
+    static std::mutex mtx;
+    static std::unordered_map<uint32_t, uint32_t> cache;
+    static bool loaded = false;
+    std::lock_guard<std::mutex> lk(mtx);
+    if (loaded) return cache;
+
+    ensure_map_dir_resolved();
+    fs::path evdir = resolve_event_dir(disk_loot_dir());
+    if (evdir.empty())
+    {
+        // No map dir yet (disk source off, or discovery still Searching). Do NOT latch `loaded` —
+        // a later call, once the CreateFileW fallback has revealed the dir, must retry.
+        spdlog::warn("[LOOTDISK] no event\\ dir for boss bars — boss names fall back to the model band");
+        return cache;
+    }
+    spdlog::info("[LOOTDISK] reading boss health bars (2003[11]) from EMEVD {}", evdir.string());
+
+    msbe::OodleDecompressFn oodle = resolve_oodle();
+    int parsed = 0, kraks = 0, calls = 0;
+    std::error_code ec;
+    for (auto &de : fs::directory_iterator(evdir, ec))
+    {
+        if (!de.is_regular_file(ec)) continue;
+        std::string lower = de.path().filename().string();
+        for (char &c : lower) c = (char)std::tolower((unsigned char)c);
+        if (lower.size() < 10 || lower.compare(lower.size() - 10, 10, ".emevd.dcx") != 0)
+            continue;
+        std::vector<uint8_t> dcx = slurp(de.path());
+        if (dcx.empty()) continue;
+        bool krak = false;
+        std::vector<uint8_t> evd = msbe::dcx_decompress(dcx.data(), dcx.size(), &krak, oodle);
+        if (evd.empty()) { if (krak) ++kraks; continue; }
+        for (const auto &b : msbe::parse_emevd_boss_bars(evd.data(), evd.size()))
+        {
+            ++calls;
+            // A boss has several calls (show/hide, phase re-arms); they agree on the name, so
+            // first-wins keeps one entry per ENCOUNTER without a second pass.
+            cache.emplace(b.entityId, b.nameId);
+        }
+        ++parsed;
+    }
+    loaded = true;
+    spdlog::info("[LOOTDISK] boss bars: {} entities named (from {} 2003[11] calls over {} EMEVD "
+                 "files, {} KRAK skipped)", (int)cache.size(), calls, parsed, kraks);
+    return cache;
+}
+
+uint32_t emevd_boss_bar_name_id(uint32_t entityId)
+{
+    if (!entityId) return 0;
+    const auto &m = emevd_boss_bars();
+    auto it = m.find(entityId);
+    return it == m.end() ? 0u : it->second;
+}
+
 std::vector<esd::TalkShopRange> load_merchant_shop_ranges()
 {
     std::vector<esd::TalkShopRange> out;

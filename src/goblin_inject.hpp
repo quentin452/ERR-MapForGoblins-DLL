@@ -480,10 +480,26 @@ namespace goblin
     bool npc_team_and_name(uint32_t npcParamId, uint8_t *teamOut, int32_t *nameOut);
     // Enemy display name (tiers 1-3, cached). "" = nameless. Boss-marker enemy-supplement.
     GOBLIN_RENDER_API std::string enemy_display_name(int npcParam, int model);  // render (build_live_bosses) calls it
-    // Tier-out variant: same resolution, also writes the resolving tier (1=NpcParam.nameId→NpcName,
-    // 2=bestiary codex by MODEL, 3=vanilla field-boss band; 0=nameless) to *tier if non-null. Used by
-    // the `vmap ename` probe to tell a clone's name apart (model-tier vs its own param nameId).
+    // Tier-out variant: same resolution, also writes the resolving tier (4=the game's own EMEVD boss
+    // health bar, 1=NpcParam.nameId→NpcName, 2=bestiary codex by MODEL, 3=vanilla field-boss band;
+    // 0=nameless) to *tier if non-null. Used by the `vmap ename` probe to tell a clone's name apart
+    // (model-tier vs its own param nameId).
     GOBLIN_RENDER_API std::string enemy_display_name(int npcParam, int model, int *tier);
+    // Entity-aware variant — pass the MSB EntityID whenever you have one. Only this form can reach
+    // TIER 4: the name the game itself puts on that entity's boss health bar (EMEVD 2003[11]), which
+    // is per-ENCOUNTER and therefore correct on mods that reskin/rename/move bosses, where the
+    // model-keyed tiers 2/3 name the vanilla creature instead. Live proof + method:
+    // docs/re/cross_mod_boss_naming_re_findings.md. NB: with entityId != 0 the FIRST call may run the
+    // one-time EMEVD walk (worldmap::emevd_boss_bars) — call it from the marker build, never per frame.
+    GOBLIN_RENDER_API std::string enemy_display_name(int npcParam, int model, int *tier,
+                                                     uint32_t entityId);
+    // Teach the resolver that an NpcParam belongs to a boss encounter the game names via its health
+    // bar. The enemy-TAG path (update_native_enemy_names) walks CSFeMan HP bars, which carry no MSB
+    // EntityID and run on the present thread, so it cannot do the tier-4 lookup itself; the marker
+    // build — which has both the entity and the param — registers the pairs it resolves here.
+    // Registering two different names for one param marks it ambiguous (one NpcParam row can only
+    // carry one name) and the resolver falls back to tiers 1-3 for it.
+    GOBLIN_RENDER_API void register_boss_bar_name(int npcParam, uint32_t nameId);
 
     // True iff an EquipParamGoods row is a region Map fragment (sortGroupId u8 @ +0x72 ∈
     // {190 base, 191 DLC}). The no-bake World-Maps pass routes map-good pickups to WorldMaps.

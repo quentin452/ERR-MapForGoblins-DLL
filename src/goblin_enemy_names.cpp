@@ -13,12 +13,22 @@
 // Struct offsets + signatures are derived from the bundled, WORKING PostureBarMod.dll (Mordrog) so
 // they are live-valid on this ERR/ER build. The layered NAME resolution is the Windows-RE result in
 // docs/re/windows_enemy_name_runtime_source_re_findings.md (mod-agnostic, no table):
+//   tier 4  EMEVD boss health bar 2003[11]    (AUTHORITATIVE, per-ENCOUNTER: the very name the game
+//                                               labels this entity's boss bar with — see below)
 //   tier 1  NpcParam.nameId -> NpcName        (named entities: invaders/NPCs/some minibosses)
 //   tier 2  TutorialTitle bestiary codex      (id = model*1000 + variant*100 + {10,4}; ERR + any mod
 //                                               with a codex names EVERY generic enemy)
 //   tier 3  NpcName boss band 9e8+model*1000  (vanilla field bosses whose nameId is 0, e.g. Tree
-//                                               Sentinel 903251600 — EMEVD HandleBossHealthBar ids)
+//                                               Sentinel 903251600 — guessed FROM THE CHR MODEL)
 //   else    nameless (vanilla-correct for a true generic) — draw nothing.
+//
+// WHY TIER 4 OUTRANKS EVERYTHING (docs/re/cross_mod_boss_naming_re_findings.md): tiers 2 and 3 key on
+// the chr MODEL, so they name the vanilla creature, not the encounter. On a boss randomizer that is
+// simply WRONG — live 2026-07-27 at Gatefront the model band said "Tree Sentinel" while the game's own
+// bar said "Black Tree Kindred Sentinel" (the entity's NpcParam.nameId was 0, so tier 1 couldn't save
+// it). The EMEVD boss-bar registration is authored per ENTITY in the active install, so it follows any
+// mod's reskin/rename/relocation for free. Tier 4 needs the MSB EntityID, which only the caller has —
+// hence the entityId overload; the enemy-TAG path has no entity id and uses register_boss_bar_name().
 //
 // THREADING/SAFETY: update_native_enemy_names() runs on the present thread (host side), single-
 // threaded, no locks. The raw game-memory reads + the GetChrInsFromHandle game-function call run
@@ -34,14 +44,17 @@
 #include "goblin_config.hpp"    // config::debugLogging
 #include "re_signatures.hpp"
 #include "modutils.hpp"
+#include "worldmap/loot_disk.hpp"  // emevd_boss_bar_name_id — the tier-4 boss table (host-side)
 
 #include <spdlog/spdlog.h>
 #include <windows.h>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <mutex>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -339,6 +352,56 @@ const ResolvedName &resolve_enemy_name(int npcParam, int model)
     return ins->second;
 }
 
+// ── Tier 4: the game's own boss-bar name ──────────────────────────────────────
+// THREADING: unlike tiers 1-3 (present thread only), tier 4 is written by the marker-build WORKER
+// thread (build_live_bosses → register_boss_bar_name) and read by the present thread (the enemy-tag
+// reconciler), so both stores below are mutex-guarded. An unsynchronised unordered_map rehash across
+// those two threads is exactly the crash class already hit once here (see start_build_worker's
+// "two workers append to g_buckets" note). Two separate locks, never held nested.
+
+// A boss-bar nameId is already a FULL NpcName FMG id, so it is read RAW off the NpcName slots
+// (never through the decode_textid band router) — the same read tier 3 does, but with the id the
+// game authored for THIS entity instead of one guessed from the chr model.
+std::mutex                                g_boss_name_mtx;
+std::unordered_map<uint32_t, std::string> g_boss_name_cache;   // FMG reads aren't free
+
+std::string boss_bar_name_utf8(uint32_t nameId)
+{
+    if (!nameId) return {};
+    {
+        std::lock_guard<std::mutex> lk(g_boss_name_mtx);
+        auto it = g_boss_name_cache.find(nameId);
+        if (it != g_boss_name_cache.end()) return it->second;
+    }
+    std::string name;
+    for (uint32_t slot : kNpcNameSlots)
+    {
+        name = goblin::raw_message_utf8(slot, nameId);
+        if (!name.empty()) break;
+    }
+    std::lock_guard<std::mutex> lk(g_boss_name_mtx);
+    g_boss_name_cache[nameId] = name;   // a duplicate concurrent resolve just rewrites the same value
+    return name;
+}
+
+// npcParamId -> boss-bar nameId, registered by the marker build (the only caller that holds the MSB
+// EntityID). Lets the enemy-TAG path reach tier 4 without an entity id AND without ever touching
+// emevd_boss_bars() — that first call walks every emevd of the install, which must never happen on
+// the present thread. A param two DIFFERENT encounters disagree on is marked ambiguous: one NpcParam
+// row can only carry one name, so falling back to the old tiers is the honest result.
+std::mutex                        g_boss_param_mtx;
+std::unordered_map<int, uint32_t> g_boss_by_param;
+std::unordered_set<int>           g_boss_param_ambiguous;
+
+// The registered boss-bar nameId for a param, or 0 (unknown or ambiguous). Non-mutating.
+uint32_t registered_boss_name_id(int npcParam)
+{
+    std::lock_guard<std::mutex> lk(g_boss_param_mtx);
+    if (g_boss_param_ambiguous.count(npcParam)) return 0;
+    auto it = g_boss_by_param.find(npcParam);
+    return it == g_boss_by_param.end() ? 0u : it->second;
+}
+
 // UTF-8 (our resolver's output) -> UTF-16 for the FMG injector (inject_fmg_entries wants wstring).
 std::wstring utf8_to_wide(const std::string &s)
 {
@@ -371,25 +434,66 @@ enum class NameCat { Mob, FieldBoss, Hostile };
 NameCat name_category(uint8_t team, int tier)
 {
     if (team == 24 || team == 27) return NameCat::Hostile;
-    if (tier == 3)                return NameCat::FieldBoss;
+    // tier 4 = the engine raised a boss health bar for it, which is a STRONGER "is a boss" signal
+    // than the tier-3 name band ever was (that one only means "the model has a boss-band name").
+    if (tier == 3 || tier == 4)   return NameCat::FieldBoss;
     return NameCat::Mob;
 }
 } // namespace
 
-// Public: the enemy's display name (tiers 1-3, cached; "" = nameless). For the boss-marker
+namespace
+{
+// The full resolution: tier 4 (the game's own boss bar) first, then the cached tiers 1-3.
+// `entityId` 0 = caller has no MSB EntityID (the enemy-tag path) — then only the registered
+// per-param boss names apply, and the emevd scan is never triggered.
+ResolvedName resolve_full(int npcParam, int model, uint32_t entityId)
+{
+    if (entityId)
+    {
+        // May run the one-time emevd walk — marker-build path only, never per frame.
+        std::string s = boss_bar_name_utf8(goblin::worldmap::emevd_boss_bar_name_id(entityId));
+        if (!s.empty()) return {std::move(s), 4};
+    }
+    if (uint32_t nid = registered_boss_name_id(npcParam))
+    {
+        std::string s = boss_bar_name_utf8(nid);
+        if (!s.empty()) return {std::move(s), 4};
+    }
+    return resolve_enemy_name(npcParam, model);
+}
+} // namespace
+
+// Public: the enemy's display name (tiers 1-4, cached; "" = nameless). For the boss-marker
 // enemy-supplement (map_entry_layer build_live_bosses) — mod-agnostic, reads the active install's
-// NpcParam/NpcName (tier 3 = the vanilla field-boss band, e.g. "Erdtree Avatar").
+// EMEVD boss bars / NpcParam / NpcName.
 std::string goblin::enemy_display_name(int npcParam, int model)
 {
-    return resolve_enemy_name(npcParam, model).name;
+    return resolve_full(npcParam, model, 0).name;
 }
 
-// Tier-out variant (probe): same cached resolution, also reports which tier produced the name.
+// Tier-out variant (probe): same resolution, also reports which tier produced the name.
 std::string goblin::enemy_display_name(int npcParam, int model, int *tier)
 {
-    const ResolvedName &r = resolve_enemy_name(npcParam, model);
+    return enemy_display_name(npcParam, model, tier, 0);
+}
+
+// Entity-aware variant — the one the boss passes should use. With a real MSB EntityID this can
+// reach tier 4 per ENCOUNTER (two Death Cavalry sharing an NpcParam still get their own bar name),
+// which is the whole point of the EMEVD table.
+std::string goblin::enemy_display_name(int npcParam, int model, int *tier, uint32_t entityId)
+{
+    ResolvedName r = resolve_full(npcParam, model, entityId);
     if (tier) *tier = r.tier;
     return r.name;
+}
+
+void goblin::register_boss_bar_name(int npcParam, uint32_t nameId)
+{
+    if (npcParam <= 0 || !nameId) return;
+    std::lock_guard<std::mutex> lk(g_boss_param_mtx);
+    auto it = g_boss_by_param.find(npcParam);
+    if (it == g_boss_by_param.end()) { g_boss_by_param.emplace(npcParam, nameId); return; }
+    if (it->second != nameId) g_boss_param_ambiguous.insert(npcParam);  // two encounters disagree
 }
 
 // Per-type record for the reconciler. Kept in a session-static map keyed by npcParamId.
@@ -485,7 +589,9 @@ void goblin::update_native_enemy_names()
             uint8_t team = 0; int32_t nameId = 0;
             bool ok = goblin::npc_team_and_name((uint32_t)npcParam, &team, &nameId);
             if (ok && nameId != 0) { st.kind = 1; continue; }          // engine-named — leave alone
-            const ResolvedName &rn = resolve_enemy_name(npcParam, pr.e[i].model);
+            // entityId 0: the HP-bar probe has no MSB EntityID, so tier 4 comes from the
+            // marker build's register_boss_bar_name() — never from the (heavy) emevd scan.
+            const ResolvedName rn = resolve_full(npcParam, pr.e[i].model, 0);
             if (rn.name.empty()) { st.kind = 2; continue; }            // nameless — leave blank
             st.kind = 0;
             st.cat  = name_category(team, rn.tier);
@@ -506,7 +612,7 @@ void goblin::update_native_enemy_names()
         {
             if (!st.injected)                                          // inject the NpcName string once
             {
-                const ResolvedName &rn = resolve_enemy_name(npcParam, pr.e[i].model);  // cached
+                const ResolvedName rn = resolve_full(npcParam, pr.e[i].model, 0);  // cached
                 pending.push_back({st.id, utf8_to_wide(rn.name)});
                 st.injected = true;
             }

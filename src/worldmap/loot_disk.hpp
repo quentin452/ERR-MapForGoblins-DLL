@@ -239,6 +239,22 @@ struct QuestNpcRuntime
 // load_emevd_awards. Mod-agnostic, no bake. Empty when no event dir is found.
 GOBLIN_RENDER_API std::vector<QuestNpcRuntime> load_quest_npcs();
 
+// ── Mod-agnostic boss table (entityId -> NpcName FMG id) ───────────────────────
+// Scan every event\*.emevd.dcx of the ACTIVE install for the engine's boss health-bar
+// registrations (2003[11], msbe::parse_emevd_boss_bars) and return (entityId -> nameId): the
+// game's OWN answer to "which entity is a boss, and what does it call that encounter", per
+// ENCOUNTER rather than per chr model. See docs/re/cross_mod_boss_naming_re_findings.md.
+//
+// Cached after the first call (the table is static install data) and INDEPENDENT of every loot /
+// world-feature toggle — the boss markers and the world-space enemy tag both need it, so it must
+// not ride on `loot_emevd_drops` (cf. the quest-pin gating bug in map_entry_layer). The scan is
+// skipped entirely when the map dir hasn't resolved; callers then fall back to the model band.
+// Same file walk + Oodle/KRAK path as load_emevd_awards.
+GOBLIN_RENDER_API const std::unordered_map<uint32_t, uint32_t> &emevd_boss_bars();
+// Convenience: the boss-bar NpcName id for an MSB EntityID, or 0 when that entity has no boss bar
+// (i.e. the game does not treat it as a boss). Never triggers the scan itself if `entityId` is 0.
+GOBLIN_RENDER_API uint32_t emevd_boss_bar_name_id(uint32_t entityId);
+
 // ── Map-dir discovery state (F1 error + CreateFileW fallback) ──────────────────
 // With loot_from_disk_msb on, the map dir is resolved by ancestor-walk at init
 // (Found). If that finds nothing we fall back to OBSERVING the game's own map

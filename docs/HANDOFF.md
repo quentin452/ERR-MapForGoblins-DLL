@@ -17,7 +17,17 @@ joined with the MSB enemy placement (entity → position) + `GameAreaParam` (row
 `NpcParam[47701242].nameId == 0` → fallthrough to the `900000000 + model*1000` band = the **vanilla chr
 model's** name (c3251). Any boss-reskinning mod breaks it by construction.
 
-**NEXT (not started) — wire it into the DLL.** Everything needed is already parsed; it's a join, not new RE:
+**✅ IMPLEMENTED + PARTLY VERIFIED (2026-07-27).** Live on vanilla+randomizer: `[LOOTDISK] boss bars: 251
+entities named (379 2003[11] calls over 589 EMEVD files)` and `[BOSSLIVE] … 218 instances resolved at
+tier 4`. Then measured that tier 3 must not SEED a boss: 1197 markers / 241 types vs 251 real boss-bar
+entities, with 20 model-derived types alone producing 891 markers (`vmap ename 12 1 0`: 98 tier-3
+"bosses" over 12 models in ONE tile vs 4 real bars). Gate is now `if (tier != 4) continue;`.
+
+**⏳ ONE READ LEFT:** relaunch and check `[BOSSLIVE]` — expect ~218-251 markers instead of 1197, and no
+boss type stamped on more than a handful of tiles. Confirm a couple of boss names in-world, then move the
+changelog line out of the "NOT YET CONFIRMED" comment block.
+
+**Steps that were needed (all done):** Everything was already parsed; it was a join, not new RE:
 1. Extract `2003[011]` in the existing EMEVD pass (`build_disk_emevd*`, `map_entry_layer.cpp`) → `{entityId → nameId}`.
 2. Join on `EntityID` with the `disk_enemies` MSB scan `build_live_bosses` already walks → position.
 3. Name is a plain **FMG id** ⇒ drop the `Marker::live_name` hack + the synthetic `name_id` for these.
