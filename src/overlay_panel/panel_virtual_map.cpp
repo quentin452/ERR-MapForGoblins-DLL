@@ -1018,9 +1018,17 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     }
     ImGui::TextDisabled(tr("drag = pan   wheel = zoom   |   centre (%.0f, %.0f)  zoom %.3f px/u   markers %d   relief %d/%d"),
                         s_cam_x, s_cam_z, s_zoom, s_drawn, s_relief_drawn, s_relief_hits);
+    // This readout sits ABOVE the canvas, and the canvas takes whatever GetContentRegionAvail() is left
+    // — so letting the row APPEAR or vanish resizes the map by one text line. That was the "the map
+    // flickers / changes aspect the FIRST time I warp" report: with no tiles loaded the row didn't exist
+    // yet, the warp set s_tile_status, the row appeared, and the canvas lost a line's height in one
+    // frame. Only the first time, because the status string never becomes empty again.
+    // So the row is ALWAYS laid out; only its text is conditional.
     if (!s_tiles.empty() || !s_tile_status.empty())
         ImGui::TextDisabled(tr("map tiles: %d loaded   |   last: %s"), (int)s_tiles.size(),
                             s_tile_status.c_str());
+    else
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetTextLineHeight()));   // reserve the same height, no text
 
     // Draggable vertical splitter between a sidebar and the next element — lets the user resize the
     // sidebar (ImGui has no built-in splitter; an invisible drag-bar that nudges the width is the idiom).
