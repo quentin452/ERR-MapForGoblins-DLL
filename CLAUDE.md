@@ -61,13 +61,17 @@ Claude Code auto-loads this file. The full agent handoff lives in `AGENTS.md`, i
 
 ## Overlay hot-reload split — keep BOTH DLLs linking (avoid drift)
 
-The mod builds two ways from the SAME sources: the shipped **single DLL** (`build-linux`, default) and a
-DEV **split** (`build-linux-hotreload`, `GOBLIN_OVERLAY_HOTRELOAD=ON`) that puts the draw layer in a
+**Build tree names are per-BOX** — `$BUILD` below is `build-linux` on the Linux dev box and `build-err`
+on the Windows one (`ls -d build*/build.ninja` to resolve it; the `-err` name is historical, `build.bat`
+builds the SAME DLL there for every packaging profile). The split adds the `-hotreload` suffix either way.
+
+The mod builds two ways from the SAME sources: the shipped **single DLL** (`$BUILD`, default) and a
+DEV **split** (`$BUILD-hotreload`, `GOBLIN_OVERLAY_HOTRELOAD=ON`) that puts the draw layer in a
 swappable `goblin_overlay_render.dll` so render/marker/panel edits reload into the running game with **no
 restart** (watcher auto-swaps ~1.3s, or the `reload_overlay` RPC). Loop + tasks: see `docs/HANDOFF.md`
 "OVERLAY HOT-RELOAD RESYNC" + the `.vscode/tasks.json` "Hot-reload …" tasks.
 
-- **The split silently rots** because `build-linux` (single DLL) links every symbol regardless of the
+- **The split silently rots** because `$BUILD` (single DLL) links every symbol regardless of the
   host↔render boundary, so a new **host→render** call (e.g. a new `debug_rpc` verb calling a `panel::` or
   `worldmap::` function) compiles fine in the default build but leaves the split's host DLL with an
   undefined symbol. It bit twice already (2026-07-05 resync fixed ~40 of them).
@@ -75,7 +79,7 @@ restart** (watcher auto-swaps ~1.3s, or the `reload_overlay` RPC). Loop + tasks:
   `goblin_debug_rpc.cpp`, `goblin_overlay.cpp`, `goblin_overlay_render_api.cpp`, `goblin_mod.cpp`) calling
   into render code (`overlay_panel/`, `worldmap/map_entry_layer.cpp`/`map_renderer.cpp`/`grace_layer.cpp`,
   `goblin_overlay_render.cpp`), or vice-versa — **before you finish, run:**
-  `ninja -C build-linux-hotreload MapForGoblins goblin_overlay_render` and fix any new `undefined symbol`.
+  `ninja -C $BUILD-hotreload MapForGoblins goblin_overlay_render` and fix any new `undefined symbol`.
   (Pure host-only or render-only edits don't need it.) Fix patterns, in order of preference:
   1. **Stateful data/logic file misfiled in render** → move it to `GOBLIN_HOST_SOURCES` + mark its public
      API `GOBLIN_RENDER_API` (host exports; render imports via `MapForGoblins.lib`). See vworld/maptile.

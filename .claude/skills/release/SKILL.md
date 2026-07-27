@@ -20,7 +20,16 @@ pushed). Prior releases: v2.1.0 (first fork release), v2.2.0, v2.3.0, v2.4.0.
 - **Tag:** `vX.Y.Z` (annotated). Minor bump (`v2.3.0`→`v2.4.0`) when the cycle adds user-facing features;
   patch bump (`vX.Y.Z+1`) for a fixes-only cycle.
 - **Release title:** `vX.Y.Z — <short theme>` (em dash). Theme = the 1–3 biggest user-facing items.
-- **Asset:** attach the shipped **single-DLL** `build-linux/MapForGoblins.dll` (every prior release ships it).
+- **Asset:** attach the shipped **single-DLL** `MapForGoblins.dll` (every prior release ships it).
+  **The build tree is per-BOX, so resolve it, don't assume it** — `$BUILD` below:
+  | box | shipped single DLL | hot-reload split |
+  |---|---|---|
+  | Linux dev box | `build-linux/` | `build-linux-hotreload/` |
+  | Windows dev box | `build-err/` | `build-err-hotreload/` |
+  Pick the one that exists (`ls -d build*/build.ninja`). On Windows the name is a historical artefact,
+  not a profile choice: `build.bat`'s header states that **every packaging profile (ERR / vanilla /
+  convergence / erte) builds the SAME DLL out of `build-err/`** — the profile only selects package
+  assets, ERR config is runtime-detected. So there is exactly one DLL to ship on either box.
 - **Notes:** curated, user-facing markdown (see v2.3.0 / v2.4.0 for the house style — `## ★ headline`,
   short prose, an Install line). Derive from the changelog's version block, NOT raw git log.
 
@@ -38,9 +47,11 @@ pushed). Prior releases: v2.1.0 (first fork release), v2.2.0, v2.3.0, v2.4.0.
    `## [Unreleased]` → leave empty, insert `## [vX.Y.Z] - YYYY-MM-DD` below it. Commit:
    `docs(changelog): cut vX.Y.Z — <theme>`.
 
-3. **Build the shipped DLL fresh from HEAD:** `ninja -C build-linux MapForGoblins` (must be green).
+3. **Build the shipped DLL fresh from HEAD:** `ninja -C $BUILD MapForGoblins` (must be green).
    (If the change crossed the host↔render boundary this cycle, also confirm the split still links:
-   `ninja -C build-linux-hotreload MapForGoblins goblin_overlay_render`.)
+   `ninja -C $BUILD-hotreload MapForGoblins goblin_overlay_render`.)
+   Then check the DLL's mtime is from THIS build — attaching a stale binary is a silent error that is
+   public the moment the release is created.
 
 4. **Push master:** `git fetch origin`; `git push origin master`. (The user normally pushes, but a
    release explicitly authorizes it.)
@@ -52,7 +63,7 @@ pushed). Prior releases: v2.1.0 (first fork release), v2.2.0, v2.3.0, v2.4.0.
    ```
    gh release create vX.Y.Z --repo quentin452/ERR-MapForGoblins-DLL \
      --title "vX.Y.Z — <theme>" --notes-file <notes.md> \
-     build-linux/MapForGoblins.dll
+     $BUILD/MapForGoblins.dll
    ```
 
 7. **Verify:** `gh release view vX.Y.Z --repo quentin452/ERR-MapForGoblins-DLL` — confirm
