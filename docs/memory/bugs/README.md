@@ -130,3 +130,9 @@ Complex bugs — resolved and open — with the durable root-cause/fix takeaway.
   `g_imgui_init` stale. Fix: full readiness gate + retry-not-give-up + reset `g_imgui_init` on cleanup +
   entry null-guard. Residual (unproven): a boot device-reset could dangle the cached command queue (survives
   null guards). → [atlas-upload-gpu-race](atlas-upload-gpu-race.md)
+- **Boot crash inside d3d11.dll** [open lead 2026-07-27] — intermittent `0xC0000005` ~4 s after launch,
+  faulting module `d3d11.dll`, our `hk_present` in the stack scan. **We never touch D3D11** (link
+  `d3d12`+`dxgi` only) → the faulting code is another overlay's; six hooking DLLs were loaded. NOT the
+  atlas race (that one is a null deref). Disabling RTSS stopped it, on a small sample — a lead, not a
+  verdict. Also records the mismatched-PDB symbolization trap.
+  → [boot-crash-present-chain-d3d11](boot-crash-present-chain-d3d11.md)
