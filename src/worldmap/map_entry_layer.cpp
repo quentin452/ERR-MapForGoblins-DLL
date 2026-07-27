@@ -374,14 +374,21 @@ static inline uint32_t boss_cell_key(uint8_t a, uint8_t gx, uint8_t gz)
 // could not resolve it. An enemy randomizer swaps ModelName + NPCParamID while KEEPING the original
 // part name, so the prefix is the creature that USED to stand there — 84.7% of placements diverge on
 // Randomizer v0.11.4. Every model-keyed lookup (bestiary codex tier 2, NpcName boss band tier 3)
-// silently named the wrong creature before this. 0 = unusable.
+// silently named the wrong creature before this.
+//
+// Returns **-1** (not 0) when the model can't be parsed, because **c0000 is a REAL model** — the
+// player/humanoid body every NPC-shaped enemy uses. The old `model <= 0` rejection dropped those
+// placements before the name was ever resolved, costing 22 of the 240 reachable boss-bar entities on
+// Randomizer v0.11.4 (368 of 23005 placements overall are c0000): they simply never became markers.
+// Callers must test `< 0`. Passing 0 on is safe — tiers 2 and 3 guard on `model > 0` themselves, and
+// tiers 1 and 4 don't use the model at all.
 static int enemy_model_id(const DiskEnemy &en)
 {
     const std::string &s = !en.modelName.empty() ? en.modelName : en.name;
-    if (s.empty() || s[0] != 'c') return 0;
+    if (s.empty() || s[0] != 'c') return -1;
     size_t u = s.find('_');
     try { return std::stoi(s.substr(1, u == std::string::npos ? std::string::npos : u - 1)); }
-    catch (...) { return 0; }
+    catch (...) { return -1; }
 }
 
 void build_live_bosses()
@@ -451,7 +458,7 @@ void build_live_bosses()
     for (const DiskEnemy &en : g_parsed.enemies)
     {
         const int model = enemy_model_id(en);
-        if (model <= 0) continue;
+        if (model < 0) continue;          // < 0, not <= 0: c0000 (the player body) is a real model
         int tier = 0;
         // Pass the MSB EntityID so the resolver can reach TIER 4 — the name the game itself puts on
         // this entity's boss health bar (EMEVD 2003[11]). That is the only per-ENCOUNTER source: the
@@ -3972,9 +3979,10 @@ std::string ename_probe(const std::string &query)
     for (const DiskEnemy &en : g_parsed.enemies)
     {
         // Same model extraction as the supplement pass (shared helper: ACTUAL ModelName, not the
-        // part-name prefix — see enemy_model_id).
+        // part-name prefix — see enemy_model_id). Same `< 0` test, so the probe shows the c0000
+        // placements the supplement now keeps.
         const int model = enemy_model_id(en);
-        if (model <= 0) continue;
+        if (model < 0) continue;
 
         int tier = 0;
         // Pass the entity so the probe reports the SAME tier the supplement pass sees (tier 4 needs it).
