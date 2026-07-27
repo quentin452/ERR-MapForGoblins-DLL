@@ -396,6 +396,14 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
             if (nm >= len) continue;
             Enemy en;
             en.name = rd_utf16(buf, nm, len);
+            // Actual chr model (modelIndex u32 @ part+0x14 -> MODEL names), NOT the name prefix:
+            // an enemy randomizer keeps the original part name while swapping ModelName, so the
+            // prefix names the creature that used to stand here (84.7% divergence measured on
+            // Randomizer v0.11.4). The inb(pe,0x70) check above already covers +0x14.
+            {
+                uint32_t mi = rd32(buf, pe + 0x14);
+                if (mi < modelNames.size()) en.modelName = modelNames[mi];
+            }
             en.npcParamId = npc;
             en.talkId = talk;
             en.entityId = entityId;

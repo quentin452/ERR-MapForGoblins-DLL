@@ -79,6 +79,16 @@ struct Asset
 struct Enemy
 {
     std::string name;            // e.g. "c3670_9000" (the ChrIns placement)
+    // The part's ACTUAL chr model, from modelIndex (u32 @ part+0x14) -> MODEL section names —
+    // the same substitution machinery as Asset::modelName, and for the same reason.
+    //
+    // NEVER derive the model from `name`. An enemy randomizer swaps the creature by rewriting
+    // ModelName + NPCParamID while KEEPING the original part name, so the name prefix is the
+    // creature that USED to be there. Measured 2026-07-27 on Randomizer v0.11.4: the prefix
+    // disagrees with ModelName on **19439 of 22959 placements (84.7%)** — i.e. any model-keyed
+    // lookup (the bestiary codex tier 2, the NpcName boss band tier 3) reads the WRONG creature
+    // for 5 enemies out of 6. Empty if the index is OOB.
+    std::string modelName;       // e.g. "c4770"
     uint32_t    npcParamId = 0;  // = *(u32)( *(u64)(part+0x68) + 0x0c )  (NpcParam row id)
     // TalkID (typeData +0x10, right after NPCParamID — SoulsFormats MSBE.Enemy field order
     // ThinkParamID@+0x08 / NPCParamID@+0x0c / TalkID@+0x10). 0 when unset. The merchant-pin

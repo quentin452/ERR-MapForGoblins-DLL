@@ -65,6 +65,22 @@ PRESENT thread, so the `npcParam → nameId` registry (`register_boss_bar_name`,
 without an entity id) is mutex-guarded; the present thread must never call `emevd_boss_bars()` itself
 (that first call walks ~589 emevds).
 
+**Final live numbers (2026-07-27, vanilla + Randomizer v0.11.4), three passes:**
+
+| build | boss markers | types | biggest type | single-instance types |
+|---|---|---|---|---|
+| tier-3 seeding (before) | **1197** | 241 | 269 | 194 |
+| + tier-4-only seed gate | 273 | 202 | 31 | 186 |
+| + tier-4 types reject tier-3 members, + real `ModelName` | **215** | 202 | **3** | 191 |
+
+215 markers against 251 boss-bar entities on that install, and no type stamped on more than 3 tiles
+(a recurring boss legitimately has 3-4). Non-boss markers were byte-identical across the last two
+passes (7361 both times) and the spoiler-log audit was unchanged (97.6 % coverage), so neither fix had
+collateral. **Two gates, both needed:** the seed gate stops tier 3 creating types, and the membership
+check stops a tier-4 type re-absorbing tier-3 name-matches through the `marked.find(nm)` lookup that
+runs BEFORE the seed gate — that leak alone was 273 vs 215. Third ingredient:
+[[msb-enemy-model-vs-partname]] (tier 3 was resolving against the wrong chr model entirely).
+
 **Tier 3 must never decide WHO is a boss — measured live 2026-07-27.** With tier 3 allowed to seed, the
 map drew **1197** boss markers over 241 types on vanilla+randomizer, against **251** boss-bar entities on
 that install (~5x). The shape: 194 types had exactly 1 marker, while **20 types produced 891 markers**

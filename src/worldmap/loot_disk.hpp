@@ -77,6 +77,11 @@ struct DiskEnemy
     float    posX = 0.0f, posY = 0.0f, posZ = 0.0f;  // Part+0x20 (block-local; Y for the altitude badge)
     std::string name;                   // part name (starts with the model, e.g. "c4210_9000")
                                         // — the no-bake Spiritspring Hawk model filter (SSO, cheap)
+    // The part's ACTUAL chr model (MSB modelIndex -> MODEL names), e.g. "c4770". Use THIS for any
+    // model-keyed lookup, never the `name` prefix: an enemy randomizer swaps ModelName while keeping
+    // the original part name, so the prefix names the creature that used to be there (84.7% divergence
+    // measured on Randomizer v0.11.4 — see msbe::Enemy::modelName). Empty when unresolved.
+    std::string modelName;
 };
 
 // One placed spirit-spring Region read from a disk MSB (worldFeaturesFromDisk). subtype

@@ -23,15 +23,24 @@ tier 4`. Then measured that tier 3 must not SEED a boss: 1197 markers / 241 type
 entities, with 20 model-derived types alone producing 891 markers (`vmap ename 12 1 0`: 98 tier-3
 "bosses" over 12 models in ONE tile vs 4 real bars). Gate is now `if (tier != 4) continue;`.
 
-**MEASURED after the gate (2026-07-27 10:57):** `[BOSSLIVE] 273 markers, 202 types, 218 instances at
-tier 4` — down from **1197 / 241**, against 251 boss-bar entities on the install. Two residues left:
-- **273 markers vs 218 tier-4 instances.** The extra ~55 enter through the `marked.find(nm)` branch,
-  which runs BEFORE the tier gate: once a tier-4 boss seeds a type, any tier-3 enemy resolving to the
-  same model-band name joins it without ever being tier-checked. Same mechanism as the old blow-up, at
-  1/20th the scale. Fix would be to remember which types were tier-4-seeded and refuse tier-3 joins.
-- **251 boss-bar entities vs 218 markers.** 33 bosses have a bar but no marker — not in the `_00` MSB
-  enemy scan (event-spawned / LOD-only), or lost to the per-(type,tile) dedup. Needs a `vmap dump_markers`
-  on a running game joined against `tools/_probe_boss_enum.py` output to split those two causes.
+**MEASURED + DONE (2026-07-27).** Three passes, all live on vanilla + Randomizer v0.11.4:
+
+| build | boss markers | types | biggest type |
+|---|---|---|---|
+| tier-3 seeding | 1197 | 241 | 269 |
+| + tier-4-only seed gate | 273 | 202 | 31 |
+| + tier-4 types reject tier-3 members + real `ModelName` | **215** | 202 | **3** |
+
+215 vs 251 boss-bar entities, no type on more than 3 tiles. Non-boss markers identical across the last
+two passes (7361) and the spoiler audit unchanged (97.6 %) → no collateral. The third pass also fixed
+[[msb-enemy-model-vs-partname]] — we were reading the chr model from the part NAME, wrong for **84.7 %**
+of placements on this mod, which is what let tier 3 hallucinate bosses in the first place.
+
+**STILL OPEN — 251 boss-bar entities vs 215 markers (~36).** Causes not yet split: boss entities absent
+from the `_00` MSB enemy scan (event-spawned / LOD-only), and losses to the per-(type,tile) dedup — a
+tile holding two same-named encounters keeps one. Join `vmap dump_markers` against
+`tools/_probe_boss_enum.py` output to separate them. Per-ENCOUNTER identity (key on `entityId` instead
+of name+tile) is the structural answer if it turns out to be dedup.
 
 Then confirm a couple of boss names in-world and move the changelog line out of the "NOT YET CONFIRMED"
 comment block.

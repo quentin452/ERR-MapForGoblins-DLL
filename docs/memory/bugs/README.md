@@ -8,9 +8,15 @@ Complex bugs — resolved and open — with the durable root-cause/fix takeaway.
   randomizer/any non-ERR game: `build_live_bosses` seeded boss TYPES only from ERR's `textId2==5100`
   WorldMapPointParam pins. Now also seeds mod-agnostically from the tier-3 field-boss NpcName band
   (`enemy_display_name(...,&tier)==3`) with `Marker::live_name` + a synthetic `name_id`. Bosses now show
-  WITH names on any mod — BUT tier-3 is a name-source tier, not an "is-boss" signal → dups/wrong names
-  (multiple "Mimic Tear", clone models collapse). Real fix = RE: `docs/re/cross_mod_boss_naming_re_prompt.md`.
+  WITH names on any mod — BUT tier-3 is a name-source tier, not an "is-boss" signal → dups/wrong names.
+  **RESOLVED 2026-07-27**: sourced from the game's own boss health bar (EMEVD `2003[11]`, tier 4;
+  `docs/re/cross_mod_boss_naming_re_findings.md`). Live: **1197 → 215 markers**, biggest type 269 → 3.
   → [mod-agnostic-boss-markers](mod-agnostic-boss-markers.md)
+- **MSB part name is not the enemy's model** [resolved 2026-07-27] — an enemy randomizer swaps
+  `ModelName`+`NPCParamID` and KEEPS the part name, so the `c####_` prefix names the creature that used
+  to be there (**84.7 %** of placements diverge on Randomizer v0.11.4). Every model-keyed name lookup
+  (codex tier 2, boss band tier 3) read the wrong creature; use `DiskEnemy::modelName` /
+  `enemy_model_id()`. → [msb-enemy-model-vs-partname](msb-enemy-model-vs-partname.md)
 - **MapForGoblins killed other mods' overlays** [resolved 2026-07-26, in-game retest pending] — three
   independent causes: (1) the raw-input / DirectInput8 / cursor hooks blanked input for EVERY caller in the
   process, not just the game (other overlays went unresponsive with F1 open) → now gated on

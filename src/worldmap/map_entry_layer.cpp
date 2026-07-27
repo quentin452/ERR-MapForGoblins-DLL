@@ -357,10 +357,31 @@ void emit_lot_siblings(uint32_t baseLot,
 // A marked boss TYPE, captured from WorldMapPointParam so the enemy-supplement below can complete its
 // instances: its name (for enemy name-match), the row's textId1/iconId (reused verbatim so supplemented
 // markers look identical), and a set of tile cells it already occupies (for dedup).
-struct MarkedBoss { int32_t textId1 = 0; int iconId = 0; std::unordered_set<uint32_t> cells; };
+// `tier4` = the type was seeded because the GAME raises a boss health bar for it. Such a type must
+// NOT then absorb tier-3 name-matches: the type lookup below runs BEFORE the tier gate, so without
+// this flag one tier-4 boss re-opens the model-band fan-out for its whole name (measured 2026-07-27:
+// 273 markers instead of ~220, with two types alone contributing 49).
+struct MarkedBoss { int32_t textId1 = 0; int iconId = 0; bool tier4 = false;
+                    std::unordered_set<uint32_t> cells; };
 static inline uint32_t boss_cell_key(uint8_t a, uint8_t gx, uint8_t gz)
 {
     return ((uint32_t)a << 16) | ((uint32_t)gx << 8) | (uint32_t)gz;
+}
+
+// The chr model of a placed enemy, as an int (3251 for "c3251").
+//
+// Prefers the MSB's ACTUAL ModelName and falls back to the part-name prefix only when the parser
+// could not resolve it. An enemy randomizer swaps ModelName + NPCParamID while KEEPING the original
+// part name, so the prefix is the creature that USED to stand there — 84.7% of placements diverge on
+// Randomizer v0.11.4. Every model-keyed lookup (bestiary codex tier 2, NpcName boss band tier 3)
+// silently named the wrong creature before this. 0 = unusable.
+static int enemy_model_id(const DiskEnemy &en)
+{
+    const std::string &s = !en.modelName.empty() ? en.modelName : en.name;
+    if (s.empty() || s[0] != 'c') return 0;
+    size_t u = s.find('_');
+    try { return std::stoi(s.substr(1, u == std::string::npos ? std::string::npos : u - 1)); }
+    catch (...) { return 0; }
 }
 
 void build_live_bosses()
@@ -429,9 +450,7 @@ void build_live_bosses()
     std::unordered_map<std::string, int32_t> syn_ids;  // boss name -> its synthetic id (stable per type)
     for (const DiskEnemy &en : g_parsed.enemies)
     {
-        if (en.name.empty() || en.name[0] != 'c') continue;
-        int model = 0;
-        { size_t u = en.name.find('_'); try { model = std::stoi(en.name.substr(1, u == std::string::npos ? std::string::npos : u - 1)); } catch (...) { continue; } }
+        const int model = enemy_model_id(en);
         if (model <= 0) continue;
         int tier = 0;
         // Pass the MSB EntityID so the resolver can reach TIER 4 — the name the game itself puts on
@@ -450,6 +469,11 @@ void build_live_bosses()
         }
         auto it = marked.find(nm);
         if (it == marked.end()) it = marked.find(nm + "s");  // grouped-plural marker (enemy "Demi-Human Chief" → marked "Demi-Human Chiefs")
+        // A type the GAME defined (tier 4) only accepts tier-4 members. This lookup runs before the
+        // seeding gate below, so without the check one real boss re-opens the model-band fan-out for
+        // everything sharing its name — the very blow-up the gate exists to stop. ERR's WMP-pinned
+        // types (tier4=false) keep completing from the name match as before.
+        if (it != marked.end() && it->second.tier4 && tier != 4) continue;
         bool live_named = false;
         if (it == marked.end())
         {
@@ -475,6 +499,7 @@ void build_live_bosses()
             int32_t &syn = syn_ids[nm];
             if (syn == 0) syn = next_syn++;   // one stable synthetic id per boss type
             MarkedBoss nb; nb.textId1 = syn; nb.iconId = 0;   // syn → marker.name_id (non-lot fallback)
+            nb.tier4 = true;                                  // game-defined type: tier-4 members only
             it = marked.emplace(nm, nb).first;
             live_named = true;
         }
@@ -3946,16 +3971,14 @@ std::string ename_probe(const std::string &query)
     size_t hits = 0;
     for (const DiskEnemy &en : g_parsed.enemies)
     {
-        // Same model extraction as the supplement pass (name starts "c<model>_..."). Non-'c' → skip.
-        int model = 0;
-        if (en.name.empty() || en.name[0] != 'c') continue;
-        { size_t u = en.name.find('_');
-          try { model = std::stoi(en.name.substr(1, u == std::string::npos ? std::string::npos : u - 1)); }
-          catch (...) { continue; } }
+        // Same model extraction as the supplement pass (shared helper: ACTUAL ModelName, not the
+        // part-name prefix — see enemy_model_id).
+        const int model = enemy_model_id(en);
         if (model <= 0) continue;
 
         int tier = 0;
-        std::string nm = goblin::enemy_display_name((int)en.npcParamId, model, &tier);
+        // Pass the entity so the probe reports the SAME tier the supplement pass sees (tier 4 needs it).
+        std::string nm = goblin::enemy_display_name((int)en.npcParamId, model, &tier, en.entityId);
 
         bool match;
         if (by_cell)
@@ -3965,10 +3988,12 @@ std::string ename_probe(const std::string &query)
                     (!nm.empty() && lower(nm).find(needle) != std::string::npos);
         if (!match) continue;
         ++hits;
-        spdlog::info("[ENAME]   part='{}' npc={} model={} area{} grid({},{}) pos({:.0f},{:.0f}) "
-                     "-> name='{}' tier={}",
-                     en.name, en.npcParamId, model, en.area, en.gx, en.gz, en.posX, en.posZ,
-                     nm.empty() ? "<nameless>" : nm.c_str(), tier);
+        // `part` is the placement name, `model` the ACTUAL chr model — they diverge on any mod that
+        // swaps enemies in place, which is exactly what this probe exists to expose.
+        spdlog::info("[ENAME]   part='{}' npc={} model={} entity={} area{} grid({},{}) "
+                     "pos({:.0f},{:.0f}) -> name='{}' tier={}",
+                     en.name, en.npcParamId, model, en.entityId, en.area, en.gx, en.gz,
+                     en.posX, en.posZ, nm.empty() ? "<nameless>" : nm.c_str(), tier);
     }
     spdlog::info("[ENAME] {} match(es)", hits);
     char out[128];

@@ -475,6 +475,7 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
                 e.posY = en.pos[1];  // altitude for the above/below-player badge
                 e.posZ = en.pos[2];
                 e.name = en.name;
+                e.modelName = en.modelName;
                 enemies->push_back(std::move(e));
             }
         }
@@ -642,6 +643,7 @@ std::vector<DiskEnemy> load_lod_award_entities(const std::unordered_set<uint32_t
             e.posX = en.pos[0];
             e.posZ = en.pos[2];
             e.name = en.name;
+            e.modelName = en.modelName;
             out.push_back(std::move(e));
             remaining.erase(en.entityId);  // first MSB occurrence wins (mirrors the bake's join)
         }
