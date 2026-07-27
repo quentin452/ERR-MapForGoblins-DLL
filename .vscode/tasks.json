@@ -123,6 +123,7 @@
       "type": "pickString",
       "description": "Which RPC test to run?",
       "options": [
+        "probe_boss_defeat_flags.py",
         "test_vmap.py",
         "test_vworld.py",
         "test_warp.py",

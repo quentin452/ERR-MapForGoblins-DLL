@@ -3,6 +3,7 @@
 #include "goblin_config.hpp"
 #include "input/input_shared.hpp"
 #include "input/input_wndproc.hpp"  // wm_keydown_total — RPC key-delivery verify
+#include "goblin_markers.hpp"  // markers::set_event_flag — the `flag set` verb
 #include "goblin_inject.hpp"   // world_map_open() — status field for the driver's boot/nav loop
 #include "goblin_overlay_render_api.hpp"  // overlay_api::rebuild_markers (refresh_markers cmd)
 #include "goblin_legacy_fold.hpp"         // entrance_anchor:: (entrance_anchor cmd — Slice 1)
@@ -454,7 +455,7 @@ namespace goblin::debug_rpc
                 return "ok commands: help ping status idlediag open_f1 f1_tab vmap vworld assets_probe maptile_probe pause set screenshot dumpmenu reload_overlay coop"
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers entrance_anchor warp coords warp_local warp_xyz warp_far load_rescue we_scan"
-                       " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
+                       " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle flag"
                        " | hp immortal exit mfg_build er_base er_version proj fold_probe mem_dump mem_write mem_scan_f3 mem_scan_u32 mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone spawn_asset spawn_cap4e80 spawn_capreg add_collision objects hf_probe hf_probe_present hf_sample hf_shape_probe ground_at far_relief_probe far_relief w2s_probe"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
@@ -1089,6 +1090,63 @@ namespace goblin::debug_rpc
             // goods_count <id> — how many of the category-encoded `id` the player HOLDS (carried
             // inventory), read-only. The sidecar clean-save oracle (grant→save→empty .mfg→reload→
             // assert 0). Reports not-in-world separately from a real 0 (chain unresolved).
+            // flag — read/scan/write EVENT FLAGS live. Added to settle a question the EMEVD could
+            // not answer statically: which flag the engine ACTUALLY sets when a boss dies. The
+            // registration instruction names an entity whose id doubles as the flag, except for
+            // night/roaming bosses, where the persistent flag is set from a PARAMETER our parser
+            // reads as a placeholder (docs/memory/features/run-tracker.md). `flag range` over the
+            // boss's tile band shows the truth on a save where it is already dead — no parsing.
+            //
+            //   flag <id>                 -> its state
+            //   flag range <lo> <hi>      -> every flag ON in [lo,hi] (span capped)
+            //   flag set <id> <0|1>       -> write it (same setter the marker code uses)
+            if (cmd == "flag")
+            {
+                std::string a0 = next_token(rest);
+                if (a0.empty()) return "err usage: flag <id> | flag range <lo> <hi> | flag set <id> <0|1>";
+                auto num = [](const std::string &s, uint32_t &out) {
+                    try { out = static_cast<uint32_t>(std::stoul(s, nullptr, 0)); return true; }
+                    catch (...) { return false; }
+                };
+                if (a0 == "range")
+                {
+                    uint32_t lo = 0, hi = 0;
+                    if (!num(next_token(rest), lo) || !num(next_token(rest), hi) || hi < lo)
+                        return "err usage: flag range <lo> <hi>";
+                    // Each id is one guarded call into the game's IsEventFlag; a wide span would
+                    // stall the present thread, so the span is capped rather than silently trimmed.
+                    if (hi - lo > 20000u) return "err range too wide (max 20000 ids)";
+                    std::string on;
+                    int n = 0;
+                    for (uint32_t f = lo; f <= hi; ++f)
+                    {
+                        if (!goblin::ui::read_event_flag(f)) continue;
+                        ++n;
+                        if (n <= 200) on += (on.empty() ? "" : ",") + std::to_string(f);
+                    }
+                    char b[64];
+                    std::snprintf(b, sizeof(b), "ok flag range n=%d%s ", n, n > 200 ? " (first 200)" : "");
+                    return std::string(b) + on;
+                }
+                if (a0 == "set")
+                {
+                    uint32_t id = 0, v = 0;
+                    if (!num(next_token(rest), id)) return "err usage: flag set <id> <0|1>";
+                    std::string v_s = next_token(rest);
+                    if (v_s.empty() || !num(v_s, v)) return "err usage: flag set <id> <0|1>";
+                    if (!goblin::markers::set_event_flag(id, (uint8_t)(v ? 1 : 0)))
+                        return "err set_event_flag failed (EventFlagMan unresolved / not in-world)";
+                    char b[80];
+                    std::snprintf(b, sizeof(b), "ok flag set %u = %u", id, v ? 1u : 0u);
+                    return std::string(b);
+                }
+                uint32_t id = 0;
+                if (!num(a0, id)) return "err bad id";
+                char b[80];
+                std::snprintf(b, sizeof(b), "ok flag %u = %d", id,
+                              goblin::ui::read_event_flag(id) ? 1 : 0);
+                return std::string(b);
+            }
             if (cmd == "goods_count")
             {
                 std::string id_s = next_token(rest);
