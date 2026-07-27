@@ -21,6 +21,8 @@
 #include "goblin_map_data.hpp"           // generated::Category
 #include "worldmap/marker_layer.hpp"
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <cstdio>
 #include <string>
@@ -51,6 +53,11 @@ struct RunSnapshot
     int killed = 0;
     int unflagged = 0;            // distinct boss markers carrying no cleared flag
     bool built = false;
+    // The game's event-flag API answers false for EVERY id until it is warm (before the world is
+    // up, and on a cold API right after load). Without this, a run with 200 bosses beaten reads
+    // 0/201 — indistinguishable from a fresh character. Probed with flag 6001 ("AlwaysOn"), the
+    // liveness convention refresh_quest_finishable already uses.
+    bool flags_live = false;
     double last_refresh = -1.0;
     // Last good save counters — read_run_stats fails on the title/loading screen, and showing 0
     // there would look like a wiped run. Keep what we last saw and say it's stale instead.
@@ -94,6 +101,7 @@ std::string key_label(uint32_t vk)
 void rebuild()
 {
     RunSnapshot &s = snap();
+    s.flags_live = goblin::overlay_api::read_event_flag(6001);  // AlwaysOn — is the flag API warm?
     const int bossCat = static_cast<int>(goblin::generated::Category::WorldBosses);
     std::unordered_map<int, size_t> by_flag;  // cleared flag -> index in s.bosses
     std::vector<BossRow> rows;
@@ -115,7 +123,8 @@ void rebuild()
                                           : goblin::overlay_api::lookup_text_utf8(m.name_id);
             if (r.name.empty()) r.name = tr("(unnamed boss)");
             if (m.loc_pname >= 0) r.region = goblin::overlay_api::lookup_text_utf8(m.loc_pname);
-            r.defeated = goblin::overlay_api::read_event_flag(static_cast<uint32_t>(r.flag));
+            r.defeated = s.flags_live &&
+                         goblin::overlay_api::read_event_flag(static_cast<uint32_t>(r.flag));
             by_flag.emplace(r.flag, rows.size());
             rows.push_back(std::move(r));
         }
@@ -130,8 +139,20 @@ void rebuild()
         if (r.defeated) ++s.killed;
     s.bosses = std::move(rows);
     s.unflagged = unflagged;
-    s.built = true;
+    // Only a rebuild that could actually READ flags counts as built; otherwise the next tick
+    // retries instead of latching a cold-API 0.
+    s.built = s.flags_live;
     s.last_refresh = ImGui::GetTime();
+    // One line per state change — enough to diagnose a 0/N from the log alone (is the flag API
+    // cold, or has the player genuinely beaten nothing?) without flooding the 1 s tick.
+    static int s_last_logged = -1;
+    if (s.killed != s_last_logged)
+    {
+        s_last_logged = s.killed;
+        spdlog::info("[RUN] bosses {}/{} defeated ({} markers without a defeat flag, flag API {})",
+                     s.killed, (int)s.bosses.size(), s.unflagged,
+                     s.flags_live ? "live" : "COLD - counts are not readable yet");
+    }
 }
 }  // namespace
 
@@ -159,7 +180,9 @@ void draw_run_hud_window()
         rebuild();
 
     char line[160];
-    if (goblin::config::runHudBosses && !s.bosses.empty())
+    // Boss part only once the flag API is warm — a cold "Bosses 0/201" on the HUD would be a lie
+    // at a glance, and the HUD has no room to explain itself. It appears on its own a moment later.
+    if (goblin::config::runHudBosses && s.flags_live && !s.bosses.empty())
         std::snprintf(line, sizeof(line), "%s %u   %s   %s %d/%d", tr("Deaths"), s.deaths,
                       format_igt(s.igt_ms).c_str(), tr("Bosses"), s.killed,
                       static_cast<int>(s.bosses.size()));
@@ -232,11 +255,22 @@ void draw_run_tracker(Filter &f)
     if (!s.built || now - s.last_refresh > 1.0) rebuild();
 
     const int total = static_cast<int>(s.bosses.size());
-    ImGui::Text("%s: %d/%d", tr("Bosses defeated"), s.killed, total);
-    if (total > 0)
+    if (!s.flags_live)
     {
-        ImGui::SameLine(0.0f, 24.0f);
-        ImGui::Text("(%.0f%%)", 100.0f * static_cast<float>(s.killed) / static_cast<float>(total));
+        // Never print 0/N off a cold flag API — that reads as "you have beaten nothing".
+        ImGui::Text("%s: -/%d", tr("Bosses defeated"), total);
+        ImGui::SameLine(0.0f, 16.0f);
+        ImGui::TextDisabled("%s", tr("(the game's event flags are not readable yet)"));
+    }
+    else
+    {
+        ImGui::Text("%s: %d/%d", tr("Bosses defeated"), s.killed, total);
+        if (total > 0)
+        {
+            ImGui::SameLine(0.0f, 24.0f);
+            ImGui::Text("(%.0f%%)",
+                        100.0f * static_cast<float>(s.killed) / static_cast<float>(total));
+        }
     }
     ImGui::SameLine(0.0f, 24.0f);
     if (ImGui::SmallButton(tr("Refresh"))) rebuild();
