@@ -49,9 +49,24 @@ struct BossRow
     bool defeated = false;
 };
 
+// A contiguous run of `bosses` sharing one region — the checklist's collapsible sections. Built in
+// rebuild() because `bosses` is already sorted by region, so the grouping is a single sweep and the
+// draw loop stays free of per-frame counting.
+struct RegionGroup
+{
+    std::string name;
+    size_t first = 0, count = 0;
+    int killed = 0;
+};
+
 struct RunSnapshot
 {
     std::vector<BossRow> bosses;  // sorted by region, then name
+    std::vector<RegionGroup> regions;
+    // Region the player is standing in (nearest boss marker in world space), and the one-shot
+    // request to open its section. Mirrors EROverlay: the current region auto-expands when it
+    // CHANGES, not on every frame — otherwise the player could never collapse it.
+    std::string current_region, auto_open;
     int killed = 0;
     int unflagged = 0;            // registered fights with no map marker (no region header)
     bool built = false;
@@ -111,6 +126,15 @@ void rebuild()
     // and all wrong for counting. Sourcing the list from markers lost 14 of 215 fights on the test
     // install (Malenia among them) — see docs/memory/features/run-tracker.md.
     const int bossCat = static_cast<int>(goblin::generated::Category::WorldBosses);
+    // Player position, for the "which region am I in" auto-expand. Taken as the region of the
+    // NEAREST boss marker rather than from a map/area lookup: the markers already carry the same
+    // region labels the checklist groups by, so the two can never disagree.
+    float ppx = 0.0f, ppz = 0.0f;
+    int parea = 0;
+    const bool have_pos = goblin::overlay_api::get_player_map_pos(parea, ppx, ppz);
+    float best_d2 = 0.0f;
+    std::string nearest_region;
+
     struct MarkerInfo { std::string name, region; };
     std::unordered_map<int, MarkerInfo> by_flag;
     for (auto *L : overlay_layers())
@@ -119,6 +143,16 @@ void rebuild()
         for (const auto &m : L->markers())
         {
             if (m.category != bossCat || m.cleared_flag == 0) continue;
+            if (have_pos && m.loc_pname >= 0)
+            {
+                const float dx = m.worldX - ppx, dz = m.worldZ - ppz;
+                const float d2 = dx * dx + dz * dz;
+                if (nearest_region.empty() || d2 < best_d2)
+                {
+                    best_d2 = d2;
+                    nearest_region = goblin::overlay_api::lookup_text_utf8(m.loc_pname);
+                }
+            }
             if (by_flag.count(m.cleared_flag)) continue;  // another instance of the same fight
             MarkerInfo mi;
             // Mod-agnostic bosses carry their resolved name inline (no FMG id — see
@@ -169,6 +203,29 @@ void rebuild()
         if (r.defeated) ++s.killed;
     s.bosses = std::move(rows);
     s.unflagged = unflagged;
+
+    // Region sections, one sweep over the already-region-sorted list.
+    s.regions.clear();
+    for (size_t i = 0; i < s.bosses.size(); ++i)
+    {
+        if (s.regions.empty() || s.bosses[i].region != s.regions.back().name)
+        {
+            RegionGroup g;
+            g.name = s.bosses[i].region;
+            g.first = i;
+            s.regions.push_back(std::move(g));
+        }
+        RegionGroup &g = s.regions.back();
+        ++g.count;
+        if (s.bosses[i].defeated) ++g.killed;
+    }
+    // Auto-expand only on a CHANGE of region, so a section the player collapsed stays collapsed
+    // while they stand there.
+    if (!nearest_region.empty() && nearest_region != s.current_region)
+    {
+        s.current_region = nearest_region;
+        s.auto_open = nearest_region;
+    }
     // Only a rebuild that could actually READ flags counts as built; otherwise the next tick
     // retries instead of latching a cold-API 0.
     s.built = s.flags_live;
@@ -336,28 +393,50 @@ void draw_run_tracker(Filter &f)
 
     if (total > 0 && ImGui::TreeNode(tr("Boss checklist")))
     {
-        // Region headers, in the sort order built above. The list can be long (200+ fights), so
-        // it lives in its own scroll region rather than stretching the panel.
-        ImGui::BeginChild("##runbosses", ImVec2(0.0f, 320.0f), true);
-        std::string current;
-        bool first = true;
-        for (const BossRow &r : s.bosses)
+        // Layout follows EROverlay's full mode, which is the right shape for 200+ fights: ONE
+        // collapsible section per region carrying its own progress, everything collapsed by
+        // default, and the region you are standing in opened for you. A flat list of 216 rows (what
+        // this was) forces a scroll hunt for the one region you care about.
+        static int s_set_all = 0;  // 1 = expand all, -1 = collapse all, applied for one frame
+        if (ImGui::SmallButton(tr("Expand all"))) s_set_all = 1;
+        ImGui::SameLine();
+        if (ImGui::SmallButton(tr("Collapse all"))) s_set_all = -1;
+        if (!s.current_region.empty())
         {
-            if (first || r.region != current)
+            ImGui::SameLine(0.0f, 16.0f);
+            ImGui::TextDisabled("%s: %s", tr("here"), s.current_region.c_str());
+        }
+
+        ImGui::BeginChild("##runbosses", ImVec2(0.0f, 320.0f), true);
+        for (const RegionGroup &g : s.regions)
+        {
+            if (s_set_all) ImGui::SetNextItemOpen(s_set_all > 0);
+            else if (!s.auto_open.empty() && g.name == s.auto_open) ImGui::SetNextItemOpen(true);
+            // Count in the header so a collapsed region still reports its progress — the whole
+            // reason to collapse is to read the summary without the rows.
+            const bool done = g.killed == (int)g.count;
+            if (done) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.85f, 0.55f, 1.0f));
+            const bool open = ImGui::TreeNode(
+                g.name.empty() ? tr("(no region)") : g.name.c_str(), "%s   %d/%d",
+                g.name.empty() ? tr("(no region)") : g.name.c_str(), g.killed, (int)g.count);
+            if (done) ImGui::PopStyleColor();
+            if (!open) continue;
+            for (size_t i = g.first; i < g.first + g.count; ++i)
             {
-                current = r.region;
-                first = false;
-                ImGui::SeparatorText(current.empty() ? tr("(no region)") : current.c_str());
+                const BossRow &r = s.bosses[i];
+                // Read-only state: this mirrors the save, it does not edit it. (EROverlay offers a
+                // "revive" that clears the flag — a save write we deliberately do not do here.)
+                if (r.defeated) ImGui::TextUnformatted("[x]");
+                else            ImGui::TextDisabled("[ ]");
+                ImGui::SameLine();
+                if (r.defeated) ImGui::TextUnformatted(r.name.c_str());
+                else            ImGui::TextDisabled("%s", r.name.c_str());
             }
-            // Read-only state: this mirrors the save, it does not edit it. (EROverlay offers a
-            // "revive" that clears the flag — a save write we deliberately do not do here.)
-            if (r.defeated) ImGui::TextUnformatted("[x]");
-            else            ImGui::TextDisabled("[ ]");
-            ImGui::SameLine();
-            if (r.defeated) ImGui::TextUnformatted(r.name.c_str());
-            else            ImGui::TextDisabled("%s", r.name.c_str());
+            ImGui::TreePop();
         }
         ImGui::EndChild();
+        s_set_all = 0;
+        s.auto_open.clear();  // one-shot: consumed by this frame's draw
         ImGui::TreePop();
     }
 }
