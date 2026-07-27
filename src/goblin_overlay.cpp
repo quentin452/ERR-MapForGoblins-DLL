@@ -1486,18 +1486,10 @@ namespace
                     (combined & goblin::config::overlayToggleGamepad) == goblin::config::overlayToggleGamepad;
                 if (combo_held) io.ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
                 else            io.ConfigFlags |=  ImGuiConfigFlags_NavEnableGamepad;
-                // PROBE (bug 2/4, temporary): log combo state transitions + the button mask so we can see
-                // whether combo_held actually asserts while closing, and what buttons ImGui might also see.
-                {
-                    static bool s_prev_combo = false;
-                    if (combo_held != s_prev_combo)
-                    {
-                        s_prev_combo = combo_held;
-                        spdlog::info("[COMBOPROBE] combo_held={} combined=0x{:04X} toggleMask=0x{:04X} navGamepad={}",
-                                     combo_held, combined, goblin::config::overlayToggleGamepad,
-                                     (io.ConfigFlags & ImGuiConfigFlags_NavEnableGamepad) ? 1 : 0);
-                    }
-                }
+                // ([COMBOPROBE] removed 2026-07-27 — it had shown the mechanism works: combo_held asserts
+                // with combined==toggleMask==0x8080 and drops to 0x8000 the moment R3 lifts, nav flipping
+                // 0/1 with it. The residual widget activation it was hunting turned out to live in ImGui's
+                // key bindings, not here — see the SetKeyOwner claim below.)
                 // Expose a pad-action suppression flag for the vmap (Y=warp / X=place). CRITICAL: assert
                 // it as soon as the NON-primary combo buttons are held — i.e. the combo minus FaceUp(Y),
                 // which our pad_activate also uses. `combo_held` only asserts when ALL combo bits are down

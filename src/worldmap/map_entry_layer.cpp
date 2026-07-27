@@ -3871,16 +3871,9 @@ void build_buckets_impl()
         spdlog::info("[CATICON] representative item-icons resolved for {} / {} categories", wired, NUM_CAT);
     }
 
-    // PROBE (bug 5, temporary): after the FULL build (incl. finalize), report whether WorldBosses markers
-    // carry a live_name. Splits "build/finalize dropped it" from "display path ignores it".
-    {
-        const auto &bb = g_buckets[static_cast<int>(goblin::generated::Category::WorldBosses)];
-        int named = 0; std::string sample;
-        for (const auto &m : bb)
-            if (!m.live_name.empty()) { ++named; if (sample.empty()) sample = m.live_name; }
-        spdlog::info("[BOSSPROBE] WorldBosses bucket: {} markers, {} with live_name, sample='{}'",
-                     bb.size(), named, sample);
-    }
+    // ([BOSSPROBE] removed 2026-07-27 — its invariant is green: 235/235 WorldBosses markers carry a
+    // live_name, against the 91/1183 that made it necessary. `[BOSSLIVE]` above now reports the same
+    // health with more detail — marker/type counts and how many resolved at tier 4.)
 }
 
 // Disk-loot build is run ONCE on a background WORKER thread (not std::call_once):

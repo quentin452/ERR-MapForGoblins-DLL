@@ -3,78 +3,59 @@
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
 
-## ⇒ 2026-07-27 (Windows, vanilla+randomizer) — ★ bug-5 RE SOLVED; DLL wiring is the next task
+## ⇒ 2026-07-27 (Windows, vanilla+randomizer) — ★ bug-5 CLOSED end-to-end; gamepad/vmap batch confirmed
 
-The mod-agnostic boss enumeration is **found and validated** — `docs/re/cross_mod_boss_naming_re_findings.md`
-(prompt flipped to SOLVED). Source = EMEVD **`2003[011] HandleBossHealthBar(state, entityId, slot, nameId)`**
-joined with the MSB enemy placement (entity → position) + `GameAreaParam` (rowId == boss entityId →
-`defeatBossFlagId`). On a vanilla + Randomizer v0.11.4 install: **254/255 bosses with name + position**, all
-254 names resolved, per-ENCOUNTER (23 legitimately-recurring names, no model-collapse). Repro any install:
-`python tools/_probe_boss_enum.py <game_data_dir>`.
-
-**Live-proven that tier-3 is WRONG, not just imprecise** (RPC, Gatefront area60 grid 42,36): the mod said
-`Tree Sentinel`, the game's own boss health bar said **`Black Tree Kindred Sentinel`**. Cause read live:
-`NpcParam[47701242].nameId == 0` → fallthrough to the `900000000 + model*1000` band = the **vanilla chr
-model's** name (c3251). Any boss-reskinning mod breaks it by construction.
-
-**✅ IMPLEMENTED + PARTLY VERIFIED (2026-07-27).** Live on vanilla+randomizer: `[LOOTDISK] boss bars: 251
-entities named (379 2003[11] calls over 589 EMEVD files)` and `[BOSSLIVE] … 218 instances resolved at
-tier 4`. Then measured that tier 3 must not SEED a boss: 1197 markers / 241 types vs 251 real boss-bar
-entities, with 20 model-derived types alone producing 891 markers (`vmap ename 12 1 0`: 98 tier-3
-"bosses" over 12 models in ONE tile vs 4 real bars). Gate is now `if (tier != 4) continue;`.
-
-**MEASURED + DONE (2026-07-27).** Three passes, all live on vanilla + Randomizer v0.11.4:
+**Boss markers are now sourced from the game itself.** RE + implementation + verification all landed
+today. Source = EMEVD **`2003[011] HandleBossHealthBar(state, entityId, slot, nameId)`** joined with the
+MSB enemy placement and `GameAreaParam` — method, counts and live validation in
+`docs/re/cross_mod_boss_naming_re_findings.md`; repro on any install with
+`python tools/_probe_boss_enum.py <game_data_dir>`. Memory: [[mod-agnostic-boss-markers]].
 
 | build | boss markers | types | biggest type |
 |---|---|---|---|
-| tier-3 seeding | 1197 | 241 | 269 |
+| tier-3 seeding (start of day) | 1197 | 241 | 269 |
 | + tier-4-only seed gate | 273 | 202 | 31 |
-| + tier-4 types reject tier-3 members + real `ModelName` | **215** | 202 | **3** |
+| + tier-4 types reject tier-3 members, + real `ModelName` | 215 | 202 | 3 |
+| + `c0000` accepted as a real model | **235** | 222 | **3** |
 
-215 vs 251 boss-bar entities, no type on more than 3 tiles. Non-boss markers identical across the last
-two passes (7361) and the spoiler audit unchanged (97.6 %) → no collateral. The third pass also fixed
-[[msb-enemy-model-vs-partname]] — we were reading the chr model from the part NAME, wrong for **84.7 %**
-of placements on this mod, which is what let tier 3 hallucinate bosses in the first place.
+The whole 251-entity gap is accounted for: `251 − 6 (LOD-tile only) − 5 (not MSB Enemy parts) = 240`
+reachable, all 240 tier 4, 235 surviving the per-(type,tile) dedup. Non-boss markers stayed at **7361 in
+every dump** → no collateral. Two general lessons came out of it, both worth more than the boss fix
+itself: [[msb-enemy-model-vs-partname]] (the MSB part NAME is not the model — 84.7 % divergence on this
+mod) and its twin, `c0000` (the player body) being a legitimate model that a `<= 0` guard was discarding.
 
-**GAP CLOSED + EXPLAINED (2026-07-27).** Final: **235 markers / 222 types**, tier 4 resolving **240**
-instances. Decomposition of the 251 boss-bar entities, verified live and offline:
-`251 − 6 (only in a non-_00 LOD tile) − 5 (not MSB Enemy parts, event-spawned) = 240` reachable, all
-240 now tier 4; 235 survive the per-(type,tile) dedup. The last fix was
-[[msb-enemy-model-vs-partname]]'s twin: **`c0000` (the player body) is a real model** and
-`enemy_model_id() <= 0` was discarding those 22 boss placements outright.
+**Gamepad + vmap batch — ALL user-confirmed in game 2026-07-27**, changelog lines moved out of the
+"NOT YET CONFIRMED" block: the 2026-07-23 bugs 1 / 2 / 4, plus today's three — ImGui nav was binding our
+own buttons (`NavGamepadInput == FaceUp`, `NavGamepadMenu == FaceLeft`, reclaimed via `SetKeyOwner`),
+canvas tooltips were anchored to the nav-focused widget instead of the reticle, and the first warp
+resized the map canvas by one text line (a conditional row ABOVE a `GetContentRegionAvail()` canvas).
+Grace lock shipped alongside. The `[COMBOPROBE]` / `[BOSSPROBE]` temporary probes were verified green
+and removed.
 
-Residual, low priority: the 6 LOD-only entities would need a supertile scan (`load_lod_award_entities`
-already does this for loot), the 5 event-spawned ones have no MSB anchor at all, and the 5 dedup losses
-would go away with per-ENCOUNTER identity keyed on `entityId` instead of name+tile.
+**Marker audit vs the seed's spoiler log — new tooling:** `tools/audit_markers_vs_spoiler.py` +
+[[spoiler-log-marker-audit]]. 97.6 % coverage on precisely-located items, 0 projection failures.
 
-Then confirm a couple of boss names in-world and move the changelog line out of the "NOT YET CONFIRMED"
-comment block.
+## OPEN — next session
 
-**Marker audit vs the seed's spoiler log (2026-07-27), new tooling:** `tools/audit_markers_vs_spoiler.py`
-+ [[spoiler-log-marker-audit]]. 97.6 % coverage on precisely-located items, 0 projection failures. Open
-leads: 7 `LootCraftingMaterials` markers with a dead GoodsName id, 17 `WorldInteractables` pointing at
-ERR-only ActionButtonText ids, 19 out-of-bounds markers. The memory note lists what is ALREADY ruled out
-(un-randomized item families, the synthetic boss `name_id`, harvestable "duplication") — read it before
-re-investigating anything from a fresh run.
+1. **Audit leads (bounded, verifiable):** 7 `LootCraftingMaterials` markers whose GoodsName id resolves
+   to nothing (smallest + sharpest), 17 `WorldInteractables` on ActionButtonText ids absent off-ERR,
+   19 markers out of bounds (|world| > 40000).
+2. **Boot crash inside d3d11.dll** [[boot-crash-present-chain-d3d11]] — one sample, RTSS disabled and
+   quiet since. Needs a 2nd crash file before it means anything; do NOT change our code on this alone.
+3. **Boss residuals, low priority:** 6 LOD-only entities (would need a supertile scan —
+   `load_lod_award_entities` already does this for loot), 5 event-spawned (no MSB anchor by nature),
+   5 lost to the (type,tile) dedup (per-ENCOUNTER identity keyed on `entityId` is the structural answer).
+4. **Possibly redundant now:** the combo-held `NavEnableGamepad` suppression in `goblin_overlay.cpp` was
+   an earlier mitigation for the same collision `SetKeyOwner` now handles properly. Untested either way —
+   check before removing.
 
-**Steps that were needed (all done):** Everything was already parsed; it was a join, not new RE:
-1. Extract `2003[011]` in the existing EMEVD pass (`build_disk_emevd*`, `map_entry_layer.cpp`) → `{entityId → nameId}`.
-2. Join on `EntityID` with the `disk_enemies` MSB scan `build_live_bosses` already walks → position.
-3. Name is a plain **FMG id** ⇒ drop the `Marker::live_name` hack + the synthetic `name_id` for these.
-4. Demote ERR `textId2==5100` pins and the tier-3 band to additive fallbacks; add `GameAreaParam.defeatBossFlagId`
-   as the optional cleared-state layer (39/254 bosses have no row → must be per-boss optional).
-5. **Fix the SECOND consumer in the same pass**: the world-space 3D enemy tag (`config::nameEnemyBosses`)
-   shows the same wrong vanilla name in-world (user-observed 2026-07-27). Source the name by **entityId** in
-   the shared resolver (`goblin_enemy_names.cpp`) — today's signature is `(npcParamId, model)`, so it needs
-   the entity id threaded in.
-6. Edge cases: 1 boss has no MSB placement (`m60_41_33_00` e=1041330800, event-spawned) → needs a fallback pos.
+**Dev-box state:** RPC works on the randomizer install — `MapForGoblins.dll` in the randomizer's
+`config_eldenringrandomizer_dll.toml` `external_dlls`, `debug_rpc_port = 38700` in the deployed
+`MapForGoblins.ini`. That install is a permanent **mod-agnostic test bed** — a boss-randomized world is
+the perfect regression case for anything model-keyed. Deploy the PDB alongside the DLL (a mismatched
+pair symbolizes silently to a wrong frame).
 
-**Dev-box state:** RPC now works on the randomizer install — `MapForGoblins.dll` added to the randomizer's
-`config_eldenringrandomizer_dll.toml` `external_dlls` and `debug_rpc_port = 38700` set in
-`C:\Users\iamacat\Downloads\DLLS\MapForGoblins.ini`. That install is now a permanent **mod-agnostic test bed**
-(a boss-randomized world is the perfect regression case for anything model-keyed).
-
-## ⇒ 2026-07-23 (Linux, later) — gamepad/vmap/boss bug batch: 4 fixes UNVERIFIED, need a Windows retest
+## ⇒ 2026-07-23 (Linux, later) — gamepad/vmap/boss bug batch [ALL CLOSED 2026-07-27, kept for the root causes]
 
 Deployed `MapForGoblins.dll` → `~/Games/ERRv2.2.9.6/dll/offline/` (11:33). **User runs on WINDOWS** by
 COPYING that DLL over (same cross-built binary; confirmed it's the one Windows loads). All work below is
@@ -87,7 +68,10 @@ committed on `master` but the latest fixes are **NOT yet verified against the ne
 - **Bug 6** — player marker no longer invisible on a grace (persistent dark outline + floored halo on
   vmap/native/minimap).
 
-**FIXED but UNVERIFIED with the 11:33 build — RETEST, then mark done or reopen:**
+**✅ ALL USER-CONFIRMED FIXED 2026-07-27** (bugs 1 / 2 / 4 below), changelog lines published. NOTE bug 1's
+root-cause note was only HALF the story: `NoNavOverride` fixes which item counts as hovered, but ImGui also
+PLACES tooltips at the nav-focused widget (`NavCalcPreferredRefPos`) — that second half was found and fixed
+separately on 2026-07-27 for the canvas tooltips (`pin_tooltip_to_pointer`). Keep both in mind.
 - **Bug 1 (tooltip teleports to gamepad selection).** Root cause (read from vendored ImGui 1.90.9
   `imgui.cpp:4087`): during gamepad nav, bare `IsItemHovered()` returns the NAV-FOCUSED item and ImGui
   anchors the tooltip there. Fix: `IsItemHovered(ImGuiHoveredFlags_NoNavOverride)` on ALL 43 nav-reachable
@@ -108,9 +92,10 @@ discriminator mis-identifies/duplicates (multiple "Mimic Tear"; clone models col
 can't be reused — it's POI-only, not entities. → **RE SOLVED 2026-07-27**, see the top entry +
 `docs/re/cross_mod_boss_naming_re_findings.md`; the DLL wiring is what remains.
 
-**TEMPORARY PROBES still in the build (strip once bugs verified fixed):** `[COMBOPROBE]` (goblin_overlay.cpp,
-combo state), `[BOSSPROBE]` (map_entry_layer.cpp end-of-build, WorldBosses live_name count — should read
-`1183 with live_name`). Removed already: `[ESCPROBE]`, `[TIPPROBE]`, `[PADACT]`, `[NAVACT]`.
+**TEMPORARY PROBES — all removed 2026-07-27** after checking each one's invariant was green in the live
+log: `[COMBOPROBE]` (combo asserted with `combined==toggleMask==0x8080`, dropping to `0x8000` when R3
+lifts) and `[BOSSPROBE]` (235/235 WorldBosses markers carried a `live_name`, vs the 91/1183 that motivated
+it). Earlier: `[ESCPROBE]`, `[TIPPROBE]`, `[PADACT]`, `[NAVACT]`.
 
 ## ⇒ 2026-07-23 (Linux) — ★ marker-UX batch SHIPPED + deployed; 2 items queued for next session
 

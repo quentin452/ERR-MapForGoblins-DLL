@@ -60,10 +60,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
   Escape used to open the game menu *behind* it (unclosable until the hidden menu was dismissed). Escape
   now closes the VWM.
 
-<!-- NOT YET CONFIRMED against the latest build — tracked in docs/HANDOFF.md, add here once verified:
-     bug 1 gamepad tooltip teleport, bug 2 Y-warp on sidebar focus, bug 4 Y+R3 combo warp.
-     bug 5 (mod-agnostic boss markers) is RESOLVED — RE + implementation landed 2026-07-27, see
-     docs/re/cross_mod_boss_naming_re_findings.md; the marker-count drop still needs one in-game read. -->
+- **Gamepad help tooltips stay put while navigating.** Moving between panel widgets with the stick made
+  every help tooltip jump to the newly focused widget mid-read.
+- **The map no longer warps you by accident on gamepad.** Tapping the warp button while a sidebar
+  selector merely *held focus* teleported you, and the panel-close combo could fire a warp on its way out.
 
 ## [v2.4.0] - 2026-07-23
 
