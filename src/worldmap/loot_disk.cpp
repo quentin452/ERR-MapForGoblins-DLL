@@ -1160,6 +1160,16 @@ const std::unordered_map<uint32_t, uint32_t> &emevd_boss_bars()
                  "files, {} KRAK skipped)", (int)cache.size(), calls, parsed, kraks);
     spdlog::info("[LOOTDISK] boss defeats: {} entities registered (from {} 2003[12] calls) — their "
                  "defeat flag IS the entity id", (int)defeats().size(), defeat_calls);
+    {
+        // Full sorted id list, once per session. The COUNT alone can't be reconciled against another
+        // tracker's boss list (EROverlay ships a curated 207-entry bosses.json): only the ids say
+        // whether a difference is an extra of ours or an omission of theirs.
+        std::vector<uint32_t> ids(defeats().begin(), defeats().end());
+        std::sort(ids.begin(), ids.end());
+        std::string s;
+        for (size_t i = 0; i < ids.size(); ++i) s += (i ? "," : "") + std::to_string(ids[i]);
+        spdlog::info("[LOOTDISK] boss defeat ids: {}", s);
+    }
     return cache;
 }
 
