@@ -133,6 +133,44 @@ with no surviving marker still counts, and still gets a name via
 **Rule: the run tracker's unit is the engine's defeat registration, never the marker.** If a future
 change makes the checklist read from markers again, Malenia silently disappears from the total.
 
+## Cross-check vs EROverlay's curated list (2026-07-27) — 215 vs 207
+
+Reconciled our EMEVD `2003[12]` set (vanilla install, `[LOOTDISK] boss defeat ids:` dump) against
+`soarqin/EROverlay`'s baked `bosses.json` (207 entries, whose `flag_id` is an entity id too, so the
+sets compare directly). **193 shared, 22 only ours, 14 only theirs.** Four distinct causes:
+
+**1. Same fight, different id — 10 cases. WE ARE WRONG HERE (open defect).**
+Night/roaming bosses (Death Rite Bird, Night's Cavalry ×3, Deathbird ×2, Tibia Mariner) plus two
+DLC NPCs (Dryleaf Dane, Count Ymir). The engine passes the `x340`/`x710`/`x720` entity to
+`2003[12]`; EROverlay uses the tile's `x800`. **Ours is a TRANSIENT flag**: `common.emevd` explicitly
+resets it — `SetEventFlagID(1043370340, OFF)` — while real boss flags are absent from that reset
+list (verified for `10000800` Godrick, `15000800` Malenia, `1042360800`, `1052380800` Radahn). So
+those 10 would un-tick themselves.
+*Fix lead:* the two ids are joined in the EMEVD itself —
+`InitializeCommonEvent(0, 90005860, 1043370800, 0, 1043370340, 0, 1043370400, 0)` binds the
+persistent flag to the entity. Mining `90005860` (same technique as the `90005702` quest-NPC mine)
+gives entity → persistent flag. NOT done yet. Do NOT instead reject "ids in the reset list": 21
+legitimate `x800` flags are in it too.
+
+**2. `12`-prefixed twin — 3 cases.** Radahn `1052380800` (ours) vs `1252380800` (theirs), plus
+`1052520800` and Borealis `1054560800`. Their id is the one other events actually read
+(`EndIf(EventFlag(1252380800))`, and the demigod list in `common.emevd`); ours is the character
+entity. Both mark the same kill and each list counts the fight once, so the totals are unaffected —
+but which of the two the engine actually SETS is unverified. Only 3 of 78 overworld ids have such a
+twin, so this is not a systematic convention.
+
+**3. Fights their curated list omits — 12.** `20010850`, `30130810`, `31000850`, `34100800`,
+`34110800`, `34150800`, `1034500800`, `1037510800`, `1041330800`, `2050430710`, and the two
+above. The engine registers a defeat for these; a hand-curated vanilla list simply does not carry
+them. **This is the baked-list drift the no-bake directive exists to avoid** — our source is right.
+
+**4. One we miss:** `1041510800` Tree Sentinel(×2), Altus. Suspected parser limitation: `2003[12]`
+invoked from a `common_func` with **parameterized** args, where the instruction's arg bytes are
+placeholders rather than literal entity ids — `parse_emevd_boss_defeats` only reads literals.
+Unverified; the same blind spot would hide any other parameterized registration.
+
+Repro: `[LOOTDISK] boss defeat ids:` in the log + the scratchpad `diff_bosses.py`.
+
 ## Not done (deliberate)
 
 - **Remembrances obtained.** The natural source is `EquipParamGoods` + carried inventory
