@@ -21,6 +21,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ## [Unreleased]
 
+## [v2.5.0] - 2026-07-27
+
 ### Added
 
 - **Gamepad zoom sensitivity** (`gamepad_zoom_sensitivity` INI) — scales the Virtual World Map's L2/R2
