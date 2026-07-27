@@ -1090,6 +1090,31 @@ namespace goblin::debug_rpc
             // goods_count <id> — how many of the category-encoded `id` the player HOLDS (carried
             // inventory), read-only. The sidecar clean-save oracle (grant→save→empty .mfg→reload→
             // assert 0). Reports not-in-world separately from a real 0 (chain unresolved).
+            // param_rows <ParamName> [max] — the param's REAL row ids, straight from its table.
+            // Exists because probing ids with `param_get` answers a different question than it
+            // looks: sampling 0..399 and finding two rows says nothing about a param numbered by
+            // map id. That mistake was made once on GameAreaParam; enumerate instead of sample.
+            if (cmd == "param_rows")
+            {
+                std::string name = next_token(rest);
+                if (name.empty()) return "err usage: param_rows <ParamName> [max]";
+                int max = 40;
+                std::string max_s = next_token(rest);
+                if (!max_s.empty()) { try { max = std::stoi(max_s); } catch (...) {} }
+                if (max < 1) max = 1;
+                if (max > 400) max = 400;   // one reply line
+                std::wstring w(name.begin(), name.end());
+                size_t total = 0;
+                std::vector<uint64_t> rows =
+                    goblin::paramedit::param_row_ids(w.c_str(), (size_t)max, &total);
+                if (total == 0) return "err param not resident / not found (0 rows)";
+                std::string ids;
+                for (uint64_t r : rows) ids += (ids.empty() ? "" : ",") + std::to_string(r);
+                char b[96];
+                std::snprintf(b, sizeof(b), "ok param_rows %s n=%d%s ", name.c_str(), (int)total,
+                              total > rows.size() ? " (first shown)" : "");
+                return std::string(b) + ids;
+            }
             // flag — read/scan/write EVENT FLAGS live. Added to settle a question the EMEVD could
             // not answer statically: which flag the engine ACTUALLY sets when a boss dies. The
             // registration instruction names an entity whose id doubles as the flag, except for

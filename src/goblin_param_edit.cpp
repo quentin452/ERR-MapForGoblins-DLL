@@ -178,6 +178,35 @@ bool safe_read(const void *addr, void *dst, size_t n)
 namespace goblin::paramedit
 {
 
+// The param's REAL row ids (up to `max`), plus its true row count in `out_total`. Probing ids with
+// param_get_field answers a different question than it looks like: sampling 0..399, finding two
+// rows and concluding "this param has 2 rows" is wrong for any param numbered by map id. That
+// mistake was made once on GameAreaParam — enumerate, don't sample. Empty + total 0 = not resident.
+std::vector<uint64_t> param_row_ids(const wchar_t *param, size_t max, size_t *out_total)
+{
+    std::vector<uint64_t> ids;
+    if (out_total) *out_total = 0;
+    auto *param_list = *from::params::param_list_address;
+    if (param_list == nullptr) return ids;
+
+    const std::wstring_view want{param};
+    constexpr int kEntries = sizeof(param_list->entries) / sizeof(param_list->entries[0]);
+    for (int i = 0; i < kEntries; i++)
+    {
+        auto *rescap = param_list->entries[i].param_res_cap;
+        if (rescap == nullptr) continue;
+        if (from::params::dlw_c_str(&rescap->param_name) != want) continue;
+        if (rescap->param_header == nullptr) break;
+        from::params::ParamTable *table = rescap->param_header->param_table;
+        if (table == nullptr) break;
+        const size_t n = static_cast<size_t>(table->num_rows);
+        if (out_total) *out_total = n;
+        for (size_t r = 0; r < n && ids.size() < max; ++r) ids.push_back(table->rows[r].row_id);
+        break;
+    }
+    return ids;
+}
+
 size_t field_width(FieldType t)
 {
     switch (t)

@@ -40,6 +40,11 @@ bool param_set_field(const wchar_t *param, uint64_t row_id, ptrdiff_t offset, Fi
 
 // Read `param[row_id]` at `offset` as `type`, returned as double. nullopt on the same failure modes.
 // Used to VERIFY a write landed (read-back).
+// A param's REAL row ids (first `max`), and its true row count via `out_total`. Enumerating beats
+// probing ids: a param numbered by map id looks empty to a 0..N sweep. Empty + total 0 = the param
+// is not resident (or absent from this install).
+std::vector<uint64_t> param_row_ids(const wchar_t *param, size_t max, size_t *out_total);
+
 std::optional<double> param_get_field(const wchar_t *param, uint64_t row_id, ptrdiff_t offset,
                                       FieldType type);
 
