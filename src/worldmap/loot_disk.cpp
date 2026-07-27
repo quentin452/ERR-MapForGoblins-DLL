@@ -3,6 +3,7 @@
 #include "dvdbnd_reader.hpp"
 #include "msbe_parser.hpp"
 #include "goblin_config.hpp"
+#include "from/params.hpp"   // GameAreaParam — the game's own boss defeat-flag table
 
 #include <spdlog/spdlog.h>
 
@@ -1184,6 +1185,40 @@ const std::unordered_map<uint32_t, uint32_t> &emevd_boss_bars()
         }
         ++parsed;
     }
+    // ── GameAreaParam: the GAME'S OWN declaration of each boss's defeat flag ─────────────────────
+    // Row id = the boss ENTITY id, `defeatBossFlagId` @+0x44 = the flag to read. This outranks
+    // everything mined from the EMEVD: for an ordinary boss it simply restates flag == entity, but
+    // for a night/roaming boss it names the PERSISTENT flag the instruction could not
+    // (1043370340 -> 1043370800, 1044320340 -> 1044320800, measured live 2026-07-27), and it covers
+    // fights whose registration is parameterised and therefore invisible to a literal scan (the
+    // Altus Tree Sentinel duo, 1041510800). A param, so it is live, mod-agnostic and free of every
+    // parsing hazard that cost this feature three attempts.
+    //
+    // The param was nearly written off as empty: probing row ids 0..399 found only stub rows 0/1.
+    // It is keyed by ENTITY id — sampling could not see it, enumeration could (`param_rows`).
+    {
+        struct RawGameAreaRow { uint8_t b[0x58]; };  // defeatBossFlagId u32 @ +0x44
+        int rows = 0, differ = 0, added = 0;
+        try
+        {
+            for (auto [rowId, row] : from::params::get_param<RawGameAreaRow>(L"GameAreaParam"))
+            {
+                uint32_t flag = 0;
+                std::memcpy(&flag, row.b + 0x44, sizeof(flag));
+                if (!flag || (int32_t)flag <= 0) continue;   // stub rows (0/1/9999991/9999992)
+                ++rows;
+                const uint32_t entity = (uint32_t)rowId;
+                auto it = defeats().find(entity);
+                if (it == defeats().end()) ++added;
+                else if (it->second != flag) ++differ;
+                defeats()[entity] = flag;                    // the game's own word wins
+            }
+        }
+        catch (...) { spdlog::warn("[LOOTDISK] GameAreaParam not readable — defeat flags stay EMEVD-only"); }
+        spdlog::info("[LOOTDISK] GameAreaParam: {} boss rows ({} corrected an EMEVD-derived flag, "
+                     "{} fights the EMEVD scan never saw)", rows, differ, added);
+    }
+
     // ── Resolve the literal registrations now that the reset group is known ──────────────────────
     // Normal case: the entity id IS the persistent defeat flag. But a night/roaming boss's entity
     // sits in common.emevd's reset group (event 6901 turns 94 flags OFF), so trusting it would let

@@ -249,7 +249,39 @@ into a measurement, and it is the check to re-run on any install where the count
 x340 night-boss flags are in that list while ordinary boss flags are not (checked `10000800`
 Godrick, `1042360800` — `NONE`). So those 8 rows can un-tick; the other 208 cannot.
 
-### Probe 1 ran and FAILED — both gaps need the same missing capability
+### ✅ SOLVED — `GameAreaParam` is the game's own boss-defeat table
+
+**Row id = the boss ENTITY id; `defeatBossFlagId` u32 @ +0x44 = the flag to read.** Measured live
+2026-07-27, and it answers every open question at once:
+
+| row (entity) | defeatBossFlagId | |
+|---|---|---|
+| `10000800` Godrick | `10000800` | restates flag == entity for ordinary bosses |
+| `15000800` Malenia | `15000800` | idem |
+| `1043370340` Night's Cavalry | **`1043370800`** | the persistent flag the EMEVD could not give |
+| `1044320340` | **`1044320800`** | idem |
+| `1041510800` Tree Sentinel ×2 | `1041510800` | the fight the literal scan never saw |
+
+212 real boss rows (+4 stubs: 0, 1, 9999991, 9999992). Against our EMEVD set: 5 fights only it has,
+9 only ours — so it is not a superset, and both sources are kept, with **GameAreaParam winning on
+the flag**. Priority is `GameAreaParam` > common-func call site > literal `2003[12]`.
+
+A param, so: live, mod-agnostic, no Oodle, no instruction encoding, no parameter substitution. It
+makes the whole EVD-parameter-table project unnecessary for this feature.
+
+**It was nearly written off as empty.** Probing row ids 0..399 with `param_get` returned only the
+two all-zero stub rows, and the conclusion drawn was "vestigial DS3 param, dead end". The rows are
+keyed by entity id — **sampling could not see them; enumeration could**. The user challenged the
+result, `param_rows` was written, and the param turned out to hold exactly what three EMEVD attempts
+had been reaching for. Lesson, worth more than the fix: *never conclude a param is empty from a
+sampled id sweep — enumerate it.*
+
+The lead came from the Hexinton all-in-one Cheat Engine table, whose GameAreaParam dissect documents
+the field layout (`foundBossFlagId` +0x34, `bossChallengeFlagId` +0x40, `defeatBossFlagId` +0x44,
+`bossPosX/Y/Z` +0x48/4C/50, `bossMapAreaNo/BlockNo/MapNo` +0x54/55/56). The positions and text ids
+are still unused — a future boss layer could take them from here instead of the MSB+EMEVD join.
+
+### Probe 1 ran and FAILED — both gaps needed the same missing capability
 
 Idea: take the persistent flag from the `SetEventFlag(..., ON)` instructions of the event that
 carries the `2003[12]`. Shipped, measured on vanilla:
