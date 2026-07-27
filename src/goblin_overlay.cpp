@@ -23,6 +23,7 @@
 #include <spdlog/spdlog.h>
 
 #include <imgui.h>
+#include <imgui_internal.h>   // SetKeyOwner — take our gamepad buttons away from ImGui nav (see below)
 #include <backends/imgui_impl_dx12.h>
 #include <backends/imgui_impl_win32.h>
 
@@ -1977,6 +1978,28 @@ namespace
                 im_free,
                 im_alloc_ud,
             };
+            // ── Claim OUR gamepad buttons from ImGui nav ──────────────────────────────────
+            // Y (FaceUp) = warp / toggle-combo and X (FaceLeft) = place-marker are ALSO bound by
+            // ImGui's gamepad nav: `ImGuiKey_NavGamepadInput == ImGuiKey_GamepadFaceUp` and
+            // `ImGuiKey_NavGamepadMenu == ImGuiKey_GamepadFaceLeft` (imgui_internal.h). NavUpdate's
+            // `input_pressed` path sets `NavActivateId = NavId` — the very field ButtonBehavior fires
+            // on — so pressing Y ALSO activated whatever widget held nav focus. That is one root cause
+            // behind two symptoms: closing the panel with the Y+R3 combo toggled the focused widget,
+            // and aiming a grace while a button had focus toggled that button instead of warping.
+            // (The old "chosen to NOT collide with ImGui nav" note in panel_virtual_map only checked
+            // Activate=FaceDown and Cancel=FaceRight; Input=FaceUp and Menu=FaceLeft were missed.)
+            //
+            // ImGui's nav reads these with `ImGuiKeyOwner_NoOwner` = "require the key to have no
+            // owner", so claiming ownership is the intended, non-invasive opt-out — no patching, no
+            // swallowing the key for anyone else. Re-claimed EVERY frame because ownership is released
+            // the frame after the key goes up (UpdateKeyboardInputs). It lands on the NEXT frame's
+            // NavUpdate (which already ran inside NewFrame), which is why this must be unconditional
+            // rather than armed on the first press. A/FaceDown still activates widgets normally.
+            {
+                constexpr ImGuiID kMfgPadOwner = 0x4D464721;  // 'MFG!'
+                ImGui::SetKeyOwner(ImGuiKey_GamepadFaceUp, kMfgPadOwner);
+                ImGui::SetKeyOwner(ImGuiKey_GamepadFaceLeft, kMfgPadOwner);
+            }
             if (g_show)
                 goblin::overlay_render_loader::call_draw_panel(frame_ctx);
             // Virtual world map (mod page) — drawn on its OWN entry, independent of the F1 panel, so it can
