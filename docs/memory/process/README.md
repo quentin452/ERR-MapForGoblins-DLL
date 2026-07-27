@@ -47,4 +47,9 @@ feature docs).
 - **Collaboration & branch hygiene** [active] — flat feature branches off master, never push, confirm
   genuine decisions, verify offsets live not statically. → [workflow-preferences](workflow-preferences.md)
 - **Disambiguate symptoms first** [active] — ask 1-3 sharp questions before a build-deploy-test cycle. → [disambiguate-bug-symptoms-first](disambiguate-bug-symptoms-first.md)
+- **Audit markers vs a randomizer spoiler log** [active, baseline 2026-07-27] — the one EXTERNAL ground
+  truth we have (`tools/audit_markers_vs_spoiler.py`, aggregates only = spoiler-safe). 97.6 % coverage on
+  precisely-located items; carries the list of anomalies ALREADY ruled out (un-randomized families, the
+  synthetic boss name_id, harvestable "duplication") so they aren't re-investigated. →
+  [spoiler-log-marker-audit](spoiler-log-marker-audit.md)
 - **Release process** [active] — roll changelog → annotated tag → curated notes; USER pushes/publishes to `origin` (quentin452 fork); avoid the inherited v1.0.x–v2.0.4 tags. First release = v2.1.0. → [release-process](release-process.md)

@@ -23,9 +23,25 @@ tier 4`. Then measured that tier 3 must not SEED a boss: 1197 markers / 241 type
 entities, with 20 model-derived types alone producing 891 markers (`vmap ename 12 1 0`: 98 tier-3
 "bosses" over 12 models in ONE tile vs 4 real bars). Gate is now `if (tier != 4) continue;`.
 
-**⏳ ONE READ LEFT:** relaunch and check `[BOSSLIVE]` — expect ~218-251 markers instead of 1197, and no
-boss type stamped on more than a handful of tiles. Confirm a couple of boss names in-world, then move the
-changelog line out of the "NOT YET CONFIRMED" comment block.
+**MEASURED after the gate (2026-07-27 10:57):** `[BOSSLIVE] 273 markers, 202 types, 218 instances at
+tier 4` — down from **1197 / 241**, against 251 boss-bar entities on the install. Two residues left:
+- **273 markers vs 218 tier-4 instances.** The extra ~55 enter through the `marked.find(nm)` branch,
+  which runs BEFORE the tier gate: once a tier-4 boss seeds a type, any tier-3 enemy resolving to the
+  same model-band name joins it without ever being tier-checked. Same mechanism as the old blow-up, at
+  1/20th the scale. Fix would be to remember which types were tier-4-seeded and refuse tier-3 joins.
+- **251 boss-bar entities vs 218 markers.** 33 bosses have a bar but no marker — not in the `_00` MSB
+  enemy scan (event-spawned / LOD-only), or lost to the per-(type,tile) dedup. Needs a `vmap dump_markers`
+  on a running game joined against `tools/_probe_boss_enum.py` output to split those two causes.
+
+Then confirm a couple of boss names in-world and move the changelog line out of the "NOT YET CONFIRMED"
+comment block.
+
+**Marker audit vs the seed's spoiler log (2026-07-27), new tooling:** `tools/audit_markers_vs_spoiler.py`
++ [[spoiler-log-marker-audit]]. 97.6 % coverage on precisely-located items, 0 projection failures. Open
+leads: 7 `LootCraftingMaterials` markers with a dead GoodsName id, 17 `WorldInteractables` pointing at
+ERR-only ActionButtonText ids, 19 out-of-bounds markers. The memory note lists what is ALREADY ruled out
+(un-randomized item families, the synthetic boss `name_id`, harvestable "duplication") — read it before
+re-investigating anything from a fresh run.
 
 **Steps that were needed (all done):** Everything was already parsed; it was a join, not new RE:
 1. Extract `2003[011]` in the existing EMEVD pass (`build_disk_emevd*`, `map_entry_layer.cpp`) → `{entityId → nameId}`.
