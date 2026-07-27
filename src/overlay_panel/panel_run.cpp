@@ -19,7 +19,9 @@
 #include "goblin_config.hpp"             // run HUD placement / toggle
 #include "goblin_inventory.hpp"          // read_run_stats (host-side, GameDataMan)
 #include "goblin_map_data.hpp"           // generated::Category
+#include "goblin_inject.hpp"             // boss_bar_display_name (tier 4 from an entity id)
 #include "worldmap/marker_layer.hpp"
+#include "worldmap/loot_disk.hpp"        // emevd_boss_defeat_entities — the fight list
 
 #include <spdlog/spdlog.h>
 
@@ -51,7 +53,7 @@ struct RunSnapshot
 {
     std::vector<BossRow> bosses;  // sorted by region, then name
     int killed = 0;
-    int unflagged = 0;            // distinct boss markers carrying no cleared flag
+    int unflagged = 0;            // registered fights with no map marker (no region header)
     bool built = false;
     // The game's event-flag API answers false for EVERY id until it is warm (before the world is
     // up, and on a cold API right after load). Without this, a run with 200 bosses beaten reads
@@ -102,32 +104,46 @@ void rebuild()
 {
     RunSnapshot &s = snap();
     s.flags_live = goblin::overlay_api::read_event_flag(6001);  // AlwaysOn — is the flag API warm?
-    const int bossCat = static_cast<int>(goblin::generated::Category::WorldBosses);
-    std::unordered_map<int, size_t> by_flag;  // cleared flag -> index in s.bosses
-    std::vector<BossRow> rows;
-    int unflagged = 0;
 
+    // The MARKERS are only an enrichment source here (name + region). The fight LIST comes from the
+    // EMEVD defeat registrations, because a marker is a map-display object: build_live_bosses dedups
+    // it per (type, tile) and drops LOD-tile-only / non-MSB-Enemy placements, all correct for drawing
+    // and all wrong for counting. Sourcing the list from markers lost 14 of 215 fights on the test
+    // install (Malenia among them) — see docs/memory/features/run-tracker.md.
+    const int bossCat = static_cast<int>(goblin::generated::Category::WorldBosses);
+    struct MarkerInfo { std::string name, region; };
+    std::unordered_map<int, MarkerInfo> by_flag;
     for (auto *L : overlay_layers())
     {
         if (!L) continue;
         for (const auto &m : L->markers())
         {
-            if (m.category != bossCat) continue;
-            if (m.cleared_flag == 0) { ++unflagged; continue; }
+            if (m.category != bossCat || m.cleared_flag == 0) continue;
             if (by_flag.count(m.cleared_flag)) continue;  // another instance of the same fight
-            BossRow r;
-            r.flag = m.cleared_flag;
+            MarkerInfo mi;
             // Mod-agnostic bosses carry their resolved name inline (no FMG id — see
             // Marker::live_name); everything else resolves through the active install's FMGs.
-            r.name = !m.live_name.empty() ? m.live_name
-                                          : goblin::overlay_api::lookup_text_utf8(m.name_id);
-            if (r.name.empty()) r.name = tr("(unnamed boss)");
-            if (m.loc_pname >= 0) r.region = goblin::overlay_api::lookup_text_utf8(m.loc_pname);
-            r.defeated = s.flags_live &&
-                         goblin::overlay_api::read_event_flag(static_cast<uint32_t>(r.flag));
-            by_flag.emplace(r.flag, rows.size());
-            rows.push_back(std::move(r));
+            mi.name = !m.live_name.empty() ? m.live_name
+                                           : goblin::overlay_api::lookup_text_utf8(m.name_id);
+            if (m.loc_pname >= 0) mi.region = goblin::overlay_api::lookup_text_utf8(m.loc_pname);
+            by_flag.emplace(m.cleared_flag, std::move(mi));
         }
+    }
+
+    std::vector<BossRow> rows;
+    int unflagged = 0;  // registered fights with no marker to name/place them
+    for (uint32_t ent : goblin::worldmap::emevd_boss_defeat_entities())
+    {
+        BossRow r;
+        r.flag = (int)ent;  // the defeat flag IS the entity id
+        auto it = by_flag.find(r.flag);
+        if (it != by_flag.end()) { r.name = it->second.name; r.region = it->second.region; }
+        else ++unflagged;
+        // No marker (or a marker with no name): the boss-bar name resolves from the entity alone.
+        if (r.name.empty()) r.name = goblin::boss_bar_display_name(ent);
+        if (r.name.empty()) r.name = tr("(unnamed boss)");
+        r.defeated = s.flags_live && goblin::overlay_api::read_event_flag(ent);
+        rows.push_back(std::move(r));
     }
 
     std::sort(rows.begin(), rows.end(), [](const BossRow &a, const BossRow &b) {
@@ -149,8 +165,8 @@ void rebuild()
     if (s.killed != s_last_logged)
     {
         s_last_logged = s.killed;
-        spdlog::info("[RUN] bosses {}/{} defeated ({} markers without a defeat flag, flag API {})",
-                     s.killed, (int)s.bosses.size(), s.unflagged,
+        spdlog::info("[RUN] bosses {}/{} defeated ({} registered fights have no map marker, "
+                     "flag API {})", s.killed, (int)s.bosses.size(), s.unflagged,
                      s.flags_live ? "live" : "COLD - counts are not readable yet");
     }
 }
@@ -277,16 +293,15 @@ void draw_run_tracker(Filter &f)
 
     if (total == 0)
     {
-        ImGui::TextDisabled("%s", tr("No boss markers with a defeat flag on this install — open "
-                                     "the map once so the marker build runs."));
+        ImGui::TextDisabled("%s", tr("The install's boss events have not been read yet — open the "
+                                     "map once so the EMEVD scan runs."));
     }
-    if (s.unflagged > 0)
+    else if (s.unflagged > 0)
     {
-        ImGui::TextDisabled("%s", tr("Not counted:"));
-        ImGui::SameLine();
+        // Counted, just not placeable: the fight is registered by the engine, but no map marker
+        // survived for it, so it has no region header. Informational, not a warning.
         ImGui::TextDisabled("%d %s", s.unflagged,
-                            tr("boss marker(s) carry no defeat flag on this install, so their "
-                               "state is unknown."));
+                            tr("of them have no map marker (counted, but not placed on the map)."));
     }
 
     // In-game HUD controls. The HUD, not this tab, is the surface meant for actual play — F1

@@ -115,10 +115,23 @@ their `x800`/`x850` primary in the defeat set.** The remaining ones are degenera
 `10000` = the PLAYER (a boss bar drawn on the player). Since the tracker's unit is the FIGHT, giving
 companions their own flag would make the Godskin Duo count as 2 — do not "fix" this gap.
 
-**215 → 201 is ours** and is measured per build by `[BOSSLIVE] defeat flags: N of M registered
-entities are on a marker; K unmatched — sample: …`. A registered entity only becomes a marker if it
-is placed in a scanned MSB, resolves at tier 4, and survives the per-tile dedup. Read the sample ids
-before assuming it is a bug.
+**215 → 201 was ours, and is now gone — the tracker no longer sources its list from markers.**
+Measured 2026-07-27: `[BOSSLIVE] defeat flags: 201 of 215 registered entities are on a marker; 14
+unmatched — 15000800, 20010850, 30130810, 31000850, 32080800, 34100800, 34110800, 34150800,
+1037530800, 1041330800, 1052380800, 1052520800, 1054560800, 2050430710`. `15000800` is **Malenia**.
+
+Those 14 are the losses HANDOFF (2026-07-27, line 21) already accounted for on the marker side:
+`251 − 6 (LOD-tile only) − 5 (not MSB Enemy parts) = 240 reachable`, then the per-(type,tile) dedup.
+Every one of those steps is right for DRAWING and wrong for COUNTING — a marker is a map-display
+object.
+
+So `rebuild()` enumerates `emevd_boss_defeat_entities()` (the engine's own registrations) and uses
+markers only to enrich a row with its name/region, joined on `cleared_flag == entityId`. A fight
+with no surviving marker still counts, and still gets a name via
+`goblin::boss_bar_display_name(entityId)` (tier 4 from the entity alone, no NpcParam/model needed).
+
+**Rule: the run tracker's unit is the engine's defeat registration, never the marker.** If a future
+change makes the checklist read from markers again, Malenia silently disappears from the total.
 
 ## Not done (deliberate)
 

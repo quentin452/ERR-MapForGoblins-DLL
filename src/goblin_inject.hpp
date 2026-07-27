@@ -493,6 +493,11 @@ namespace goblin
     // one-time EMEVD walk (worldmap::emevd_boss_bars) — call it from the marker build, never per frame.
     GOBLIN_RENDER_API std::string enemy_display_name(int npcParam, int model, int *tier,
                                                      uint32_t entityId);
+    // Tier 4 from an MSB EntityID ALONE (no NpcParam/model). For callers that enumerate boss
+    // ENCOUNTERS from the EMEVD itself rather than from placed enemies — the run tracker counts the
+    // engine's defeat registrations, which exist even for fights whose marker was deduped away.
+    // "" when the entity has no boss-bar name. Same one-time EMEVD walk caveat as above.
+    GOBLIN_RENDER_API std::string boss_bar_display_name(uint32_t entityId);
     // Teach the resolver that an NpcParam belongs to a boss encounter the game names via its health
     // bar. The enemy-TAG path (update_native_enemy_names) walks CSFeMan HP bars, which carry no MSB
     // EntityID and run on the present thread, so it cannot do the tier-4 lookup itself; the marker

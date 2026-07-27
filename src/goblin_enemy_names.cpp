@@ -487,6 +487,15 @@ std::string goblin::enemy_display_name(int npcParam, int model, int *tier, uint3
     return r.name;
 }
 
+// The boss-bar name for an MSB EntityID alone — tier 4 only, no NpcParam/model needed. The run
+// tracker enumerates FIGHTS from the EMEVD (the engine's own defeat registrations), not from map
+// markers, so it has an entity id and nothing else. "" when this entity has no 2003[11] name.
+std::string goblin::boss_bar_display_name(uint32_t entityId)
+{
+    if (!entityId) return {};
+    return boss_bar_name_utf8(goblin::worldmap::emevd_boss_bar_name_id(entityId));
+}
+
 void goblin::register_boss_bar_name(int npcParam, uint32_t nameId)
 {
     if (npcParam <= 0 || !nameId) return;
