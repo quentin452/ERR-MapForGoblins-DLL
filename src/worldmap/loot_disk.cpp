@@ -1094,6 +1094,14 @@ std::vector<QuestNpcRuntime> load_quest_npcs()
     return out;
 }
 
+// Boss entities the engine registers a DEFEAT for (2003[12]). Filled by the same EMEVD walk as the
+// health-bar names below; the flag id equals the entity id (see parse_emevd_boss_defeats).
+static std::unordered_set<uint32_t> &defeats()
+{
+    static std::unordered_set<uint32_t> s;
+    return s;
+}
+
 const std::unordered_map<uint32_t, uint32_t> &emevd_boss_bars()
 {
     // Built by the marker-build worker; the returned map is read-only + stable afterwards, so only
@@ -1117,7 +1125,7 @@ const std::unordered_map<uint32_t, uint32_t> &emevd_boss_bars()
     spdlog::info("[LOOTDISK] reading boss health bars (2003[11]) from EMEVD {}", evdir.string());
 
     msbe::OodleDecompressFn oodle = resolve_oodle();
-    int parsed = 0, kraks = 0, calls = 0;
+    int parsed = 0, kraks = 0, calls = 0, defeat_calls = 0;
     std::error_code ec;
     for (auto &de : fs::directory_iterator(evdir, ec))
     {
@@ -1138,12 +1146,28 @@ const std::unordered_map<uint32_t, uint32_t> &emevd_boss_bars()
             // first-wins keeps one entry per ENCOUNTER without a second pass.
             cache.emplace(b.entityId, b.nameId);
         }
+        // Defeat registrations ride on the SAME decompressed buffer — a separate pass would mean a
+        // second walk of every EMEVD in the install (Oodle decompress included) for one extra field.
+        for (uint32_t ent : msbe::parse_emevd_boss_defeats(evd.data(), evd.size()))
+        {
+            ++defeat_calls;
+            defeats().insert(ent);
+        }
         ++parsed;
     }
     loaded = true;
     spdlog::info("[LOOTDISK] boss bars: {} entities named (from {} 2003[11] calls over {} EMEVD "
                  "files, {} KRAK skipped)", (int)cache.size(), calls, parsed, kraks);
+    spdlog::info("[LOOTDISK] boss defeats: {} entities registered (from {} 2003[12] calls) — their "
+                 "defeat flag IS the entity id", (int)defeats().size(), defeat_calls);
     return cache;
+}
+
+uint32_t emevd_boss_defeat_flag(uint32_t entityId)
+{
+    if (!entityId) return 0;
+    emevd_boss_bars();  // shared one-time EMEVD walk fills the defeat set too
+    return defeats().count(entityId) ? entityId : 0u;
 }
 
 uint32_t emevd_boss_bar_name_id(uint32_t entityId)

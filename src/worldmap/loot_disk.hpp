@@ -260,6 +260,13 @@ GOBLIN_RENDER_API const std::unordered_map<uint32_t, uint32_t> &emevd_boss_bars(
 // (i.e. the game does not treat it as a boss). Never triggers the scan itself if `entityId` is 0.
 GOBLIN_RENDER_API uint32_t emevd_boss_bar_name_id(uint32_t entityId);
 
+// The DEFEAT event flag for a boss entity, mined from the same EMEVD walk (2003[12]
+// HandleBossDefeatAndDisplayBanner). Returns the entity id itself — that IS the flag the engine
+// sets, and ER's own events read it back the same way — or 0 when this entity has no defeat
+// registration (its flag would never be set, so reporting it as "alive" would be a lie, not a
+// default). Mod-agnostic: works wherever the engine's own boss events do, no param encoding needed.
+GOBLIN_RENDER_API uint32_t emevd_boss_defeat_flag(uint32_t entityId);
+
 // ── Map-dir discovery state (F1 error + CreateFileW fallback) ──────────────────
 // With loot_from_disk_msb on, the map dir is resolved by ancestor-walk at init
 // (Found). If that finds nothing we fall back to OBSERVING the game's own map

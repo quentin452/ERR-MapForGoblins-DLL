@@ -311,6 +311,10 @@ struct BossBar
 // Extract every 2003[11] boss-bar registration. Same pinned 64-bit layout as parse_emevd_quest_npcs.
 // A boss commonly has 2+ calls (show/hide); the caller dedups by entityId. Empty on malformed.
 std::vector<BossBar> parse_emevd_boss_bars(const uint8_t *buf, size_t len);
+// Entity ids passed to 2003[12] HandleBossDefeatAndDisplayBanner — the bosses whose defeat the
+// engine records. The defeat event flag IS the entity id (ER convention, verified over the
+// decompiled corpus). Mod-agnostic source of the "boss beaten?" state.
+std::vector<uint32_t> parse_emevd_boss_defeats(const uint8_t *buf, size_t len);
 
 // Richer EMEVD parse for the event-1200 recovery (mechanism B) on top of the direct awards
 // (mechanism A). Same pinned layout as parse_emevd. Returns direct awards, RunEvent(1200)

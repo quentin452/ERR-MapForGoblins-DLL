@@ -7,11 +7,11 @@
 // carry a baked vanilla boss list to show the same panel, which is wrong on any mod; here the
 // data is already correct for whatever install is loaded. See docs/memory/features/run-tracker.md.
 //
-// Scope note (honest limitation, shown in the UI): the "defeated" state is the marker's
-// clearedEventFlagId. That field only exists on WorldMapPointParam boss rows — an encoding
-// vanilla does not use — so on an install whose bosses were seeded mod-agnostically the names
-// are right but the checkmarks are missing. Those markers are counted separately as "no defeat
-// flag" instead of being silently reported as alive.
+// The "defeated" state is the marker's clearedEventFlagId, which now has TWO sources: the
+// WorldMapPointParam row (ERR-style installs) and, for bosses seeded mod-agnostically, the
+// engine's own 2003[12] defeat registration mined from the active install's EMEVD — where the
+// flag id IS the boss entity id. A boss with neither still lands here with flag 0; those are
+// counted separately as "state unknown" rather than silently reported as alive.
 
 #include "panel_internal.hpp"
 #include "goblin_i18n.hpp"

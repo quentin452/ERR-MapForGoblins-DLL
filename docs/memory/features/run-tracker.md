@@ -48,7 +48,7 @@ Both offsets are the pair `soarqin/EROverlay` reads (`src/boss/data.hpp`, `kDeat
 `kInGameTime`); `+0x94` is independently proven here by the death-marker path. They are engine SAVE
 data, not param/FMG content, so they are mod-agnostic for free.
 
-## Known limitation — the defeat flag is not mod-agnostic yet
+## The defeat flag — was ERR-only, now mined from EMEVD (2026-07-27)
 
 `Marker::cleared_flag` comes from `WorldMapPointParam.textDisableFlagId1` on boss rows
 (`textId2 == 5100`), which is an **ERR encoding vanilla does not use**. Bosses seeded
@@ -73,9 +73,30 @@ Zero WMP boss rows → zero cleared flags → the panel showed `0/0` with 235 ma
 The boss half of the tracker is therefore **inert on any install without ERR-style boss pins**, and
 closing the gap below is a prerequisite, not a nice-to-have.
 
-**Lead to close it:** the EMEVD event that raises the boss health bar (already parsed for tier-4
-naming, `emevd_boss_bar_name_id`) is usually the same one that sets the defeat flag. Harvesting the
-flag from that event would make the checklist mod-agnostic on a path already open. Not attempted yet.
+### The fix (landed, not yet verified in-game)
+
+The lead was right, and the instruction is one id away from the one already parsed:
+
+| | |
+|---|---|
+| `2003[11]` `DisplayBossHealthBar(entity, slot, nameId)` | already mined → the boss NAME |
+| `2003[12]` `HandleBossDefeatAndDisplayBanner(entity, bannerType)` | now mined → the boss DEFEAT |
+
+**The defeat flag id IS the entity id.** 2003[12] takes no flag argument because the engine sets
+the flag whose id equals the entity, and ER's own events read it back that way — e.g. Godrick
+(`10000800`) is gated on `EventFlag(10000800)`. Measured over the decompiled corpus: **134 of the
+140** entities passed to 2003[12] are re-read as `EventFlag(<same id>)`.
+
+Wiring: `msbe::parse_emevd_boss_defeats` (msbe_parser.cpp) → collected by the SAME EMEVD walk that
+mines the boss-bar names (`emevd_boss_bars()`, no second Oodle pass) → `emevd_boss_defeat_flag()` →
+`build_live_bosses` sets `d.clearedEventFlagId` on each mod-agnostically supplemented boss.
+
+Returning 0 for an entity with **no** 2003[12] registration is deliberate: its flag would never be
+set, so treating it as a valid flag would report a beaten boss as alive forever. Those stay in the
+"state unknown" bucket.
+
+**Still to verify in-game (vanilla):** that the count is non-zero and that killing a boss ticks it.
+Check `[LOOTDISK] boss defeats: N entities registered` in the log first — N ≈ 140 on vanilla.
 
 ## Not done (deliberate)
 

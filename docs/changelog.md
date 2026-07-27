@@ -29,9 +29,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
   are configurable (`[Run Tracker]` in the INI, or F1 ▸ Run).
 - **Run tab (F1 ▸ Run)** — the detailed view behind the HUD: the same counters plus a per-region
   boss checklist. The boss list is the one MapForGoblins already builds from your actual install,
-  so it names the bosses your mod names — no baked vanilla list. On an install whose bosses carry
-  no defeat flag the names still show and those markers are reported as "state unknown" rather
-  than counted as alive.
+  so it names the bosses your mod names — no baked vanilla list — and which ones you have beaten
+  comes from the game's own boss-defeat events, so it works on vanilla and modded installs alike.
+  A boss the engine registers no defeat for is shown as "state unknown" rather than counted as
+  alive.
 
 ## [v2.5.0] - 2026-07-27
 

@@ -523,6 +523,12 @@ void build_live_bosses()
         d.textId1 = it->second.textId1;
         d.textId2 = 5100;
         d.iconId = (int16_t)it->second.iconId;
+        // Defeat state, mod-agnostically: the engine's own 2003[12] registration for this entity
+        // (its flag IS the entity id). WorldMapPointParam.clearedEventFlagId — the only previous
+        // source — is an ERR-style encoding that a vanilla install simply does not have, so
+        // without this every supplemented boss carried flag 0 = "state unknown" (measured
+        // 2026-07-27: 235 markers, 0 flags). Left at 0 when the entity has no registration.
+        d.clearedEventFlagId = emevd_boss_defeat_flag(en.entityId);
         const uint64_t rid = en.entityId ? (uint64_t)en.entityId : (0xB055ull << 32 | key);
         push_marker(rid, d, c, /*lotId=*/0u, /*lotType=*/0u, Source::Live);
         // Mod-agnostic boss: no FMG id, so carry the resolved name on the just-pushed marker for the
