@@ -1131,6 +1131,8 @@ const std::unordered_map<uint32_t, uint32_t> &emevd_boss_bars()
 
     msbe::OodleDecompressFn oodle = resolve_oodle();
     int parsed = 0, kraks = 0, calls = 0, defeat_calls = 0, defeat_sites = 0;
+    std::vector<msbe::BossDefeatSite> literal_sites;  // resolved after the walk (needs `resettable`)
+    std::unordered_set<uint32_t> resettable;          // flags common.emevd turns OFF
     std::error_code ec;
     for (auto &de : fs::directory_iterator(evdir, ec))
     {
@@ -1153,11 +1155,16 @@ const std::unordered_map<uint32_t, uint32_t> &emevd_boss_bars()
         }
         // Defeat registrations ride on the SAME decompressed buffer — a separate pass would mean a
         // second walk of every EMEVD in the install (Oodle decompress included) for one extra field.
-        for (uint32_t ent : msbe::parse_emevd_boss_defeats(evd.data(), evd.size()))
+        // Literal registrations are BUFFERED, not resolved here: choosing the flag needs the reset
+        // group, which lives in common.emevd and may be read after this file. Resolved below.
+        for (auto &s : msbe::parse_emevd_boss_defeats(evd.data(), evd.size()))
         {
             ++defeat_calls;
-            defeats().emplace(ent, ent);  // literal: flag = entity, and never overrides a call site
+            literal_sites.push_back(std::move(s));
         }
+        if (lower.rfind("common.emevd", 0) == 0)
+            for (uint32_t f : msbe::parse_emevd_flags_cleared(evd.data(), evd.size()))
+                resettable.insert(f);
         for (const auto &c : msbe::parse_emevd_boss_defeat_calls(evd.data(), evd.size()))
         {
             ++defeat_sites;
@@ -1177,6 +1184,53 @@ const std::unordered_map<uint32_t, uint32_t> &emevd_boss_bars()
         }
         ++parsed;
     }
+    // ── Resolve the literal registrations now that the reset group is known ──────────────────────
+    // Normal case: the entity id IS the persistent defeat flag. But a night/roaming boss's entity
+    // sits in common.emevd's reset group (event 6901 turns 94 flags OFF), so trusting it would let
+    // a beaten boss un-tick itself. In that case the persistent flag is one of the flags the SAME
+    // event turns ON — and it is only accepted when exactly ONE candidate is itself non-resettable,
+    // i.e. when the data leaves no choice to make. Anything ambiguous keeps the entity id and is
+    // logged, so the next pass reads measurements rather than inheriting a guess.
+    int reset_entities = 0, rescued = 0, ambiguous = 0;
+    std::string rescue_log, ambiguous_log;
+    for (const auto &s : literal_sites)
+    {
+        uint32_t flag = s.entity;
+        if (resettable.count(s.entity))
+        {
+            ++reset_entities;
+            std::vector<uint32_t> keep;
+            for (uint32_t f : s.flagsOn)
+                if (f != s.entity && !resettable.count(f)) keep.push_back(f);
+            if (keep.size() == 1)
+            {
+                flag = keep[0];
+                ++rescued;
+                if (rescued <= 12)
+                    rescue_log += (rescue_log.empty() ? "" : ", ") + std::to_string(s.entity) +
+                                  "->" + std::to_string(flag);
+            }
+            else
+            {
+                ++ambiguous;
+                if (ambiguous <= 12)
+                {
+                    ambiguous_log += (ambiguous_log.empty() ? "" : ", ") +
+                                     std::to_string(s.entity) + "[";
+                    for (size_t k = 0; k < keep.size(); ++k)
+                        ambiguous_log += (k ? " " : "") + std::to_string(keep[k]);
+                    ambiguous_log += "]";
+                }
+            }
+        }
+        defeats().emplace(s.entity, flag);  // never overrides a call site (assigned above)
+    }
+    spdlog::info("[LOOTDISK] defeat flags: {} resettable entities ({} rescued to a persistent flag, "
+                 "{} ambiguous); reset group = {} flags", reset_entities, rescued, ambiguous,
+                 (int)resettable.size());
+    if (!rescue_log.empty())    spdlog::info("[LOOTDISK]   rescued: {}", rescue_log);
+    if (!ambiguous_log.empty()) spdlog::info("[LOOTDISK]   ambiguous (kept entity): {}", ambiguous_log);
+
     loaded = true;
     spdlog::info("[LOOTDISK] boss bars: {} entities named (from {} 2003[11] calls over {} EMEVD "
                  "files, {} KRAK skipped)", (int)cache.size(), calls, parsed, kraks);

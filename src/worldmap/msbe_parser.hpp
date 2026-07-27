@@ -314,7 +314,17 @@ std::vector<BossBar> parse_emevd_boss_bars(const uint8_t *buf, size_t len);
 // Entity ids passed to 2003[12] HandleBossDefeatAndDisplayBanner — the bosses whose defeat the
 // engine records. The defeat event flag IS the entity id (ER convention, verified over the
 // decompiled corpus). Mod-agnostic source of the "boss beaten?" state.
-std::vector<uint32_t> parse_emevd_boss_defeats(const uint8_t *buf, size_t len);
+// One literal boss-defeat registration, with the flags its EVENT also turns ON. The entity id is
+// normally the defeat flag, but for night/roaming bosses it is a RESETTABLE one (common.emevd
+// event 6901 turns 94 such flags OFF); the persistent flag is then one of the event's own
+// SetEventFlag(..., ON) targets. Reporting the candidates instead of guessing an `x340 -> x800`
+// naming rule is deliberate — a naming assumption already misfired once on this feature.
+struct BossDefeatSite { uint32_t entity = 0; std::vector<uint32_t> flagsOn; };
+std::vector<BossDefeatSite> parse_emevd_boss_defeats(const uint8_t *buf, size_t len);
+
+// Every flag this emevd turns OFF (2003[66] with state 0). Over `common.emevd` that is the game's
+// reset group: a flag in it cannot be trusted as "permanently defeated".
+std::vector<uint32_t> parse_emevd_flags_cleared(const uint8_t *buf, size_t len);
 
 // One boss-defeat COMMON-FUNC call site: the persistent flag (X0_4) and the entity whose death
 // raises the banner (X8_4). Needed because the shared handlers take the entity as a parameter, so

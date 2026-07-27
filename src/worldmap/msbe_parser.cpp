@@ -726,9 +726,57 @@ std::vector<QuestNpcEmevd> parse_emevd_quest_npcs(const uint8_t *buf, size_t len
 // has ZERO such rows — measured, see docs/memory/features/run-tracker.md). Returning the entity
 // list rather than "assume every boss-bar entity works" matters: an entity with no 2003[12] never
 // gets its flag set, so reading it would report a beaten boss as alive forever.
-std::vector<uint32_t> parse_emevd_boss_defeats(const uint8_t *buf, size_t len)
+// 2003[66] SetEventFlag(type u8 @+0, flagId u32 @+4, state u8 @+8) — the u8s are padded to 4 bytes,
+// same alignment the 2003[11] reader relies on. `want_on` selects set-ON vs set-OFF.
+static void collect_flag_sets(const uint8_t *buf, size_t len, size_t argsOff, size_t base,
+                              uint64_t instrCount, bool want_on, std::vector<uint32_t> &out,
+                              size_t cap)
+{
+    constexpr uint32_t FLAG_BANK = 2003, FLAG_ID = 66;
+    constexpr size_t INSTR_SZ = 0x20;
+    for (uint64_t j = 0; j < instrCount && out.size() < cap; ++j)
+    {
+        size_t ins = base + (size_t)j * INSTR_SZ;
+        if (!inb(ins, INSTR_SZ, len)) break;
+        if (rd32(buf, ins + 0x00) != FLAG_BANK || rd32(buf, ins + 0x04) != FLAG_ID) continue;
+        uint64_t argLen = rd64(buf, ins + 0x08);
+        int32_t  argOff = (int32_t)rd32(buf, ins + 0x10);
+        if (argOff < 0 || argLen < 12) continue;   // need state @ a+8
+        size_t a = (size_t)argsOff + (size_t)argOff;
+        if (!inb(a, (size_t)argLen, len)) continue;
+        const bool on = buf[a + 8] != 0;
+        if (on != want_on) continue;
+        uint32_t flag = rd32(buf, a + 4);
+        if ((int32_t)flag > 0) out.push_back(flag);
+    }
+}
+
+std::vector<uint32_t> parse_emevd_flags_cleared(const uint8_t *buf, size_t len)
 {
     std::vector<uint32_t> out;
+    if (len < 0x80 || std::memcmp(buf, "EVD\0", 4) != 0) return out;
+    uint64_t eventCount  = rd64(buf, 0x10);
+    uint64_t eventsOff   = rd64(buf, 0x18);
+    uint64_t instrTblOff = rd64(buf, 0x28);
+    uint64_t argsOff     = rd64(buf, 0x78);
+    if (eventCount > 1000000u) return out;
+    constexpr size_t EVENT_SZ = 0x30;
+    for (uint64_t i = 0; i < eventCount; ++i)
+    {
+        size_t e = (size_t)eventsOff + (size_t)i * EVENT_SZ;
+        if (!inb(e, EVENT_SZ, len)) break;
+        uint64_t instrCount = rd64(buf, e + 0x08);
+        if (instrCount > 1000000u) continue;
+        size_t base = (size_t)instrTblOff + (size_t)rd64(buf, e + 0x10);
+        collect_flag_sets(buf, len, (size_t)argsOff, base, instrCount, /*want_on=*/false, out,
+                          /*cap=*/100000);
+    }
+    return out;
+}
+
+std::vector<BossDefeatSite> parse_emevd_boss_defeats(const uint8_t *buf, size_t len)
+{
+    std::vector<BossDefeatSite> out;
     if (len < 0x80 || std::memcmp(buf, "EVD\0", 4) != 0) return out;
 
     uint64_t eventCount  = rd64(buf, 0x10);
@@ -747,6 +795,12 @@ std::vector<uint32_t> parse_emevd_boss_defeats(const uint8_t *buf, size_t len)
         uint64_t instrOffset = rd64(buf, e + 0x10);
         size_t base = (size_t)instrTblOff + (size_t)instrOffset;
         if (instrCount > 1000000u) continue;
+        // The event's own set-ON flags, gathered once: they are the candidates for a persistent
+        // defeat flag when the entity id itself turns out to be resettable. Capped — a few events
+        // set dozens of unrelated flags and only the small ones are informative.
+        std::vector<uint32_t> on;
+        collect_flag_sets(buf, len, (size_t)argsOff, base, instrCount, /*want_on=*/true, on,
+                          /*cap=*/16);
         for (uint64_t j = 0; j < instrCount; ++j)
         {
             size_t ins = base + (size_t)j * INSTR_SZ;
@@ -758,7 +812,7 @@ std::vector<uint32_t> parse_emevd_boss_defeats(const uint8_t *buf, size_t len)
             size_t a = (size_t)argsOff + (size_t)argOff;
             if (!inb(a, (size_t)argLen, len)) continue;
             uint32_t entity = rd32(buf, a + 0);
-            if ((int32_t)entity > 0) out.push_back(entity);
+            if ((int32_t)entity > 0) out.push_back({entity, on});
         }
     }
     return out;
