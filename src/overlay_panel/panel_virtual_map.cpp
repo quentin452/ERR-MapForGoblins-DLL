@@ -777,6 +777,32 @@ std::string virtual_map_load_lod(int dim, int lod, int cap)
     return (s_tile_status = st);
 }
 
+// Pin the NEXT tooltip to the canvas pointer instead of letting ImGui place it.
+//
+// ImGui positions a tooltip via NavCalcPreferredRefPos(): while gamepad nav is active
+// (`!NavDisableHighlight && NavDisableMouseHover`) that returns the NAV-FOCUSED WIDGET's rect and
+// ignores io.MousePos entirely — so a canvas tooltip rendered in pad-mode appeared next to whatever
+// sidebar row happened to hold nav focus, not next to the reticle the player is aiming with. (We do
+// override io.MousePos to the reticle; that fixes hit-testing, not placement, which is why the earlier
+// ImGuiHoveredFlags_NoNavOverride sweep didn't cover this one.) SetNextWindowPos sets
+// window_pos_set_by_api, which bypasses that auto-placement — the same escape hatch ImGui's own
+// drag-and-drop tooltips use.
+//
+// Mouse mode is left alone: ImGui's own placement already follows the cursor AND clamps to the
+// viewport, which is strictly better than anything we'd hand-roll.
+static void pin_tooltip_to_pointer(bool pad_mode, const ImVec2 &ptr)
+{
+    if (!pad_mode) return;
+    const ImGuiViewport *vp = ImGui::GetMainViewport();
+    const float off = 16.0f * ImGui::GetIO().FontGlobalScale;
+    ImVec2 pos(ptr.x + off, ptr.y + off), pivot(0.0f, 0.0f);
+    // No auto-clamp on this path (that's the trade for bypassing the placement), so flip the anchor
+    // when the pointer nears an edge instead of letting the tooltip run off-screen.
+    if (pos.x > vp->Pos.x + vp->Size.x * 0.72f) { pos.x = ptr.x - off; pivot.x = 1.0f; }
+    if (pos.y > vp->Pos.y + vp->Size.y * 0.72f) { pos.y = ptr.y - off; pivot.y = 1.0f; }
+    ImGui::SetNextWindowPos(pos, ImGuiCond_Always, pivot);
+}
+
 void draw_virtual_map(const OverlayFrameCtx &ctx)
 {
     // Slice D: open the virtual map with the game MAP KEY when a CUSTOM world is active (the production
@@ -1757,11 +1783,15 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     constexpr int kBossCat = static_cast<int>(goblin::generated::Category::WorldBosses);
     constexpr int kNpcCat = static_cast<int>(goblin::generated::Category::WorldQuestNPC);
     constexpr int kMerchCat = static_cast<int>(goblin::generated::Category::WorldMerchant);
+    // Grace catch radius, as a multiple of (icon half-size)² — see the GRACE LOCK note in `plot`.
+    constexpr float kGraceSnapSq = 6.0f;   // radius ≈ 2.45 * icoHalf vs 1.41 for everything else
     // Hover tooltip: track the marker nearest the cursor (within a pixel radius) while drawing.
     // Graces draw ON TOP (2nd pass) so they must also WIN the hover — track a priority (grace=1) so a
     // grace within radius beats an underlying non-grace, matching the visible z-order (the tooltip/warp
     // then targets the grace you see on top, not the object beneath it).
     float hoverBestD = 1e18f; int hoverName = -1, hoverCat = -1, hoverDisc = 0, hoverPrio = -1; std::string hoverV; uint64_t hoverRow = 0;
+    ImVec2 hoverPs(0, 0);                // SCREEN pos of the hovered marker — drives the grace lock ring
+                                         // + the pad reticle's magnetic snap (see kGraceSnapSq below).
     bool hoverAnon = false;              // spoiler-free hides this marker's name in the tooltip (same predicate as the native map)
     float hoverWx = 0.f, hoverWz = 0.f;  // world pos of the hovered marker (for warp diagnostics)
     int hoverArea = -1;                  // the hovered marker's REAL area (mp->raw_area), for warp diagnostics
@@ -1793,8 +1823,14 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         {
             float dx = ps.x - vptr.x, dy = ps.y - vptr.y, d = dx * dx + dy * dy;
             const int prio = (cat == kGraceCat) ? 1 : 0;   // graces (drawn on top) win the hover
-            if (d < mIco * mIco * 2.0f && (prio > hoverPrio || (prio == hoverPrio && d < hoverBestD)))
-            { hoverBestD = d; hoverPrio = prio; hoverName = nameId; hoverCat = cat; hoverV = vname ? vname : ""; hoverRow = rowId; hoverDisc = discFlag; hoverWx = wx; hoverWz = wz; hoverArea = mp ? mp->raw_area : -1; hoverAnon = mp && goblin::worldmap::marker_is_anonymized(*mp); }
+            // GRACE LOCK: graces get a bigger catch radius than any other marker (~1.7x), because they
+            // are the one marker you AIM at rather than merely read — warping is the map's main action,
+            // and hitting a grace-sized icon with a thumbstick reticle is otherwise fiddly. Combined
+            // with prio, passing anywhere near a grace latches onto it; the lock is then made visible
+            // (ring below) and the pad reticle snaps to it.
+            const float rad2 = mIco * mIco * (cat == kGraceCat ? kGraceSnapSq : 2.0f);
+            if (d < rad2 && (prio > hoverPrio || (prio == hoverPrio && d < hoverBestD)))
+            { hoverBestD = d; hoverPrio = prio; hoverName = nameId; hoverCat = cat; hoverV = vname ? vname : ""; hoverRow = rowId; hoverDisc = discFlag; hoverWx = wx; hoverWz = wz; hoverArea = mp ? mp->raw_area : -1; hoverAnon = mp && goblin::worldmap::marker_is_anonymized(*mp); hoverPs = ps; }
         }
     };
     // ── Region-hide gate precompute (A7 interactive region labels) ─────────────────────────────────
@@ -2003,10 +2039,13 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                 // is already showing, so "Ctrl+hover to expand" is wrong (with no-steal, hovering another
                 // pile won't open it) and it leaks over the open fan's icons.
                 if (dx * dx + dy * dy < r * r && !s_fan_open)
+                {
+                    pin_tooltip_to_pointer(s_pad_mode, vptr);
                     ImGui::SetTooltip("%d %s", pl.count,
                         (goblin::config::clusterSpiderfy && goblin::config::spiderfyHoldCtrl)
                             ? tr("markers — Ctrl+hover to expand, or zoom in")
                             : tr("markers — zoom in to expand"));
+                }
             }
         }
         // Non-grace singles (region-gated), then graces ON TOP (separate viewport-culled loop). Collect
@@ -2245,8 +2284,20 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             clab = (hoverCat >= 0) ? goblin::worldmap::anonymized_kind_label(goblin::worldmap::anonymized_kind(hoverCat))
                                    : nullptr;
         }
+        // LOCK FEEDBACK: ring the grace the pointer has latched onto, so "I am on it, act now" is
+        // visible before you press anything — the catch radius is wider than the icon, so without this
+        // the lock would be invisible and warping would still feel like a guess.
+        if (hoverGrace)
+        {
+            const float lr = icoHalf * 1.7f + 2.0f * uiScale;
+            dl->AddCircle(hoverPs, lr, IM_COL32(0, 0, 0, 150), 0, 4.0f * uiScale);
+            dl->AddCircle(hoverPs, lr,
+                          graceDiscovered ? IM_COL32(240, 205, 105, 235) : IM_COL32(160, 160, 160, 200),
+                          0, 2.0f * uiScale);
+        }
         if (!nm.empty() || clab || hoverGrace)
         {
+            pin_tooltip_to_pointer(s_pad_mode, vptr);
             ImGui::BeginTooltip();
             if (!nm.empty()) ImGui::TextUnformatted(nm.c_str());
             else ImGui::TextDisabled("(unnamed)");
@@ -2379,9 +2430,13 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     dl->AddCircle(p, 6.0f * uiScale, IM_COL32(255, 255, 255, 235), 0, 1.5f * uiScale);
                 }
                 // Hover tooltip (drawn after the marker loop's tooltip, so it wins over the icon).
-                const ImVec2 mp = ImGui::GetIO().MousePos;
-                if (hovered && std::fabs(mp.x - p.x) <= h && std::fabs(mp.y - p.y) <= h)
+                // vptr, not io.MousePos: in pad-mode the reticle IS the canvas pointer, so the raw
+                // mouse would test a stale position (and place the tooltip at the nav item).
+                if (hovered_eff && std::fabs(vptr.x - p.x) <= h && std::fabs(vptr.y - p.y) <= h)
+                {
+                    pin_tooltip_to_pointer(s_pad_mode, vptr);
                     ImGui::SetTooltip("%s — %d %s", tr("Bloodstain"), dsouls, tr("runes"));
+                }
             }
         }
     }
@@ -2552,7 +2607,11 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // aiming at. Shown only in pad-mode (hidden once a real mouse move takes over). Dark halo for contrast.
     if (s_pad_mode && s_pad_cursor_init)
     {
-        const ImVec2 c = s_pad_cursor;
+        // GRACE LOCK (pad half): while a grace is caught, DRAW the reticle on the grace itself — the
+        // aim-assist "clunk" that tells you the stick can stop now. Only the drawn position moves;
+        // s_pad_cursor is untouched, so the stick keeps its exact 1:1 feel and pushing on simply
+        // leaves the grace's radius. Snapping the real cursor would fight the player's own input.
+        const ImVec2 c = hoverGrace ? hoverPs : s_pad_cursor;
         const float r = 10.0f * uiScale, g = 3.0f * uiScale;
         dl->AddCircle(c, r, IM_COL32(0, 0, 0, 170), 0, 4.0f * uiScale);
         dl->AddCircle(c, r, IM_COL32(255, 255, 255, 235), 0, 2.0f * uiScale);

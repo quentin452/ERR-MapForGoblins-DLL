@@ -26,6 +26,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 - **Gamepad zoom sensitivity** (`gamepad_zoom_sensitivity` INI) — scales the Virtual World Map's L2/R2
   zoom speed, independent of the existing `gamepad_sensitivity` (reticle/pan).
 
+- **Sites of Grace snap under the cursor on the Virtual World Map.** Graces now catch the pointer from
+  further away than any other marker and ring themselves when caught, and on gamepad the reticle sticks
+  to the grace it has locked — aiming a thumbstick at a grace-sized icon to warp no longer takes a
+  steady hand.
+
 - **Boss markers now work on ANY install and carry the game's own boss names.** Until v2.4.0 boss markers
   came only from ERR's map pins, so vanilla, randomizer and other mods showed none. They are now built
   from the boss health bar the engine itself raises, which means one marker per real boss encounter,
@@ -33,6 +38,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
   name guessed from the creature model would be wrong.
 
 ### Fixed
+
+- **Gamepad buttons no longer activate whatever the map panel had selected.** Closing the panel with the
+  Y+R3 combo, or pressing Y to warp to a Site of Grace, also fired the button or checkbox that happened
+  to hold gamepad focus — so the panel closed *and* a setting flipped, or a grace warp turned into a
+  button press. Y and X are now reserved for the map's own actions.
+- **Map tooltips follow the gamepad reticle.** In gamepad mode the marker/pile/bloodstain tooltips were
+  drawn next to the sidebar entry that held focus instead of next to the aiming reticle, so the text
+  described a marker nowhere near where it appeared. The bloodstain tooltip never showed on gamepad at all.
 
 - **Other mods' overlays keep working alongside MapForGoblins.** MapForGoblins used to deaden every other
   mod loaded in the same game: opening the F1 panel blanked mouse/keyboard/cursor reads process-wide (so
