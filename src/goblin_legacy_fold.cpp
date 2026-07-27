@@ -183,8 +183,25 @@ Folded fold(uint8_t area, uint8_t gx, uint8_t gz, float posX, float posZ) {
         // overworld base point (cluster anchor for this dungeon's markers).
         f.ent_x = (float)(r->dst_gx * 256.0 + r->dst_px);
         f.ent_z = (float)(r->dst_gz * 256.0 + r->dst_pz);
-        cgx = (uint8_t)(wx / 256.0);
-        cgz = (uint8_t)(wz / 256.0);
+        // CLAMP, never cast. `(uint8_t)(wx / 256.0)` WRAPS for a negative wx: a sub-map local coord
+        // below -256 gives -1.x, which truncates to -1 and lands on 255 — the "unset" sentinel. The
+        // next lookup() then finds no block near grid 255, the loop breaks after ONE hop, and the
+        // out-of-range snap below is no help because `ent` is still the FIRST hop's dst base, itself a
+        // negative in-frame coord. Result: the marker ends at world ~(65352,65373) = grid (255,255),
+        // the map's far corner. Measured on Ashen Capital (m35): 2864 of 9828 placements — every one
+        // with a local X or Z under -256 — versus 0 once clamped (they land on Leyndell's real tiles
+        // 44-45/49-51). A negative wx simply means "left of tile 0", so 0 is the correct block.
+        // This is the residue previously filed as Class C "reverse_lookup doesn't cover m19/m34/m35"
+        // in dungeon_entrance_anchor_re_probe_findings.md — that diagnosis was wrong: area 35 HAS a
+        // forward row (12: (35,0,0)→(11,0,0)) and the chain 35→11→60 folds correctly once the
+        // intermediate grid stops wrapping.
+        auto clamp_grid = [](double w) -> uint8_t {
+            if (w < 0.0) return 0;
+            if (w > 255.0) return 255;
+            return (uint8_t)w;
+        };
+        cgx = clamp_grid(wx / 256.0);
+        cgz = clamp_grid(wz / 256.0);
         any = true;
     }
     f.matched = any;

@@ -81,11 +81,15 @@ Each looked like a bug and is not. Check these explanations before filing anythi
   Watch `[LOOTDISK] … markers fell back to their category label` for the count. NB the audit still lists
   these under "name_id with NO text": the `name_id` is unchanged and the name travels on
   `Marker::live_name`, which `dump_markers` does not export. The log line is the proof, not the CSV.
-- ⚠️ **19 markers out of bounds** — NOT a new bug. All at the identical point `(65352, 65373)` = grid
-  `(255,255)`, the unset sentinel, and all `srcArea 35` = **Ashen Capital**. Already classified as
-  **Class C** in `docs/re/dungeon_entrance_anchor_re_probe_findings.md` (26 markers then; 19 now because
-  most Ashen content is gated behind `StoryErdtreeOnFire`). Fix direction is stated there: make
-  `legacy_fold`'s `reverse_lookup` cover m19/m34/m35. Real content → must be PLACED, not hidden.
+- ✅ **19 markers out of bounds** (fixed 2026-07-27) — all at the identical point `(65352, 65373)` =
+  grid `(255,255)`, the unset sentinel, all `srcArea 35` (Ashen Capital). **The pre-existing Class-C
+  diagnosis in `docs/re/dungeon_entrance_anchor_re_probe_findings.md` was WRONG** — it blamed
+  `reverse_lookup` not covering m19/m34/m35. Area 35 in fact HAS a forward row (12: `(35,0,0)→(11,0,0)`)
+  so `reverse_lookup` is correctly skipped, and the chain `35→11→60` exists (row 108). The real cause was
+  one line in `legacy_fold::fold`: `cgx = (uint8_t)(wx / 256.0)` **WRAPS on a negative wx** — a local
+  coord under -256 gives -1.x → -1 → 255 → the next `lookup` finds nothing near grid 255 → the loop ends
+  after one hop → the out-of-range snap can't help because `ent` is still the first hop's (negative) dst
+  base. Now clamped (negative = "left of tile 0" = block 0). See [[legacy-fold-negative-grid-wrap]].
 - **194 world-placed items never drawn** (8 of which are also listed as shop/drop elsewhere, so they
   are likely misclassified). Treat as SOFT: the comparison is by item NAME, and the residue sits almost
   entirely in the region-only entries — the weakest evidence class. Needs a per-item drill-down (to a

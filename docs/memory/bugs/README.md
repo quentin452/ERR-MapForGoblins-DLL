@@ -12,6 +12,11 @@ Complex bugs — resolved and open — with the durable root-cause/fix takeaway.
   **RESOLVED 2026-07-27**: sourced from the game's own boss health bar (EMEVD `2003[11]`, tier 4;
   `docs/re/cross_mod_boss_naming_re_findings.md`). Live: **1197 → 215 markers**, biggest type 269 → 3.
   → [mod-agnostic-boss-markers](mod-agnostic-boss-markers.md)
+- **Legacy-fold grid wrapped on negative coords** [resolved 2026-07-27] — `cgx = (uint8_t)(wx/256.0)`
+  wraps to 255 for a negative wx, breaking the fold chain after one hop and dumping the marker at the
+  map's far corner. 19 Ashen-Capital markers; 2864/9828 m35 placements in simulation, exactly those with
+  a local coord under -256. **The prior Class-C `reverse_lookup` diagnosis was wrong** — area 35 has a
+  forward row and folds fine once clamped. → [legacy-fold-negative-grid-wrap](legacy-fold-negative-grid-wrap.md)
 - **MSB part name is not the enemy's model** [resolved 2026-07-27] — an enemy randomizer swaps
   `ModelName`+`NPCParamID` and KEEPS the part name, so the `c####_` prefix names the creature that used
   to be there (**84.7 %** of placements diverge on Randomizer v0.11.4). Every model-keyed name lookup
