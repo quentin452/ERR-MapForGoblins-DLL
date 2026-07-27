@@ -549,7 +549,10 @@ void build_live_bosses()
         std::unordered_set<uint32_t> attached;
         for (const Marker &m : g_buckets[c])
             if (m.cleared_flag) attached.insert((uint32_t)m.cleared_flag);
-        const auto &reg = emevd_boss_defeat_entities();
+        // Compare FLAGS, not entities: a fight's flag can differ from the entity id (common-func
+        // call sites), and two entities of one fight share a flag.
+        std::unordered_set<uint32_t> reg;
+        for (const auto &kv : emevd_boss_defeats()) reg.insert(kv.second);
         std::vector<uint32_t> missing;
         for (uint32_t e : reg)
             if (!attached.count(e)) missing.push_back(e);

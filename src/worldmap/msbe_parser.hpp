@@ -316,6 +316,12 @@ std::vector<BossBar> parse_emevd_boss_bars(const uint8_t *buf, size_t len);
 // decompiled corpus). Mod-agnostic source of the "boss beaten?" state.
 std::vector<uint32_t> parse_emevd_boss_defeats(const uint8_t *buf, size_t len);
 
+// One boss-defeat COMMON-FUNC call site: the persistent flag (X0_4) and the entity whose death
+// raises the banner (X8_4). Needed because the shared handlers take the entity as a parameter, so
+// the literal scan above cannot see them — and because X0_4 outranks the entity id as the flag.
+struct BossDefeatCall { uint32_t flag = 0, entity = 0; };
+std::vector<BossDefeatCall> parse_emevd_boss_defeat_calls(const uint8_t *buf, size_t len);
+
 // Richer EMEVD parse for the event-1200 recovery (mechanism B) on top of the direct awards
 // (mechanism A). Same pinned layout as parse_emevd. Returns direct awards, RunEvent(1200)
 // (flag,lot) pairs, and per-event SetEventFlag(.,1) records with their entity candidates.

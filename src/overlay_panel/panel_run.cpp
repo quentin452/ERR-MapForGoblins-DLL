@@ -131,20 +131,34 @@ void rebuild()
     }
 
     std::vector<BossRow> rows;
-    int unflagged = 0;  // registered fights with no marker to name/place them
-    for (uint32_t ent : goblin::worldmap::emevd_boss_defeat_entities())
+    int unflagged = 0;                 // registered fights with no marker to name/place them
+    std::unordered_map<int, size_t> seen;  // flag -> row: two entities can share one fight's flag
+    for (const auto &kv : goblin::worldmap::emevd_boss_defeats())
     {
+        const uint32_t entity = kv.first, flag = kv.second;
+        auto dup = seen.find((int)flag);
+        if (dup != seen.end())
+        {
+            // Same fight, second body (or a re-registration): keep the row, just fill in a name if
+            // this entity resolves one and the first did not.
+            if (rows[dup->second].name.empty())
+                rows[dup->second].name = goblin::boss_bar_display_name(entity);
+            continue;
+        }
         BossRow r;
-        r.flag = (int)ent;  // the defeat flag IS the entity id
+        r.flag = (int)flag;
         auto it = by_flag.find(r.flag);
         if (it != by_flag.end()) { r.name = it->second.name; r.region = it->second.region; }
         else ++unflagged;
-        // No marker (or a marker with no name): the boss-bar name resolves from the entity alone.
-        if (r.name.empty()) r.name = goblin::boss_bar_display_name(ent);
-        if (r.name.empty()) r.name = tr("(unnamed boss)");
-        r.defeated = s.flags_live && goblin::overlay_api::read_event_flag(ent);
+        // No marker (or a marker with no name): the boss-bar name resolves from the ENTITY, which
+        // is not always the flag — hence looking it up with `entity`, not `r.flag`.
+        if (r.name.empty()) r.name = goblin::boss_bar_display_name(entity);
+        r.defeated = s.flags_live && goblin::overlay_api::read_event_flag(flag);
+        seen.emplace(r.flag, rows.size());
         rows.push_back(std::move(r));
     }
+    for (BossRow &r : rows)
+        if (r.name.empty()) r.name = tr("(unnamed boss)");
 
     std::sort(rows.begin(), rows.end(), [](const BossRow &a, const BossRow &b) {
         if (a.region != b.region) return a.region < b.region;

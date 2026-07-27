@@ -260,17 +260,18 @@ GOBLIN_RENDER_API const std::unordered_map<uint32_t, uint32_t> &emevd_boss_bars(
 // (i.e. the game does not treat it as a boss). Never triggers the scan itself if `entityId` is 0.
 GOBLIN_RENDER_API uint32_t emevd_boss_bar_name_id(uint32_t entityId);
 
-// The DEFEAT event flag for a boss entity, mined from the same EMEVD walk (2003[12]
-// HandleBossDefeatAndDisplayBanner). Returns the entity id itself — that IS the flag the engine
-// sets, and ER's own events read it back the same way — or 0 when this entity has no defeat
-// registration (its flag would never be set, so reporting it as "alive" would be a lie, not a
-// default). Mod-agnostic: works wherever the engine's own boss events do, no param encoding needed.
+// The DEFEAT event flag for a boss entity, mined from the same EMEVD walk. Usually the entity id
+// itself (the engine sets the flag whose id equals the entity, and ER's own events read it back
+// that way), but NOT always: for a fight registered through a shared handler the call site names a
+// different, persistent flag — see parse_emevd_boss_defeat_calls. 0 when this entity has no defeat
+// registration at all (its flag would never be set, so reporting it as "alive" would be a lie, not
+// a default). Mod-agnostic: works wherever the engine's own boss events do, no param encoding.
 GOBLIN_RENDER_API uint32_t emevd_boss_defeat_flag(uint32_t entityId);
 
-// The whole defeat-registered entity set, for the build-time coverage diagnostic: an entity the
-// ENGINE records a defeat for, but which produced no boss marker, is a fight the tracker silently
-// cannot count. Same one-time EMEVD walk; empty before it has run.
-GOBLIN_RENDER_API const std::unordered_set<uint32_t> &emevd_boss_defeat_entities();
+// The whole table, boss entity -> defeat flag. Distinct FLAGS = distinct fights (two entities can
+// share one). The run tracker enumerates this instead of map markers, which are deduped per tile
+// for display; the build-time coverage diagnostic compares the two. Empty before the walk has run.
+GOBLIN_RENDER_API const std::unordered_map<uint32_t, uint32_t> &emevd_boss_defeats();
 
 // ── Map-dir discovery state (F1 error + CreateFileW fallback) ──────────────────
 // With loot_from_disk_msb on, the map dir is resolved by ancestor-walk at init

@@ -139,6 +139,9 @@ Reconciled our EMEVD `2003[12]` set (vanilla install, `[LOOTDISK] boss defeat id
 `soarqin/EROverlay`'s baked `bosses.json` (207 entries, whose `flag_id` is an entity id too, so the
 sets compare directly). **193 shared, 22 only ours, 14 only theirs.** Four distinct causes:
 
+> **Causes 1 and 4 were FIXED the same day by mining the common-func call sites** (see below); this
+> section records the measurement that found them. Re-run the diff after the fix.
+
 **1. Same fight, different id — 10 cases. WE ARE WRONG HERE (open defect).**
 Night/roaming bosses (Death Rite Bird, Night's Cavalry ×3, Deathbird ×2, Tibia Mariner) plus two
 DLC NPCs (Dryleaf Dane, Count Ymir). The engine passes the `x340`/`x710`/`x720` entity to
@@ -170,6 +173,35 @@ placeholders rather than literal entity ids — `parse_emevd_boss_defeats` only 
 Unverified; the same blind spot would hide any other parameterized registration.
 
 Repro: `[LOOTDISK] boss defeat ids:` in the log + the scratchpad `diff_bosses.py`.
+
+### The fix for causes 1 + 4 — mine the common-func CALL SITES
+
+Both defects have one root: `common_func.emevd` registers boss defeats as
+**`HandleBossDefeatAndDisplayBanner(X8_4, banner)`** inside four shared handlers — **`9005840`,
+`90005860`, `90005861`, `90005880`** — so the entity arrives as a PARAMETER. The literal instruction
+scan sees a placeholder, which is why the Altus duo was invisible. The information is at the call
+site instead:
+
+```
+InitializeCommonEvent(0, 90005860, <X0_4 = persistent flag>, 0, <X8_4 = entity>, 0, ...)
+                          a+4          a+8                        a+16
+```
+
+Measured on the corpus: **102 call sites, 93 entities**; `X0_4` is `x800`/`x850` in 85 of them while
+`X8_4` is `x340` in 8 — i.e. the call site hands over BOTH the fight's persistent flag and the
+entity whose death raises the banner. So `parse_emevd_boss_defeat_calls` mines the call sites, and
+`defeats()` became a **map entity → flag** merged from two sources:
+
+| source | insert | why |
+|---|---|---|
+| literal `2003[12]` | `emplace(e, e)` — never overwrites | flag = entity, the common case |
+| common-func call site | `defeats()[entity] = X0_4` — **wins** | only source for param'd handlers, and its flag is the persistent one |
+
+Consequences to keep in mind:
+- **A fight's flag is no longer always its entity id.** Look names up with the ENTITY
+  (`boss_bar_display_name`), and state with the FLAG. Mixing them silently breaks the 10.
+- **Distinct FLAGS = distinct fights**, not distinct entities: two bodies can share one flag, so the
+  panel and the coverage diagnostic both dedup on the flag.
 
 ## Not done (deliberate)
 

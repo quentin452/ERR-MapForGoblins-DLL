@@ -1094,12 +1094,17 @@ std::vector<QuestNpcRuntime> load_quest_npcs()
     return out;
 }
 
-// Boss entities the engine registers a DEFEAT for (2003[12]). Filled by the same EMEVD walk as the
-// health-bar names below; the flag id equals the entity id (see parse_emevd_boss_defeats).
-static std::unordered_set<uint32_t> &defeats()
+// Boss entity -> its DEFEAT event flag. Filled by the same EMEVD walk as the health-bar names
+// below, from two sources that must be merged in this order of authority:
+//   1. literal 2003[12] HandleBossDefeatAndDisplayBanner(entity, ...) -> flag = entity id
+//   2. the common-func CALL SITES (parse_emevd_boss_defeat_calls) -> flag = X0_4, entity = X8_4
+// (2) WINS: it is the only source for fights registered through a shared handler (the entity is a
+// parameter there, invisible to the literal scan), and its X0_4 is the PERSISTENT flag where the
+// entity id can be a transient one that common.emevd resets — see parse_emevd_boss_defeat_calls.
+static std::unordered_map<uint32_t, uint32_t> &defeats()
 {
-    static std::unordered_set<uint32_t> s;
-    return s;
+    static std::unordered_map<uint32_t, uint32_t> m;
+    return m;
 }
 
 const std::unordered_map<uint32_t, uint32_t> &emevd_boss_bars()
@@ -1125,7 +1130,7 @@ const std::unordered_map<uint32_t, uint32_t> &emevd_boss_bars()
     spdlog::info("[LOOTDISK] reading boss health bars (2003[11]) from EMEVD {}", evdir.string());
 
     msbe::OodleDecompressFn oodle = resolve_oodle();
-    int parsed = 0, kraks = 0, calls = 0, defeat_calls = 0;
+    int parsed = 0, kraks = 0, calls = 0, defeat_calls = 0, defeat_sites = 0;
     std::error_code ec;
     for (auto &de : fs::directory_iterator(evdir, ec))
     {
@@ -1151,23 +1156,38 @@ const std::unordered_map<uint32_t, uint32_t> &emevd_boss_bars()
         for (uint32_t ent : msbe::parse_emevd_boss_defeats(evd.data(), evd.size()))
         {
             ++defeat_calls;
-            defeats().insert(ent);
+            defeats().emplace(ent, ent);  // literal: flag = entity, and never overrides a call site
+        }
+        for (const auto &c : msbe::parse_emevd_boss_defeat_calls(evd.data(), evd.size()))
+        {
+            ++defeat_sites;
+            defeats()[c.entity] = c.flag;  // call site WINS (persistent flag; sees param'd handlers)
         }
         ++parsed;
     }
     loaded = true;
     spdlog::info("[LOOTDISK] boss bars: {} entities named (from {} 2003[11] calls over {} EMEVD "
                  "files, {} KRAK skipped)", (int)cache.size(), calls, parsed, kraks);
-    spdlog::info("[LOOTDISK] boss defeats: {} entities registered (from {} 2003[12] calls) — their "
-                 "defeat flag IS the entity id", (int)defeats().size(), defeat_calls);
     {
-        // Full sorted id list, once per session. The COUNT alone can't be reconciled against another
-        // tracker's boss list (EROverlay ships a curated 207-entry bosses.json): only the ids say
-        // whether a difference is an extra of ours or an omission of theirs.
-        std::vector<uint32_t> ids(defeats().begin(), defeats().end());
-        std::sort(ids.begin(), ids.end());
+        int reflagged = 0;
+        // distinct FLAGS = distinct fights (two entities can share one); sorted for the id dump
+        std::vector<uint32_t> fights_v;
+        std::unordered_set<uint32_t> fights;
+        for (const auto &kv : defeats())
+        {
+            if (fights.insert(kv.second).second) fights_v.push_back(kv.second);
+            if (kv.first != kv.second) ++reflagged;
+        }
+        std::sort(fights_v.begin(), fights_v.end());
+        spdlog::info("[LOOTDISK] boss defeats: {} entities -> {} distinct fights (from {} literal "
+                     "2003[12] calls + {} common-func call sites; {} entities carry a flag that is "
+                     "NOT their own id)", (int)defeats().size(), (int)fights.size(), defeat_calls,
+                     defeat_sites, reflagged);
+        // Full sorted flag list, once per session. The COUNT alone can't be reconciled against
+        // another tracker's boss list (EROverlay ships a curated 207-entry bosses.json): only the
+        // ids say whether a difference is an extra of ours or an omission of theirs.
         std::string s;
-        for (size_t i = 0; i < ids.size(); ++i) s += (i ? "," : "") + std::to_string(ids[i]);
+        for (uint32_t f : fights_v) { if (!s.empty()) s += ","; s += std::to_string(f); }
         spdlog::info("[LOOTDISK] boss defeat ids: {}", s);
     }
     return cache;
@@ -1176,11 +1196,12 @@ const std::unordered_map<uint32_t, uint32_t> &emevd_boss_bars()
 uint32_t emevd_boss_defeat_flag(uint32_t entityId)
 {
     if (!entityId) return 0;
-    emevd_boss_bars();  // shared one-time EMEVD walk fills the defeat set too
-    return defeats().count(entityId) ? entityId : 0u;
+    emevd_boss_bars();  // shared one-time EMEVD walk fills the defeat table too
+    auto it = defeats().find(entityId);
+    return it == defeats().end() ? 0u : it->second;
 }
 
-const std::unordered_set<uint32_t> &emevd_boss_defeat_entities()
+const std::unordered_map<uint32_t, uint32_t> &emevd_boss_defeats()
 {
     emevd_boss_bars();
     return defeats();

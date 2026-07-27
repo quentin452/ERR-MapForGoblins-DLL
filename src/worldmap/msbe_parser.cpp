@@ -764,6 +764,62 @@ std::vector<uint32_t> parse_emevd_boss_defeats(const uint8_t *buf, size_t len)
     return out;
 }
 
+// Boss defeats registered through a COMMON FUNC instead of a literal 2003[12]. `common_func.emevd`
+// calls HandleBossDefeatAndDisplayBanner(X8_4, banner) inside four shared handlers, so the entity
+// arrives as a PARAMETER — the instruction's own arg bytes are placeholders and the literal scan
+// above sees nothing. The information lives at the CALL SITE instead:
+//
+//   InitializeCommonEvent(0, 90005860, <X0_4 flag>, 0, <X8_4 entity>, 0, ...)
+//
+// and the call site is strictly better than the instruction, because X0_4 is the PERSISTENT flag
+// while X8_4 can be a transient one. Night/roaming bosses (Death Rite Bird, Night's Cavalry,
+// Deathbird, Tibia Mariner) are exactly this: entity `x340`, which `common.emevd` explicitly resets
+// (`SetEventFlagID(1043370340, OFF)`) — using it would let a beaten boss un-tick itself, while the
+// call site's `x800` persists. Measured over the decompiled corpus: 102 call sites, 93 entities,
+// X0_4 = x800/x850 in 85 of them where X8_4 is x340 in 8.
+std::vector<BossDefeatCall> parse_emevd_boss_defeat_calls(const uint8_t *buf, size_t len)
+{
+    std::vector<BossDefeatCall> out;
+    if (len < 0x80 || std::memcmp(buf, "EVD\0", 4) != 0) return out;
+
+    uint64_t eventCount  = rd64(buf, 0x10);
+    uint64_t eventsOff   = rd64(buf, 0x18);
+    uint64_t instrTblOff = rd64(buf, 0x28);
+    uint64_t argsOff     = rd64(buf, 0x78);
+    if (eventCount > 1000000u) return out;
+
+    // The four common_func events whose body carries a HandleBossDefeatAndDisplayBanner(X8_4, ...).
+    // (9005840 really is 7 digits — not a typo for 90005840.)
+    auto is_defeat_func = [](uint32_t f) {
+        return f == 9005840u || f == 90005860u || f == 90005861u || f == 90005880u;
+    };
+    constexpr size_t EVENT_SZ = 0x30, INSTR_SZ = 0x20;
+    for (uint64_t i = 0; i < eventCount; ++i)
+    {
+        size_t e = (size_t)eventsOff + (size_t)i * EVENT_SZ;
+        if (!inb(e, EVENT_SZ, len)) break;
+        uint64_t instrCount  = rd64(buf, e + 0x08);
+        uint64_t instrOffset = rd64(buf, e + 0x10);
+        size_t base = (size_t)instrTblOff + (size_t)instrOffset;
+        if (instrCount > 1000000u) continue;
+        for (uint64_t j = 0; j < instrCount; ++j)
+        {
+            size_t ins = base + (size_t)j * INSTR_SZ;
+            if (!inb(ins, INSTR_SZ, len)) break;
+            if (rd32(buf, ins + 0x00) != EMEVD_INIT_BANK) continue;
+            uint64_t argLen = rd64(buf, ins + 0x08);
+            int32_t  argOff = (int32_t)rd32(buf, ins + 0x10);
+            if (argOff < 0 || argLen < 20) continue;  // need X8_4 @ a+16..20
+            size_t a = (size_t)argsOff + (size_t)argOff;
+            if (!inb(a, (size_t)argLen, len)) continue;
+            if (!is_defeat_func(rd32(buf, a + 4))) continue;
+            BossDefeatCall c{ rd32(buf, a + 8), rd32(buf, a + 16) };  // X0_4 flag, X8_4 entity
+            if ((int32_t)c.flag > 0 && (int32_t)c.entity > 0) out.push_back(c);
+        }
+    }
+    return out;
+}
+
 std::vector<BossBar> parse_emevd_boss_bars(const uint8_t *buf, size_t len)
 {
     std::vector<BossBar> out;
