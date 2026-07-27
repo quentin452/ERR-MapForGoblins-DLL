@@ -39,6 +39,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Fixed
 
+- **No more markers for loot that cannot exist.** A handful of map pickups pointed at item ids with no
+  entry in the game's item tables — the game grants nothing there, so the marker sent you to an empty
+  spot. Those are dropped now, and a marker whose live id is dead falls back to its known name instead
+  of showing none.
+- **Interactables keep a label on any install.** Markers whose name came from an ERR-specific text entry
+  (the Hero's Tomb instruction statues) showed up nameless on vanilla and on mods; they now fall back to
+  their category name rather than nothing.
+
 - **Gamepad buttons no longer activate whatever the map panel had selected.** Closing the panel with the
   Y+R3 combo, or pressing Y to warp to a Site of Grace, also fired the button or checkbox that happened
   to hold gamepad focus — so the panel closed *and* a setting flipped, or a grace warp turned into a

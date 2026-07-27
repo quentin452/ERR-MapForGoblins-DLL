@@ -429,11 +429,13 @@ static int goods_sort_id(int32_t goods_id)
 // (a representative item per category → its real game icon, harvested from the 00_Solo atlas).
 struct RawEquipRow { uint8_t b[0x200]; };  // ≥ the largest equip row stride (Protector 0x1a0)
 
-static int read_equip_icon(const wchar_t *param, int32_t real_id, ptrdiff_t off)
+// The row itself (cached param sequence per table), or null when the table or the row is absent.
+// Shared by the icon read and the existence check below.
+static RawEquipRow *equip_row(const wchar_t *param, int32_t real_id)
 {
     static std::mutex s_mx;
     static std::map<std::wstring, std::optional<from::params::ParamTableSequence<RawEquipRow>>> s_seqs;
-    if (real_id <= 0) return -1;
+    if (real_id <= 0) return nullptr;
     std::lock_guard<std::mutex> lk(s_mx);
     auto it = s_seqs.find(param);
     if (it == s_seqs.end())
@@ -442,14 +444,41 @@ static int read_equip_icon(const wchar_t *param, int32_t real_id, ptrdiff_t off)
         try { seq.emplace(from::params::get_param<RawEquipRow>(param)); } catch (...) {}
         it = s_seqs.emplace(param, std::move(seq)).first;
     }
-    if (!it->second) return -1;
-    RawEquipRow *r = it->second->try_get((uint64_t)real_id);
+    if (!it->second) return nullptr;
+    return it->second->try_get((uint64_t)real_id);
+}
+
+static int read_equip_icon(const wchar_t *param, int32_t real_id, ptrdiff_t off)
+{
+    RawEquipRow *r = equip_row(param, real_id);
     return r ? (int)*reinterpret_cast<uint16_t *>(r->b + off) : -1;
+}
+
+// The param table an offset-encoded item key belongs to, or nullptr if the key isn't an item.
+// Single place the +100M/+200M/… encoding maps back to a table (see encode_live_item).
+static const wchar_t *param_for_key(int32_t key, int32_t &real_id)
+{
+    if (key >= 500000000) { real_id = key - 500000000; return L"EquipParamGoods"; }
+    if (key >= 400000000) { real_id = key - 400000000; return L"EquipParamGem"; }
+    if (key >= 300000000) { real_id = key - 300000000; return L"EquipParamAccessory"; }
+    if (key >= 200000000) { real_id = key - 200000000; return L"EquipParamProtector"; }
+    if (key >= 100000000) { real_id = key - 100000000; return L"EquipParamWeapon"; }
+    return nullptr;
+}
+
+bool goblin::item_key_row_exists(int32_t key)
+{
+    if (key <= 0) return false;
+    int32_t real_id = 0;
+    const wchar_t *param = param_for_key(key, real_id);
+    if (!param) return false;
+    return equip_row(param, real_id) != nullptr;
 }
 
 int goblin::item_real_icon_id(int32_t key)
 {
     if (key <= 0) return -1;
+    // Icon offsets differ per table, so the mapping stays explicit here rather than via param_for_key.
     if (key >= 500000000) return read_equip_icon(L"EquipParamGoods",     key - 500000000, 0x30);
     if (key >= 400000000) return read_equip_icon(L"EquipParamGem",       key - 400000000, 0x04);
     if (key >= 300000000) return read_equip_icon(L"EquipParamAccessory", key - 300000000, 0x26);

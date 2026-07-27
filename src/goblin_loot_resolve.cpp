@@ -342,7 +342,13 @@ int32_t goblin::resolve_loot_item_textid(uint32_t lotId, uint8_t lotType, int32_
     if (item1 <= 0 || cat1 < 1 || cat1 > 5)
         return baked_textid;
     const int32_t live = encode_live_item(item1, cat1);
-    return live ? live : baked_textid;
+    if (!live) return baked_textid;
+    // The lot can name an item that HAS NO ROW. Vanilla itself does it — goods 240/310/401/9800 are
+    // awarded by real lots with category 1 yet absent from EquipParamGoods (spoiler-log audit,
+    // 2026-07-27, 7 markers). Such a pickup grants nothing in game, so trusting the id would put a
+    // named marker on loot that cannot exist. Treat it as a miss like any other.
+    if (!goblin::item_key_row_exists(live)) return baked_textid;
+    return live;
 }
 
 // EMEVD sequence-sibling walk primitive (loot_emevd_drops mechanism C). Probes a single

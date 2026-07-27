@@ -65,14 +65,27 @@ Each looked like a bug and is not. Check these explanations before filing anythi
   (`WorldFarmableCollectible`, gloveworts, crafting materials). The log lists the LOT once; the world
   holds hundreds of nodes of it. Expected.
 
-## Real leads found (open)
+## Leads found — 2 fixed, 1 pre-existing
 
-- **7 `LootCraftingMaterials` markers** carry a GoodsName-band `name_id` that resolves to no text — the
-  only case where our lot→item chain yields a dead id. Smallest, sharpest lead.
-- **17 `WorldInteractables` markers** point at ActionButtonText ids that do not exist off-ERR (e.g.
-  7041, 9520) → anonymous interactables on vanilla/randomizer. Same class as the known ERR-only text
-  debt; mod-agnostic prime directive.
-- **19 markers out of bounds** (|world coord| > 40000).
+- ✅ **7 `LootCraftingMaterials` markers on items that DO NOT EXIST** (fixed 2026-07-27). Their lots are
+  real and say `lotItemCategory 1` (goods), but goods **240 / 310 / 401 / 9800 have no row in
+  `EquipParamGoods`** — on vanilla *and* the randomizer. Such a pickup grants nothing in game, so the
+  marker was a false positive. `resolve_loot_item_textid` now rejects a live key whose row is absent
+  (`goblin::item_key_row_exists`). Measured: the 7 disk phantoms disappeared, and **1 baked marker was
+  RECOVERED** — it fell back to its baked name instead of a dead live id (item-named 5943 → 5944).
+- ✅ **17 `WorldInteractables` with no name off-ERR** (fixed 2026-07-27). Not 17 problems but ONE: all
+  pointed at `ActionButtonText 7041`, baked in `src/generated/goblin_world_feature_models.cpp` for the
+  Hero's Tomb statues (AEG099_055/057) and absent from both vanilla and the randomizer. The world-feature
+  pass now falls back to the **category label** when a baked text id resolves to nothing — the text
+  analogue of "circle is the universal fallback", so it also covers ERR-only ids nobody has spotted yet.
+  Watch `[LOOTDISK] … markers fell back to their category label` for the count. NB the audit still lists
+  these under "name_id with NO text": the `name_id` is unchanged and the name travels on
+  `Marker::live_name`, which `dump_markers` does not export. The log line is the proof, not the CSV.
+- ⚠️ **19 markers out of bounds** — NOT a new bug. All at the identical point `(65352, 65373)` = grid
+  `(255,255)`, the unset sentinel, and all `srcArea 35` = **Ashen Capital**. Already classified as
+  **Class C** in `docs/re/dungeon_entrance_anchor_re_probe_findings.md` (26 markers then; 19 now because
+  most Ashen content is gated behind `StoryErdtreeOnFire`). Fix direction is stated there: make
+  `legacy_fold`'s `reverse_lookup` cover m19/m34/m35. Real content → must be PLACED, not hidden.
 - **194 world-placed items never drawn** (8 of which are also listed as shop/drop elsewhere, so they
   are likely misclassified). Treat as SOFT: the comparison is by item NAME, and the residue sits almost
   entirely in the region-only entries — the weakest evidence class. Needs a per-item drill-down (to a

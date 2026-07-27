@@ -505,6 +505,13 @@ namespace goblin
     // {190 base, 191 DLC}). The no-bake World-Maps pass routes map-good pickups to WorldMaps.
     bool goods_is_map(int32_t goods_id);
 
+    // True iff an offset-encoded item key (encode_live_item: goods+500M, gem+400M, accessory+300M,
+    // protector+200M, weapon/ammo+100M) names a row that ACTUALLY EXISTS in the active install's
+    // param table. Vanilla ships ItemLotParam rows awarding item ids with no row at all — goods
+    // 240/310/401/9800, found by the spoiler-log audit — and those lots award nothing in game, so a
+    // marker for them is a false positive. false for a non-item key or an absent table.
+    GOBLIN_RENDER_API bool item_key_row_exists(int32_t key);
+
     // Probe one ItemLotParam row in a SPECIFIC table (lotType 1=_map, 2=_enemy; NO
     // fallback to the other), for the EMEVD sequence-sibling walk (loot_emevd_drops
     // mechanism C). Returns true iff the row EXISTS in that table (false = a GAP → stop the

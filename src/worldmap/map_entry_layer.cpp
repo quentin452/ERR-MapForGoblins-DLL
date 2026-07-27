@@ -1389,7 +1389,7 @@ static int build_disk_world_feature_markers(
 {
     namespace gen = goblin::generated;
     GOBLIN_BENCH("build.disk_world_features");
-    int emitted = 0, dup = 0, no_entity = 0, rule_skipped = 0, no_flag = 0;
+    int emitted = 0, dup = 0, no_entity = 0, rule_skipped = 0, no_flag = 0, text_fallback = 0;
     std::unordered_map<int, int> per_cat;
     for (const DiskCollectible &a : assets)
     {
@@ -1475,9 +1475,27 @@ static int build_disk_world_feature_markers(
             ++dup;
             continue;
         }
+        // MOD-AGNOSTIC NAME FALLBACK. `wf->text_id` is BAKED from ERR, so an id ERR authored but the
+        // active install doesn't have resolves to nothing and the marker shows up nameless — e.g. the
+        // Hero's Tomb statues (AEG099_055/057) point at ActionButtonText 7041, absent from BOTH vanilla
+        // and the randomizer, leaving 17 anonymous markers (spoiler-log audit, 2026-07-27). This is the
+        // text analogue of the "circle is the universal fallback" rule: when nothing resolves from the
+        // ACTIVE files, degrade to the generic category label rather than showing nothing. Carried on
+        // Marker::live_name, which every display path already prefers over name_id.
+        if (d.textId1 && goblin::overlay_api::lookup_text_utf8(d.textId1).empty())
+        {
+            if (const char *clab = goblin::overlay_api::category_label(cat))
+            {
+                g_buckets[cat].back().live_name = clab;
+                ++text_fallback;
+            }
+        }
         ++emitted;
         ++per_cat[cat];
     }
+    if (text_fallback)
+        spdlog::info("[LOOTDISK] world features: {} markers fell back to their category label (their "
+                     "baked text id resolves to nothing on this install)", text_fallback);
     spdlog::info("[LOOTDISK] world features: {} markers from disk across {} categories ({} dup-cell, "
                  "{} no-entity, {} rule-rejected, {} interactive-without-emevd-flag)",
                  emitted, (int)per_cat.size(), dup, no_entity, rule_skipped, no_flag);

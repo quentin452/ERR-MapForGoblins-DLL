@@ -37,9 +37,12 @@ and removed.
 
 ## OPEN — next session
 
-1. **Audit leads (bounded, verifiable):** 7 `LootCraftingMaterials` markers whose GoodsName id resolves
-   to nothing (smallest + sharpest), 17 `WorldInteractables` on ActionButtonText ids absent off-ERR,
-   19 markers out of bounds (|world| > 40000).
+1. ~~Audit leads~~ — **2 of 3 DONE 2026-07-27** (see [[spoiler-log-marker-audit]]): the 7 markers on
+   nonexistent goods are dropped (+1 baked marker recovered), and the 17 nameless interactables now fall
+   back to their category label. **Still open:** the 19 out-of-bounds markers — all `srcArea 35` (Ashen
+   Capital) at the `(255,255)` sentinel, already classified **Class C** in
+   `docs/re/dungeon_entrance_anchor_re_probe_findings.md`; fix = make `legacy_fold`'s `reverse_lookup`
+   cover m19/m34/m35. Real content, must be PLACED not hidden.
 2. **Boot crash inside d3d11.dll** [[boot-crash-present-chain-d3d11]] — one sample, RTSS disabled and
    quiet since. Needs a 2nd crash file before it means anything; do NOT change our code on this alone.
 3. **Boss residuals, low priority:** 6 LOD-only entities (would need a supertile scan —
