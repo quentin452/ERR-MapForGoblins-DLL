@@ -1,6 +1,13 @@
 # RE prompt — mod-agnostic boss enumeration (name + world position)
 
-Status: **OPEN** (2026-07-23). Deferred from the bug-5 work. Ghidra/CE task.
+Status: **SOLVED (2026-07-27)** — see `cross_mod_boss_naming_re_findings.md`. No Ghidra was needed:
+the answer is the EMEVD instruction `2003[011] HandleBossHealthBar(state, entityId, slot, nameId)`
+joined with the MSB placement + `GameAreaParam`; 254 named+positioned bosses on vanilla+randomizer,
+validated in-world against the game's own boss health bar. The leads below are kept for the record —
+`NpcParam` has **no** GameAreaParam id, and `GameAreaParam` alone has no name and no position.
+**Implementation in the DLL is NOT started** (see the findings' "Implementation notes").
+
+Originally opened 2026-07-23, deferred from the bug-5 work.
 
 ## Problem
 

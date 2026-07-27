@@ -44,6 +44,21 @@ for the same session's input fixes.
 (fixed the 91/1183 bug — `live_name` was only set on the first-seeded instance per type; now set on every
 instance of a synthetic-textId1 type). BUT tier-3 is a NAME-SOURCE tier, not an "is-boss" signal, so it
 mis-identifies / duplicates (observed: multiple "Mimic Tear", clone-model bosses collapse). The item-search
-name↔position list can't be reused — it's POI-only (`WorldMapPointParam`), not entities. The proper
-mod-agnostic boss enumeration (GameAreaParam / NpcParam boss flag / EMEVD defeat-flag / CSFeMan bossHpBars)
-is an OPEN Ghidra RE task: `docs/re/cross_mod_boss_naming_re_prompt.md`.
+name↔position list can't be reused — it's POI-only (`WorldMapPointParam`), not entities.
+
+**RE SOLVED (2026-07-27) — implementation still TODO.** The proper mod-agnostic source is the EMEVD
+instruction **`2003[011] HandleBossHealthBar(state, entityId, slot, nameId)`**, joined with the MSB enemy
+placement (entity → position) and `GameAreaParam` (rowId == boss entityId → `defeatBossFlagId`): **254
+bosses with name + position on a vanilla+randomizer install**, per-ENCOUNTER, name as a plain FMG id.
+Full method, counts, live validation and wiring notes: `docs/re/cross_mod_boss_naming_re_findings.md`
+(repro: `tools/_probe_boss_enum.py`). Two dead leads killed there: `NpcParam` has **no** GameAreaParam id
+(no `gameArea*` field in any of the 194 paramdefs), and `GameAreaParam` alone carries neither name nor
+position.
+
+**Tier-3 is WRONG, not merely imprecise — proven live 2026-07-27.** At Gatefront (area60 grid 42,36) the
+mod named the boss `Tree Sentinel` (tier 3) while the game's own health bar read **`Black Tree Kindred
+Sentinel`**. Cause, read live: `NpcParam[47701242].nameId == 0` → the resolver falls through to the
+`900000000 + model*1000` band, which names the **vanilla chr model** (c3251), so any mod that reskins or
+reassigns a boss gets the wrong name by construction. **Same root cause hits a SECOND consumer**: the
+world-space 3D enemy tag (`config::nameEnemyBosses`) shows that same wrong name in-world. Fix the shared
+resolver by sourcing the name on **entityId** and both are repaired at once.

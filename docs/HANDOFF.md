@@ -3,6 +3,37 @@
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
 
+## ⇒ 2026-07-27 (Windows, vanilla+randomizer) — ★ bug-5 RE SOLVED; DLL wiring is the next task
+
+The mod-agnostic boss enumeration is **found and validated** — `docs/re/cross_mod_boss_naming_re_findings.md`
+(prompt flipped to SOLVED). Source = EMEVD **`2003[011] HandleBossHealthBar(state, entityId, slot, nameId)`**
+joined with the MSB enemy placement (entity → position) + `GameAreaParam` (rowId == boss entityId →
+`defeatBossFlagId`). On a vanilla + Randomizer v0.11.4 install: **254/255 bosses with name + position**, all
+254 names resolved, per-ENCOUNTER (23 legitimately-recurring names, no model-collapse). Repro any install:
+`python tools/_probe_boss_enum.py <game_data_dir>`.
+
+**Live-proven that tier-3 is WRONG, not just imprecise** (RPC, Gatefront area60 grid 42,36): the mod said
+`Tree Sentinel`, the game's own boss health bar said **`Black Tree Kindred Sentinel`**. Cause read live:
+`NpcParam[47701242].nameId == 0` → fallthrough to the `900000000 + model*1000` band = the **vanilla chr
+model's** name (c3251). Any boss-reskinning mod breaks it by construction.
+
+**NEXT (not started) — wire it into the DLL.** Everything needed is already parsed; it's a join, not new RE:
+1. Extract `2003[011]` in the existing EMEVD pass (`build_disk_emevd*`, `map_entry_layer.cpp`) → `{entityId → nameId}`.
+2. Join on `EntityID` with the `disk_enemies` MSB scan `build_live_bosses` already walks → position.
+3. Name is a plain **FMG id** ⇒ drop the `Marker::live_name` hack + the synthetic `name_id` for these.
+4. Demote ERR `textId2==5100` pins and the tier-3 band to additive fallbacks; add `GameAreaParam.defeatBossFlagId`
+   as the optional cleared-state layer (39/254 bosses have no row → must be per-boss optional).
+5. **Fix the SECOND consumer in the same pass**: the world-space 3D enemy tag (`config::nameEnemyBosses`)
+   shows the same wrong vanilla name in-world (user-observed 2026-07-27). Source the name by **entityId** in
+   the shared resolver (`goblin_enemy_names.cpp`) — today's signature is `(npcParamId, model)`, so it needs
+   the entity id threaded in.
+6. Edge cases: 1 boss has no MSB placement (`m60_41_33_00` e=1041330800, event-spawned) → needs a fallback pos.
+
+**Dev-box state:** RPC now works on the randomizer install — `MapForGoblins.dll` added to the randomizer's
+`config_eldenringrandomizer_dll.toml` `external_dlls` and `debug_rpc_port = 38700` set in
+`C:\Users\iamacat\Downloads\DLLS\MapForGoblins.ini`. That install is now a permanent **mod-agnostic test bed**
+(a boss-randomized world is the perfect regression case for anything model-keyed).
+
 ## ⇒ 2026-07-23 (Linux, later) — gamepad/vmap/boss bug batch: 4 fixes UNVERIFIED, need a Windows retest
 
 Deployed `MapForGoblins.dll` → `~/Games/ERRv2.2.9.6/dll/offline/` (11:33). **User runs on WINDOWS** by
@@ -34,9 +65,8 @@ committed on `master` but the latest fixes are **NOT yet verified against the ne
 **NOT FIXED — deferred to RE (bug 5):** bosses now show WITH names on vanilla (fixed 91/1183: `live_name`
 was set only on the first-seeded instance per type; now every instance). BUT the tier-3 NpcName-band
 discriminator mis-identifies/duplicates (multiple "Mimic Tear"; clone models collapse). The search list
-can't be reused — it's POI-only, not entities. Proper mod-agnostic boss enumeration =
-**`docs/re/cross_mod_boss_naming_re_prompt.md`** (GameAreaParam / NpcParam boss-flag / EMEVD defeat-flag /
-CSFeMan bossHpBars). See [[mod-agnostic-boss-markers]].
+can't be reused — it's POI-only, not entities. → **RE SOLVED 2026-07-27**, see the top entry +
+`docs/re/cross_mod_boss_naming_re_findings.md`; the DLL wiring is what remains.
 
 **TEMPORARY PROBES still in the build (strip once bugs verified fixed):** `[COMBOPROBE]` (goblin_overlay.cpp,
 combo state), `[BOSSPROBE]` (map_entry_layer.cpp end-of-build, WorldBosses live_name count — should read
