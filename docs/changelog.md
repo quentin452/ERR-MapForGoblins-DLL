@@ -27,6 +27,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
   other filters. Regions with no match are hidden and the surviving ones open themselves, so you
   can find one fight among 200+ without hunting through region sections.
 
+### Fixed
+
+- F1 `find settings…` now finds **category names**. Searching e.g. "Divine Tower" returned nothing
+  even though the toggle exists — the settings search only looked at hand-written keywords, never at
+  the category list itself. It now matches the live category and section labels (so a newly added
+  category is searchable with no extra work), and carries your query into the category filter so the
+  matching row is on screen instead of just the section.
+
 ## [v2.6.0] - 2026-07-27
 
 ### Added

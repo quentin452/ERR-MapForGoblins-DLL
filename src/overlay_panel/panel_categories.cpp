@@ -25,7 +25,40 @@ void draw_sections_categories(const OverlayFrameCtx &ctx, Filter &f, bool with_e
     // Sections (coarse) + their categories (fine). A row shows only if
     // both its section and its category are enabled.
     static char cat_filter[64] = "";
-    const bool show_seccat = f.match("sections categories marker show hide cluster world");
+
+    // The settings search used to index ONLY the hand-written keyword string below, so a
+    // data-driven category name was unreachable from it: typing "Divine Tower" hid this whole
+    // section before its rows were ever considered, even though "World - Divine Towers" is
+    // right there. Match the LIVE labels too — the same data the list already draws from is the
+    // index, so there is nothing to keep in sync and a new category is searchable for free.
+    // Same token semantics as Filter::match (order-independent, case/accent-insensitive).
+    auto label_tokens = [](const char *lbl, const char *q) {
+        return matches_all_tokens(lbl, q) || matches_all_tokens(tr(lbl), q);
+    };
+    bool label_hit = false;
+    if (f.filtering)
+    {
+        for (int s = 0; !label_hit && s < goblin::overlay_api::section_count(); s++)
+            label_hit = label_tokens(goblin::overlay_api::section_label(s), f.q);
+        for (int c = 0; !label_hit && c < goblin::overlay_api::category_count(); c++)
+            label_hit = label_tokens(goblin::overlay_api::category_label(c), f.q);
+    }
+    const bool kw_hit = f.match("sections categories marker show hide cluster world");
+    if (label_hit && !kw_hit) f.hits++;   // f.match() only counts hits it made itself
+    const bool show_seccat = kw_hit || label_hit;
+
+    // Landing on the SECTION is not finding the ROW — with ~60 categories the user would still
+    // hunt. When a label is what matched, push the query into the inner filter as well. Only on
+    // a CHANGE of the outer query, so typing in the inner box afterwards is never clobbered.
+    static char auto_from[64] = "";
+    if (label_hit && std::strncmp(auto_from, f.q, sizeof(auto_from) - 1) != 0)
+    {
+        std::snprintf(cat_filter, sizeof(cat_filter), "%s", f.q);
+        std::snprintf(auto_from, sizeof(auto_from), "%s", f.q);
+    }
+    else if (!f.filtering)
+        auto_from[0] = '\0';   // outer search cleared → let the next match re-apply
+
     if (show_seccat)
     {
         ImGui::SeparatorText(tr("Sections & categories"));
