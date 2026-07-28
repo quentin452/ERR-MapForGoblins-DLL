@@ -45,6 +45,9 @@ into a single current-truth entry. Status reflects the **current code**, not the
 - **Coverage-gap detector** [shipped, opt-in] — SetEventFlag + AddItemFunc correlation toast → [thread7-coverage-detector](thread7-coverage-detector.md)
 - **ERR underground grace gate** [shipped] — `iconId==44`; graces read live from BonfireWarpParam → [err-underground-grace-gate](err-underground-grace-gate.md)
 - **Grace pin suppression + map-point rect harvest** [shipped] — `grace_suppress_native` (default off) → [session-2026-06-23-map-icons](session-2026-06-23-map-icons.md)
+- **Enemy names: vanilla shows almost none, ERR shows them all** [not a bug, measured] — tier 2 is the
+  only tier that names generics and it needs a bestiary codex: vanilla has 78 `TutorialTitle` entries,
+  ERR has 3218 → [enemy-names-vanilla-vs-codex](enemy-names-vanilla-vs-codex.md)
 
 ## Ideas / not-yet-built
 - **Real inventory-icon atlas** [open, unmerged branch] — draw 00_Solo icons on category markers → [category-icons-00solo-atlas](category-icons-00solo-atlas.md)
