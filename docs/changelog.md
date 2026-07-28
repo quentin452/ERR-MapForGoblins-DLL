@@ -21,48 +21,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ## [Unreleased]
 
+## [v2.8.0] - 2026-07-28
+
 ### Added
 
+- Virtual map, **gamepad**: **LB** opens/closes the grace list from anywhere on the map, and **B closes
+  the map** like every other Elden Ring menu (layered under ImGui's own Cancel — in a sidebar or on the
+  on-screen keyboard, B backs out of that first).
+- Virtual map: the grace list gives the **Roundtable Hold its own group**, pinned at the top. Its graces
+  sit on a map inset, so they were filed under whichever region happened to be nearest — no help when
+  the hall is the place you warp to most.
 - Spoiler-free loot: **Keep the altitude badge on "?" markers** (on by default). Height relative to you
   says nothing about *what* a marker is, so anonymized markers keep their up/down arrow instead of
   losing it with everything else. Turn it off for a strict blackout.
 
-- Virtual map, **gamepad**: **Y warps the selected grace in the list** again. The binding had been pulled
-  because the close combo (Y+R3) teleported you, but the row tooltip kept promising it; it is back on the
-  same press-order-independent latch the canvas uses, so a Y tap warps and Y+R3 only closes.
-- Virtual map: clicking a grace in the list now centres **exactly on its icon**. The list panned to the
-  marker's baked position while the canvas draws graces at their live-projected one, so the view landed
-  slightly beside the grace.
-- Virtual map: **aiming at a grace wins over the cluster fan-out**. Zoomed out, pointing at a grace next
-  to a pile opened that pile's spiderfy fan and swallowed the warp target; the grace now keeps the aim,
-  and the fan opens as soon as you move off it.
-
-- Virtual map: the grace list gives the **Roundtable Hold its own group**, pinned at the top. Its graces
-  sit on a map inset, so they were filed under whichever region happened to be nearest — no help when
-  the hall is the place you warp to most.
-
-- The mouse can no longer end up **locked out of the taskbar and other apps**. Closing the panel
-  re-applies the game's window cursor clip, and nothing released it if the game then lost focus — the
-  cursor stayed confined to a background window. Alt-tabbing away now always frees it.
-
 ### Changed
 
-- Virtual map, **gamepad**: **B closes the map**, like every other Elden Ring menu. It stays layered
-  under ImGui's own Cancel — in a sidebar or on the on-screen keyboard, B backs out of that first.
-- Virtual map: **fast-travelling closes the map**, as the native one does. It used to stay open and
-  clickable across the load, so you could queue a second warp or press buttons belonging to a map you
-  had already left.
 - Virtual map: the sidebars (markers, graces, item search, custom markers) now **overlay the map**
   instead of squeezing it. Opening one — dropping a pin with X opens the marker list, for instance —
   used to shrink the canvas and slide the whole map sideways under your cursor mid-action.
+- Virtual map: **fast-travelling closes the map**, as the native one does. It used to stay open and
+  clickable across the load, so you could queue a second warp or press buttons belonging to a map you
+  had already left.
+- Virtual map: **switching page** (the group selector) now frames the new one — on your character when
+  you are standing on it, otherwise on that page's markers. It used to keep the old camera and drop you
+  on empty canvas.
 - Virtual map: pointing at a custom marker **rings it**, like a grace, and the tooltip names it and says
   what the next press does. The catch radius is the same one the delete uses (and scales with
   resolution now — it was a fixed 14 px, nearly unhittable at 4K), so the ring is a promise: that pin,
   and no other, is the one that goes.
-- Virtual map: **switching page** (the group selector) now frames the new one — on your character when
-  you are standing on it, otherwise on that page's markers. It used to keep the old camera and drop you
-  on empty canvas.
-- Virtual map, **gamepad**: **LB** opens/closes the grace list from anywhere on the map.
 - Native map, **gamepad**: the overlay now points at the **screen centre** — where Elden Ring's own map
   reticle sits when you pan with a pad — instead of the parked mouse cursor. Region chips can be hovered
   and toggled with **X**, and marker tooltips follow the reticle like the game's own do. That X press is
@@ -70,21 +57,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Fixed
 
+- Virtual map, **gamepad**: region name chips (Limgrave, Caelid, …) can now be toggled with the pad.
+  The reticle highlighted them but nothing happened on press — toggling was mouse-click only.
+- Virtual map, **gamepad**: **Y warps the selected grace in the list** again. The binding had been pulled
+  because the close combo (Y+R3) teleported you, but the row tooltip kept promising it; it is back on the
+  same press-order-independent latch the canvas uses, so a Y tap warps and Y+R3 only closes.
+- Virtual map: **aiming at a grace wins over the cluster fan-out**. Zoomed out, pointing at a grace next
+  to a pile opened that pile's spiderfy fan and swallowed the warp target; the grace now keeps the aim,
+  and the fan opens as soon as you move off it.
+- Virtual map: clicking a grace in the list now centres **exactly on its icon**. The list panned to the
+  marker's baked position while the canvas draws graces at their live-projected one, so the view landed
+  slightly beside the grace.
+- Virtual map: player-placed **pins draw over the region names** instead of under them, and a new pin
+  reuses the **lowest free "Marker N"** name — the counter only ever went up, so after deleting markers
+  the next one was named with a number that no longer matched the list.
+- Virtual map: custom markers are **renamable with a gamepad** — the name field now carries the same
+  on-screen keyboard as the search/filter fields.
+- Virtual map: it can be **closed again while an Elden Ring menu is open over it**. With its own menu on
+  top, the game routes the map button to that menu, so nothing could dismiss the map until you closed
+  the other one first.
+- The **boss counter on the HUD now advances during play**. It refreshed once when the game's flag data
+  came online and then never again, so a kill only showed up if you opened F1.
 - The **run HUD** line no longer sits on top of the minimap. Both were placed from their own corner
   settings without knowing about each other; the HUD now slides above or below the minimap disc when
   the two would overlap (whichever side is closer to where you put it).
-- Virtual map, **gamepad**: region name chips (Limgrave, Caelid, …) can now be toggled with the pad.
-  The reticle highlighted them but nothing happened on press — toggling was mouse-click only. **X**
-  over a chip now toggles that region (and no longer drops a pin under the name).
-- Virtual map: player-placed **pins draw over the region names** instead of under them.
+- The mouse can no longer end up **locked out of the taskbar and other apps**. Closing the panel
+  re-applies the game's window cursor clip, and nothing released it if the game then lost focus — the
+  cursor stayed confined to a background window. Alt-tabbing away now always frees it.
 - **Gamepad**: holding **X** no longer opens ImGui's window switcher over the map (a dimmed backdrop
   and a highlighted title bar appeared on top of the virtual map).
-- Virtual map, **gamepad**: **X** no longer drops a pin on the map while you are navigating a sidebar
-  (the custom-marker list, a filter, the on-screen keyboard) — it belongs to the focused widget there.
-- Virtual map: a new pin reuses the **lowest free "Marker N"** name. The counter only ever went up, so
-  after deleting markers the next one was named with a number that no longer matched the list.
-- Virtual map: custom markers are **renamable with a gamepad** — the name field now carries the same
-  on-screen keyboard as the search/filter fields.
 
 ## [v2.7.0] - 2026-07-28
 
