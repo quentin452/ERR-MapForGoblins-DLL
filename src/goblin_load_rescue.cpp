@@ -26,7 +26,11 @@ SetMapFn g_orig = nullptr;
 
 std::atomic<bool> g_installed{false};
 std::atomic<bool> g_armed{false};       // area==0 → substitute the safe map
-std::atomic<bool> g_verbose{true};      // per-call logging (loud during diagnosis)
+// Per-call logging. Default OFF: the map setter fires on every streaming transition (~460 WARN lines
+// in one play session, user 2026-07-28), which buries the events that actually matter in the log. The
+// RESCUE itself still logs unconditionally, `load_rescue status` still replays the last 16 calls from
+// the ring below, and `load_rescue verbose 1` turns the firehose back on for a diagnosis session.
+std::atomic<bool> g_verbose{false};
 
 // Safe rescue map. Default = The First Step (m60_42_35 = 0x3C2A2300).
 std::atomic<uint32_t> g_safe_map{0x3C2A2300};
