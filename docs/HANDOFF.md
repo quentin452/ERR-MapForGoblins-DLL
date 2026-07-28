@@ -41,6 +41,22 @@ Resume in this order (1 = cold-start immediately):
    anything: `modelIndex` indexes the TILE's own MODEL section, so a tile declaring 3 chr models makes
    the shuffle worthless. Count the per-tile candidate set FIRST.
 
+**⚠ UNVERIFIED IN GAME (2026-07-28, pad batch — verify BEFORE anything else next session).** Two
+commits fix the five pad/HUD symptoms `<user>` reported (details + lessons: [[dx-bugs-backlog]] items
+18–24). Both builds link (`build-err` + `build-err-hotreload`), **nothing was tested on a running
+game.** What to check, in order:
+1. **Native map, pad: does X on a region chip conflict with ER's own map-screen X?** We mask
+   `XINPUT_GAMEPAD_X` from the game only while the reticle is on a chip
+   (`input/input_gamepad.cpp`), so the game should see nothing — confirm ER does not also place/
+   delete its native marker, and that X still works normally OFF a chip. If the binding is wrong,
+   it is one key constant to change.
+2. Native map, pad: the pointer is now the SCREEN CENTRE — chips highlight where the reticle is, and
+   marker tooltips follow it. Confirm the tooltip is not permanently noisy at the centre.
+3. vmap, pad: X toggles a chip under the reticle, drops/deletes a pin elsewhere, and does NOTHING
+   while the Marker sidebar or the on-screen keyboard has focus. Pins draw OVER region names.
+4. Custom markers: delete "Marker 2" of 3 → the next one is named "Marker 2" again. `Kbd` renames.
+5. Run HUD: set its offsets onto the minimap corner → the line should slide above/below the disc.
+
 **Deployed state:** the only shipped change this session is the Run-tab **Boss checklist search box**
 (`65b649a`, `build-err` links clean). ⚠ the install that runs here loads the DLL from
 `C:\Users\iamacat\Downloads\DLLS\`, while `tools/deploy.py` targets `$ERR_ROOT/dll/offline` — copy
