@@ -27,12 +27,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
   says nothing about *what* a marker is, so anonymized markers keep their up/down arrow instead of
   losing it with everything else. Turn it off for a strict blackout.
 
+- Virtual map: clicking a grace in the list now centres **exactly on its icon**. The list panned to the
+  marker's baked position while the canvas draws graces at their live-projected one, so the view landed
+  slightly beside the grace.
 - Virtual map: **aiming at a grace wins over the cluster fan-out**. Zoomed out, pointing at a grace next
   to a pile opened that pile's spiderfy fan and swallowed the warp target; the grace now keeps the aim,
   and the fan opens as soon as you move off it.
 
+- Virtual map: the grace list gives the **Roundtable Hold its own group**, pinned at the top. Its graces
+  sit on a map inset, so they were filed under whichever region happened to be nearest — no help when
+  the hall is the place you warp to most.
+
 ### Changed
 
+- Virtual map: **switching page** (the group selector) now frames the new one — on your character when
+  you are standing on it, otherwise on that page's markers. It used to keep the old camera and drop you
+  on empty canvas.
 - Virtual map, **gamepad**: **LB** opens/closes the grace list from anywhere on the map.
 - Native map, **gamepad**: the overlay now points at the **screen centre** — where Elden Ring's own map
   reticle sits when you pan with a pad — instead of the parked mouse cursor. Region chips can be hovered

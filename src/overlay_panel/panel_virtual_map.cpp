@@ -100,9 +100,11 @@ namespace
     char s_grace_filter[64] = "";   // grace-list search box
     // Grace list cache (rebuilt on open / Refresh; discovered-state re-read live per visible row).
     struct GraceRow { std::string name; float wx, wz; uint64_t rowId; int discFlag; int group;
-                      std::string region; int regionIdx; };
+                      std::string region; int regionIdx;
+                      bool hub; };   // hub = a grace with no place in the Voronoi (the Roundtable tile)
     std::vector<GraceRow> s_graces;
     bool s_graces_built = false;
+    uint64_t s_locate_grace_row = 0;   // "locate" target, resolved to its LIVE position after the QT build
     // Marker spatial index (perf): viewport-cull + LOD-cluster the ~6837 base markers instead of the
     // O(n)-every-frame loop. Rebuilt when the displayed group changes (markers themselves are static).
     MarkerQuadtree s_qt;
@@ -1033,7 +1035,20 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         if (ImGui::BeginCombo(tr("group"), tr(kGroupNames[s_group])))
         {
             for (int i = 0; i < 4; i++)
-                if (ImGui::Selectable(tr(kGroupNames[i]), s_group == i)) s_group = i;
+                if (ImGui::Selectable(tr(kGroupNames[i]), s_group == i) && i != s_group)
+                {
+                    // Switching page used to keep the old camera + zoom, so you landed on empty canvas
+                    // somewhere off the new page and had to hunt for it (user 2026-07-28). Frame the new
+                    // page: on the PLAYER when they are standing on it (the useful answer to "what's
+                    // around me down here"), else fit that page's marker bbox. Both mechanisms already
+                    // exist and are consumed further down, AFTER the quadtree rebuilds for the new group.
+                    s_group = i;
+                    int pa = 0, pg = 0; float px = 0.f, pz = 0.f;
+                    if (goblin::overlay_api::get_player_map_pos(pa, px, pz, nullptr, nullptr, &pg) && pg == i)
+                        s_focus_player = true;
+                    else
+                        s_fit_requested = true;
+                }
             ImGui::EndCombo();
         }
     }
@@ -1106,6 +1121,14 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                         GraceRow g{};
                         g.wx = m.worldX; g.wz = m.worldZ; g.rowId = m.row_id;
                         g.discFlag = m.discover_flag; g.group = m.group; g.regionIdx = -1;
+                        // The Roundtable hall (m11_10) is drawn as a small INSET on the overworld page,
+                        // so its graces project to a spot in the middle of Liurnia-ish nowhere and the
+                        // region Voronoi files them under whatever anchor happens to be nearest —
+                        // meaningless for a warp list (user 2026-07-28). Give the tile its own group.
+                        // Tile-based, so it also catches ERR's "Gilded Court", the endgame hall in the
+                        // SAME m11_10 (measured 2026-07-23, see offmap-area45-missing-anchor.md), and any
+                        // other mod's hall grace there — no name matching, nothing ERR-specific.
+                        g.hub = (m.raw_area == 11 && m.raw_gx == 10);
                         g.name = m.name_id > 0 ? goblin::overlay_api::lookup_text_utf8(m.name_id) : std::string();
                         if (g.name.empty()) g.name = "(unnamed grace)";
                         s_graces.push_back(std::move(g));
@@ -1127,6 +1150,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             }
             for (GraceRow &g : s_graces)
             {
+                if (g.hub) { g.region = tr("Roundtable Hold"); continue; }   // own group, skip the Voronoi
                 int best = -1; float bd = 1e30f;
                 for (int i = 0; i < (int)ranch.size(); ++i)
                 {
@@ -1137,7 +1161,10 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                 g.regionIdx = best;
                 g.region = best >= 0 ? ranch[best].name : "Other";
             }
+            // Hub graces FIRST (the hall is the single most warped-to destination in a run), then the
+            // regions alphabetically as before.
             std::sort(s_graces.begin(), s_graces.end(), [](const GraceRow &a, const GraceRow &b) {
+                if (a.hub != b.hub) return a.hub;
                 if (a.region != b.region) return a.region < b.region;
                 return a.name < b.name;
             });
@@ -1176,7 +1203,16 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             {
                 if (disc && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                     s_warp_pending = g.rowId;                         // discovered → teleport (post-frame)
-                else { s_cam_x = g.wx; s_cam_z = g.wz; s_group = g.group; }  // locate: pan the canvas to it
+                else
+                {
+                    // Locate: pan the canvas to it. The baked g.wx/g.wz is only a FALLBACK — the canvas
+                    // draws graces from s_vmarkers, whose positions are re-projected through the live
+                    // engine converter, so centring on the baked pair lands next to the icon instead of
+                    // on it (user 2026-07-28). Hand the row id to the resolver below, which runs after
+                    // the quadtree rebuild and reads the exact position the icon is drawn at.
+                    s_cam_x = g.wx; s_cam_z = g.wz; s_group = g.group;
+                    s_locate_grace_row = g.rowId;
+                }
             }
             // Gamepad: A (nav-activate) LOCATES the grace (pans the canvas to it), like a single mouse
             // click. To WARP, point the right-stick reticle at the grace on the canvas and tap Y — the
@@ -2031,6 +2067,18 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             s_qt_region_mask = region_mask;
             s_qt_proj_incomplete = proj_incomplete;
             s_qt_proj_retries = proj_incomplete ? (s_qt_proj_retries + 1) : 0;
+        }
+        // Grace "locate" (sidebar click): now that s_vmarkers holds THIS group's live-projected copies,
+        // centre on the grace's real drawn position instead of the baked one the row cached. Runs in the
+        // same frame as the click (the sidebar draws first, and the rebuild above already ran for the
+        // group the click selected). Silently keeps the baked fallback if the row isn't here — hidden by
+        // a category toggle, or its projection didn't resolve.
+        if (s_locate_grace_row)
+        {
+            for (const goblin::worldmap::Marker &cm : s_vmarkers)
+                if (cm.row_id == s_locate_grace_row && cm.category == kGraceCat)
+                { s_cam_x = cm.worldX; s_cam_z = cm.worldZ; break; }
+            s_locate_grace_row = 0;
         }
         // Fit frames ALL markers of the group → take the bbox from the index (not just the drawn subset).
         s_qt.bounds(minx, minz, maxx, maxz);
