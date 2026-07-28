@@ -431,14 +431,64 @@ file was produced**, and the only entries between the hits and the shutdown are 
 `WM_KILLFOCUS` — an alt-tab followed by a clean exit. Consistent with the user closing the game; a
 probe-induced fault would be immediate and would not emit the shutdown report.
 
-### 10.6 Still open
+### 10.7 ✅ The main-menu discriminator — ANSWERED, and in a stronger form
 
-- **The "stops at the main menu" discriminator** — not run (the game closed first). ~30 s next boot:
-  go to the main menu, re-arm on `CSEmkSystem+0x120`, confirm **no** hit. Re-read the singleton at
-  `er_base+0x3d67bd0` first; it may be null outside a world, which is itself informative.
-- **The condition-group byte at `cond+0x00`** — unchanged, still inferred. It is not reachable by a
-  point probe (it needs a live condition object held long enough to dump); it will fall out of the
-  G1 hook itself.
+Run at the main menu on a fresh boot (`frame=1796`, `menucover=1`, `coords` → `err not in-world
+(LocalPlayer null / loading)`), same `er_base = 0x7ff675600000`:
 
-**Net:** G1's foundation is no longer static-only. The dispatcher address, the singleton, and the
-per-step write are all confirmed on a running 2.6.2.0 vanilla game.
+```
+rpc mem_dump 0x7ff679367bd0 8        # = er_base + 0x3d67bd0, the CSEmkSystem slot
+ok 0x7ff679367bd0: 00 00 00 00 00 00 00 00
+```
+
+| | main menu | in-world |
+|---|---|---|
+| `coords` | `err not in-world` | `area=60` (Limgrave) |
+| `CSEmkSystem` @ `er+0x3d67bd0` | **`0x0`** | `0x7ff471503b60` |
+| EMEVD step | impossible — would write `[null+0x120]` | fires 6 ms after arming |
+
+**Better than the planned test.** The plan was "arm the watchpoint and confirm silence", but absence
+of hits is weak evidence (many things cause silence). Instead the **singleton itself is NULL**, which
+is a positive measurement: the EMEVD subsystem is not instantiated outside a world, so the step
+cannot be running — and the `+0x120` target is not even an addressable location at the menu.
+
+⇒ **The EMEVD kernel is WORLD-scoped, not process-scoped. The dispatcher is the real VM, not a
+generic look-alike.** The prompt's discriminator is satisfied.
+
+### 10.8 Bonus — where `CSEmkSystem` is constructed (3rd independent confirmation of the slot)
+
+Watchpoint armed on the **singleton slot** itself (`er+0x3d67bd0`, write) at the menu, then a save was
+loaded. Hit at `rip = er+0x66e397`, decoded from the byte window:
+
+```asm
+test rax, rax
+jz   +0x0b
+mov  rcx, rax
+call er+0x585af0              ; inside the Emk range 0x560000-0x590000
+mov  rbx, rax
+mov  [rip+0x036f9839], rbx    ; -> er+0x3d67bd0  = the CSEmkSystem slot
+mov  byte [rdi+0xb7c1], 1     ; a "ready" flag
+```
+
+So `CSEmkSystem` is **lazily constructed at world load** and the returned pointer stored into the
+slot. `0x66e397 + 0x36f9839 = 0x3d67bd0` — a **third** independent confirmation of the slot, this
+time from a code site unrelated to the two in §10.3.
+
+**⚠ This probe crashed the game** — see `docs/memory/tooling/mfg-rpc-driver-hardening.md`
+("`mem_fwa` — NEVER leave it armed across a world LOAD"). The hit was captured, the load continued
+~1.3 s, then the process died hard: the log stops mid-activity with **no** `[BENCH] ===== END REPORT
+=====` (contrast §10.5's clean exit) and **no crash triage file**. `mem_fwa` does not auto-disarm
+after a hit, so the DR0 breakpoint stayed live on 96 threads through the whole load. Disarm before
+any transition. (Ruled out on inspection: the FWA VEH does *not* swallow access violations — it
+returns `EXCEPTION_CONTINUE_SEARCH` for anything that is not `EXCEPTION_SINGLE_STEP`,
+`goblin_field_probe.cpp:109`.)
+
+### 10.9 Still open
+
+- **The condition-group byte at `cond+0x00`** — the one inferred field left in the chain. Not
+  reachable by a point probe (it needs a live condition object held long enough to dump); it falls
+  out of the G1 hook itself.
+
+**Net:** G1's foundation is no longer static-only. The dispatcher address, the singleton (confirmed
+three times from three distinct code sites), the per-step write, and the world-scoped lifetime are
+all measured on a running 2.6.2.0 **vanilla** game.

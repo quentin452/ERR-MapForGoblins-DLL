@@ -29,10 +29,17 @@ nothing implemented, nothing deployed, no build touched. Resume in this order:
      watch CODE** (DR7 `RW` is data-only, `goblin_field_probe.cpp:57`), so the original "arm it on the
      dispatcher entry" plan was void — watch the `+0x120` write instead. Polling that slot always
      reads zero (set+cleared inside one step): use the watchpoint, not a read.
-   - **NEXT ACTION (needs the game booted, ~30 s):** the "stops at the main menu" discriminator —
-     go to the main menu, re-read the singleton at `er_base+0x3d67bd0`, re-arm on `+0x120`, confirm
-     **no** hit. Then the one field still inferred in the whole chain: the condition-group byte at
-     `cond+0x00` (not reachable by a point probe — it falls out of the G1 hook itself).
+   - **✅ MAIN-MENU DISCRIMINATOR ANSWERED (findings §10.7)** — and better than planned: at the menu
+     the **singleton itself is NULL** (`er+0x3d67bd0` = 0), so the EMEVD kernel is **world-scoped**
+     and the step cannot run. A positive measurement, not an absence of hits. Bonus (§10.8): the
+     construction site was captured (`call er+0x585af0` → store to the slot at `er+0x66e397`), a 3rd
+     independent confirmation of `0x3d67bd0`. ⚠ that bonus probe **crashed the game** — `mem_fwa`
+     does not auto-disarm, see `docs/memory/tooling/mfg-rpc-driver-hardening.md`: **disarm before any
+     world load**.
+   - **NEXT:** nothing further needs the game. The one field still inferred in the whole chain is the
+     condition-group byte at `cond+0x00` — not reachable by a point probe, it falls out of the G1
+     hook itself. So the next real step is **scoping the G1 tracer** (ring buffer, dev-only, one hook
+     at `EMEVD_DISPATCH`), not more probing.
    - 8 AOBs proposed in the findings, **not wired into `re_signatures.hpp`**; two flagged thin (bank-3 /
      bank-1003 share an MSVC prologue, disambiguated only by frame size), `EMEVD_IP_ADVANCE` rejected.
 2. **Three cheap measurements, all specified in the plan's NEXT section:**

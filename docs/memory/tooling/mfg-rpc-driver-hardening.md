@@ -63,6 +63,45 @@ Related: the `+0x1EB9999` render race itself is pre-existing and documented in
 [[er-shutdown-crash-noise]] / [[mapforgoblins-map-open-freeze]]; heavy scripted map open/close
 cycling seems to tickle it (2 dumps in one evening of RPC loops, 18:27 + 18:43 on 2026-07-02).
 
+## `mem_fwa` — NEVER leave it armed across a world LOAD (2026-07-28, crashed the game)
+
+`mem_fwa` arms a DR0 hardware breakpoint on **every** thread and installs a VEH. Two things
+learned the hard way while live-verifying the EMEVD VM
+(`docs/re/windows_emevd_condition_evaluator_re_findings.md` §10):
+
+- **It does NOT auto-disarm after a hit.** It logged 2 hits in-world and stayed armed. So the
+  breakpoint survives whatever you do next — including a world load.
+- **In-world it is cheap; a world LOAD is not.** Same probe, two outcomes the same session:
+  armed in-world → fired twice (7 `[FWA]` log lines total), game unaffected. Armed at the main
+  menu and then a save loaded → the hit was captured, the load continued ~1.3 s, then the process
+  died hard.
+
+**Rule: `mem_fwa off` before any transition (load a save, quit to menu, warp across maps).** Do not
+transpose the "it was harmless in-world" risk profile onto a load path — it is a far busier one.
+
+Tool gap worth fixing: a one-shot auto-disarm after N hits would make the probe safe by default.
+
+### Corollary — our crash logger has blind spots, and this crash hit one
+
+`goblin_crash_filter` (`src/goblin_crashdump.cpp`) always writes a `MapForGoblins_crash_<pid>.txt`
+triage (code / address / module) and a `.dmp` **only** when the fault is inside our own DLL. But it
+is installed with `SetUnhandledExceptionFilter`, so it only sees **unhandled** exceptions:
+
+| Blind spot | Effect |
+|---|---|
+| the game / arxan / another mod catches the fault in its own SEH | our filter never runs |
+| single global slot, last installer wins | a DLL loaded after us silently replaces it (we chain `g_prev_filter` downward; nothing protects us from being overwritten) |
+| non-exception death (`TerminateProcess`, `abort`, fatal-fail) | nothing |
+| stack overflow | usually no stack left to run the filter |
+
+**The 2026-07-28 crash produced NO triage file at all** — which is itself evidence: the process did
+not die through an unhandled-exception path, so it was probably not a plain access violation in our
+code. Diagnostic note: *absence of a crash txt narrows the cause, it does not mean "no crash".*
+
+A last-chance **VEH recorder** would cover the first row (a VEH runs before any SEH, so it sees
+faults the game swallows), but first-chance exceptions are normal and frequent in a game, so it
+would need hard filtering not to spam. Noted, not built.
+
 ## Driving the F1 panel in tests — prefer STATE-RPCs over pixel-clicks (2026-07-04)
 
 Pixel `mouse_click <x> <y>` on F1 widgets (esp. the TAB BAR) is flaky — clicks land on the wrong tab
