@@ -511,6 +511,16 @@ namespace goblin::debug_rpc
                                          : std::string("na")) +
                        " kbseen=" + std::to_string(goblin::input::wm_keydown_total()) +
                        " fg=" + std::to_string(goblin::input::has_focus() ? 1 : 0) +
+                       // INPUT GATES — the flags that decide how much of the game's own input our
+                       // hooks swallow. Reported because "the game stopped responding but the overlay
+                       // looks closed" is otherwise a code-reading exercise: menu=1 starves ALL THREE
+                       // devices (XInput + DirectInput are gated on it alone, and DI is ER's primary
+                       // path), while cover/redirect only blank the MOUSE via the raw-input hooks.
+                       // Any of them stuck on with the overlay closed IS the bug.
+                       " menu=" + std::to_string(goblin::input::menu_open() ? 1 : 0) +
+                       " vmapcover=" + std::to_string(goblin::input::vmap_covers_map() ? 1 : 0) +
+                       " redirect=" + std::to_string(goblin::overlay_api::vmap_redirect() ? 1 : 0) +
+                       " capture=" + std::to_string(goblin::input::input_capture_active() ? 1 : 0) +
                        [] {
                            const unsigned long long idle = goblin::input::ms_since_user_input();
                            const bool suspended =
