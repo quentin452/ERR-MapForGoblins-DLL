@@ -959,6 +959,8 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     ImGui::Checkbox(tr("Relief"), &s_show_relief); // heightfield hillshade backdrop (D2.3)
     ImGui::SameLine();
     if (ImGui::Checkbox(tr("Graces"), &s_show_graces) && s_show_graces) s_graces_built = false; // Track B sidebar
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
+        ImGui::SetTooltip("%s", tr("Grace list + warp. Gamepad: LB opens/closes it from anywhere on the map."));
     ImGui::SameLine();
     ImGui::Checkbox(tr("Markers"), &s_show_markers_panel);  // F1→vmap: category visibility controls
     ImGui::SameLine();
@@ -1636,6 +1638,17 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // over a chip, otherwise the place/delete runs right after that loop. Deferred that far because the
     // chip rects are only known there — and it also stops X from burying a pin under a region name.
     bool pad_place_pending = pad_place && pad_over_canvas && active_world == 0;
+    // QOL (user 2026-07-28): LB opens/closes the grace sidebar from anywhere on the map, so reaching the
+    // warp list is one button instead of navigating up to its checkbox. L1/R1 are free for us — ImGui uses
+    // them ONLY inside its gamepad window-switcher, which we disarm every frame (goblin_overlay.cpp) — and
+    // while the vmap covers the map the game gets a zeroed pad anyway (input_capture_active), so a bare LB
+    // cannot leak into gameplay. Suppressed under a popup (the on-screen keyboard owns the pad there).
+    if (s_pad_mode && !pad_combo && ImGui::IsKeyPressed(ImGuiKey_GamepadL1, false) &&
+        !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel))
+    {
+        s_show_graces = !s_show_graces;
+        if (s_show_graces) s_graces_built = false;   // same rebuild the checkbox triggers
+    }
 
     ImDrawList *dl = ImGui::GetWindowDrawList();
     dl->PushClipRect(origin, canvas_end, true);
@@ -2165,7 +2178,13 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                 // moving the cursor toward a fanned icon could re-latch to a neighbouring islet the path
                 // passes over (fan A stops → fan B draws). The open fan closes via keep-open (cursor left
                 // its reach) below, and only THEN can the next frame's hit-test open a different one.
-                if (!s_fan_open && mod_ok && dx * dx + dy * dy <= hitR * hitR) { s_fan_open = true; s_fan_key = fc.key; break; }
+                // GRACE LOCK WINS (user 2026-07-28: zoomed out, aiming at a grace opened a neighbouring
+                // pile's fan instead — and warping is the map's whole point). plot() has already run this
+                // frame, so hoverPrio==1 means "a grace is latched under the pointer, with its 1.7x catch
+                // radius". Graces are drawn on top and never clustered (they are not in s_single_screen),
+                // so a fan can only ever COVER one, never contain it — no reason to let it steal the aim.
+                // Move off the grace and the lock drops, so the fan opens on the very next frame.
+                if (!s_fan_open && mod_ok && hoverPrio < 1 && dx * dx + dy * dy <= hitR * hitR) { s_fan_open = true; s_fan_key = fc.key; break; }
             }
             // Resolve the open cluster + its members.
             const FanCluster *open = nullptr;
@@ -2244,8 +2263,10 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     // MODAL absorb: the fan is drawn on top, so inside its backdrop it must OWN the hover —
                     // clear whatever base marker/pile UNDER it set in the accumulator, so their tooltip/warp
                     // can't leak through the gaps between fanned icons. Only a fanned icon (below) re-sets it.
+                    // EXCEPT a grace lock: a fan that drifted over a grace (already open when the pointer
+                    // reached it) must not eat the warp target either — same reason as the open gate above.
                     const float absorbR = max_r + icoHalf + 6.0f * uiScale;
-                    if (mdx * mdx + mdy * mdy <= absorbR * absorbR)
+                    if (hoverPrio < 1 && mdx * mdx + mdy * mdy <= absorbR * absorbR)
                     {
                         hoverBestD = 1e18f; hoverPrio = -1; hoverName = -1; hoverCat = -1;
                         hoverV.clear(); hoverRow = 0; hoverDisc = 0; hoverAnon = false;

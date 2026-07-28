@@ -27,8 +27,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
   says nothing about *what* a marker is, so anonymized markers keep their up/down arrow instead of
   losing it with everything else. Turn it off for a strict blackout.
 
+- Virtual map: **aiming at a grace wins over the cluster fan-out**. Zoomed out, pointing at a grace next
+  to a pile opened that pile's spiderfy fan and swallowed the warp target; the grace now keeps the aim,
+  and the fan opens as soon as you move off it.
+
 ### Changed
 
+- Virtual map, **gamepad**: **LB** opens/closes the grace list from anywhere on the map.
 - Native map, **gamepad**: the overlay now points at the **screen centre** — where Elden Ring's own map
   reticle sits when you pan with a pad — instead of the parked mouse cursor. Region chips can be hovered
   and toggled with **X**, and marker tooltips follow the reticle like the game's own do. That X press is
