@@ -338,7 +338,7 @@ them collide. `EMEVD_COND_EVAL_GROUP` is a mid-function-style byte run and is fi
 
 ---
 
-## 9. Next concrete step (one thing)
+## 9. Next concrete step (one thing) — ✅ DONE 2026-07-28, see §10
 
 **Live-verify `EMEVD_DISPATCH` (`0x567d40`) with a read-only RPC probe, before any hook is written.**
 
@@ -356,3 +356,89 @@ them collide. `EMEVD_COND_EVAL_GROUP` is a mid-function-style byte run and is fi
 Open item to close during that pass: **prove the condition-group byte at `cond+0x00`** (§3) by
 dumping a condition object attached via `0x583820` and comparing byte 0 against the `arg[0]` the
 dispatcher saw. That is the one inferred field in this whole chain.
+
+---
+
+## 10. LIVE VERIFICATION — 2026-07-28 (Windows box)
+
+Everything above §9 was static. This section is **measured on a running game**.
+
+**Setup.** VANILLA Elden Ring (`E:\SteamLibrary\steamapps\common\ELDEN RING\Game\eldenring.exe`,
+UXM-unpacked), `MapForGoblins.dll` loaded from `C:\Users\iamacat\Downloads\DLLS\` (built
+`Jul 27 2026 16:13:27`), NOT the ERR install. `er_version = 2.6.2.0` — **the same build the Ghidra DB
+holds**. `er_base = 0x7ff675600000`. In-world (`coords` → `area=60`, Limgrave), not the main menu.
+Note this lands the confirmation on **vanilla**, which is the stronger side for the mod-agnostic claim.
+
+### 10.1 ⚠ Correction to §9's method — `mem_fwa` cannot watch CODE
+
+§9 proposed "arm `mem_fwa` on the resolved dispatcher entry". **That cannot work.** `mem_fwa` sets a
+DR0 **data** breakpoint: `make_dr7()` emits `RW = 0b11` (read|write) or `0b01` (write) and never
+`0b00` (execute) — `src/goblin_field_probe.cpp:57`. An x86 data watchpoint does not trigger on
+instruction fetch, so arming the dispatcher entry would sit silent forever and read as a false
+negative.
+
+**What was used instead** — the per-step WRITE this doc already identified in §2:
+`*(CSEmkEventIns **)(DAT_143d67bd0 + 0x120) = this`. That is a data write, every step, so it is
+exactly what a data watchpoint is for.
+
+### 10.2 The dispatcher AOB resolves, byte for byte
+
+```
+rpc mem_dump 0x7ff675b67d40 16        # = er_base + 0x567d40
+ok 0x7ff675b67d40: 48 89 5c 24 08 57 48 83 ec 20 49 8b 80 d0 00 00
+```
+
+Identical to `EMEVD_DISPATCH` (§8). The RVA and the AOB both hold on the live 2.6.2.0 image.
+
+### 10.3 The `+0x120` set/clear pair, confirmed at instruction level
+
+`mem_fwa <CSEmkSystem+0x120> 8 w` fired **6 ms after arming**, standing still in Limgrave — this is a
+continuous, high-frequency site, not a rare one. Two hits, decoded from the logged byte windows:
+
+| Hit | RIP | Instructions ending at RIP |
+|---|---|---|
+| #0 | `er+0x582e79` | `mov rax,[rip+0x37e4d5e]` ; **`mov [rax+0x120], rbx`** |
+| #1 | `er+0x5830b1` | `mov rax,[rip+0x37e4b2a]` ; **`mov qword [rax+0x120], 0`** ; then `add rsp,0x38 ; pop r15 ; pop rbx ; ret` |
+
+**The singleton RVA is confirmed twice, independently.** Resolving each rip-relative displacement
+against its own next-instruction address:
+
+- `0x582e72 + 0x37e4d5e = 0x3d67bd0`
+- `0x5830a6 + 0x37e4b2a = 0x3d67bd0`
+
+⇒ precisely the `DAT_143d67bd0` named in §2. Two separate computations landing on the same address is
+a confirmation, not a coincidence.
+
+Hit #1's clear is immediately followed by the function epilogue, bounding the enclosing function at
+roughly `0x582d50 .. 0x5830b9` — consistent with `FUN_140582d50`, the per-tick step (`CSEmkEventIns`
+vtable slot 1). So the EMEVD kernel is **live, stepping, and laid out as the static pass described**.
+
+### 10.4 Why direct polling of the slot reads zero
+
+Three `mem_dump` reads of `CSEmkSystem+0x120` all returned `00 00 00 00 00 00 00 00`. Not a
+contradiction: the slot is **set and cleared within the same step** (§10.3), and the RPC samples from
+the Present thread, i.e. always between steps. **Poll this slot and you will always see zero** — use
+the watchpoint, or the hook.
+
+### 10.5 Probe cost and game state
+
+The probe is self-limiting: **7 `[FWA]` log lines total** (1 arm + 2 hits × 3 lines). It did not
+flood, and the game kept running normally afterwards.
+
+The game exited ~10 s later. Recorded so a later reader does not misread it as a probe crash: the log
+ends with a complete `[BENCH] ===== END REPORT =====` (the DLL's normal shutdown path), **no crash
+file was produced**, and the only entries between the hits and the shutdown are a `WM_SETFOCUS` then a
+`WM_KILLFOCUS` — an alt-tab followed by a clean exit. Consistent with the user closing the game; a
+probe-induced fault would be immediate and would not emit the shutdown report.
+
+### 10.6 Still open
+
+- **The "stops at the main menu" discriminator** — not run (the game closed first). ~30 s next boot:
+  go to the main menu, re-arm on `CSEmkSystem+0x120`, confirm **no** hit. Re-read the singleton at
+  `er_base+0x3d67bd0` first; it may be null outside a world, which is itself informative.
+- **The condition-group byte at `cond+0x00`** — unchanged, still inferred. It is not reachable by a
+  point probe (it needs a live condition object held long enough to dump); it will fall out of the
+  G1 hook itself.
+
+**Net:** G1's foundation is no longer static-only. The dispatcher address, the singleton, and the
+per-step write are all confirmed on a running 2.6.2.0 vanilla game.

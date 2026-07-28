@@ -22,11 +22,17 @@ nothing implemented, nothing deployed, no build touched. Resume in this order:
    - **G2 = NO** (documented, expected): slot-1 `Evaluate` takes only `this`, reads the *live* world and
      writes its answer into the object ⇒ it can only answer "is G true NOW", never the counterfactual.
      Observation, not interrogation.
-   - **NEXT ACTION (needs the game booted):** live-verify `EMEVD_DISPATCH` before writing any hook —
-     resolve the AOB, arm `mem_fwa` on it, confirm it fires continuously in-world and **stops at the
-     main menu** (the cheap proof it is the real VM), then dump `[this+0xD0]`/`[+0xD8]` and check the
-     bank lands in `{0..20, 1000..1020, 2000..2020}`. Close the one inferred field in the chain while
-     there: the condition-group byte at `cond+0x00`.
+   - **✅ LIVE-VERIFIED 2026-07-28 (findings §10), on VANILLA 2.6.2.0.** `EMEVD_DISPATCH` dumps
+     byte-for-byte at `er_base+0x567d40`; the per-step `mov [CSEmkSystem+0x120], this` / `mov …, 0`
+     pair fires 6 ms after arming while standing still, and both rip-relative displacements resolve
+     to the same singleton `0x3d67bd0` — an independent double confirmation. ⚠ **`mem_fwa` cannot
+     watch CODE** (DR7 `RW` is data-only, `goblin_field_probe.cpp:57`), so the original "arm it on the
+     dispatcher entry" plan was void — watch the `+0x120` write instead. Polling that slot always
+     reads zero (set+cleared inside one step): use the watchpoint, not a read.
+   - **NEXT ACTION (needs the game booted, ~30 s):** the "stops at the main menu" discriminator —
+     go to the main menu, re-read the singleton at `er_base+0x3d67bd0`, re-arm on `+0x120`, confirm
+     **no** hit. Then the one field still inferred in the whole chain: the condition-group byte at
+     `cond+0x00` (not reachable by a point probe — it falls out of the G1 hook itself).
    - 8 AOBs proposed in the findings, **not wired into `re_signatures.hpp`**; two flagged thin (bank-3 /
      bank-1003 share an MSVC prologue, disambiguated only by frame size), `EMEVD_IP_ADVANCE` rejected.
 2. **Three cheap measurements, all specified in the plan's NEXT section:**
