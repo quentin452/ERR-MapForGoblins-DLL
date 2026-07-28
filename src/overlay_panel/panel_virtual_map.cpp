@@ -2472,7 +2472,13 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             // item name on this one reads the same way and sends you looking for something that was
             // never there (user 2026-07-28: pointed at a Smithing Stone [7] as a suspected phantom;
             // its provenance was perfectly sound, the marker just means something else). Say so.
-            if (hoverCat == static_cast<int>(goblin::generated::Category::WorldFarmableCollectible))
+            // …but NOT while this marker is anonymized. Farmable drops ARE anonymized (they name the
+            // real notable drop), and the whole point of that mode is to show only the coarse kind —
+            // singling these out would hand back exactly what it just blurred: in a blackout run,
+            // "this ? is a farm spot, not a chest" is a real hint. Silence is the consistent answer;
+            // the same "?" as everything else says nothing, which is what was asked for.
+            if (!hoverAnon &&
+                hoverCat == static_cast<int>(goblin::generated::Category::WorldFarmableCollectible))
                 ImGui::TextColored(ImVec4(0.72f, 0.80f, 0.55f, 1.f),
                                    "%s", tr("dropped by enemies here - nothing on the ground"));
             if (hoverGrace)
