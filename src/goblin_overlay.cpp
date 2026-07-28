@@ -1970,6 +1970,7 @@ namespace
             {
                 static auto s_in_last = std::chrono::steady_clock::now();
                 static char s_in_buf[512] = "[INPUTDIAG] sampling...";
+                static bool s_in_ok = true;   // verdict: true = we alter nothing (green)
                 const auto in_now = std::chrono::steady_clock::now();
                 if (in_now - s_in_last >= std::chrono::seconds(1))
                 {
@@ -1981,13 +1982,26 @@ namespace
                     const unsigned rid = goblin::input::diag_get_raw_input_data_exchange();
                     const unsigned rib = goblin::input::diag_get_raw_input_buffer_exchange();
                     const unsigned rbl = goblin::input::diag_raw_blanked_exchange();
+                    // VERDICT FIRST, in words. An instrument that needs interpreting gets misread
+                    // exactly when it matters: the first build labelled a counter "ZEROED/s" and the
+                    // 0 next to it read as "ER is zeroed" during normal play (user 2026-07-28). So
+                    // state the conclusion, and colour the whole block by it — the numbers below are
+                    // now evidence for a sentence rather than a puzzle.
+                    const unsigned altered = xim + diz + rbl;
+                    s_in_ok = (altered == 0);
+                    const char *verdict =
+                        s_in_ok ? "we are altering NOTHING - the game gets its input in full"
+                                : "WE ARE ALTERING the game's input - see which gate is on below";
                     std::snprintf(s_in_buf, sizeof(s_in_buf),
-                                  "[INPUTDIAG]  gates: menu=%d vmapcover=%d redirect=%d fg=%d map=%d => CAPTURE=%d\n"
-                                  "             paused=%d menucover=%d  (both are GAME state, not our hooks)\n"
-                                  "XInput  (pad)      game polls/s %5u   masked/s %5u\n"
-                                  "DirectInput (kb+m) game reads/s %5u   ZEROED/s %5u   <- ER's primary path\n"
-                                  "RawInput (kb+m)    game reads/s %5u   blanked/s %5u\n"
-                                  "wndproc keydown/s %u   (blanked>0 with every gate 0 = a hook is wrong)",
+                                  "[INPUTDIAG] %s\n"
+                                  "  gates: menu=%d vmapcover=%d redirect=%d fg=%d map=%d => CAPTURE=%d\n"
+                                  "  paused=%d menucover=%d   (GAME state, not our hooks)\n"
+                                  "  reaching the game per second, and how much of it WE altered:\n"
+                                  "    XInput  (pad)       %5u polls   -> altered %u\n"
+                                  "    DirectInput (kb+m)  %5u reads   -> altered %u   (ER's primary path)\n"
+                                  "    RawInput (kb+m)     %5u reads   -> altered %u\n"
+                                  "    wndproc keydown     %5u",
+                                  verdict,
                                   goblin::input::menu_open() ? 1 : 0,
                                   goblin::input::vmap_covers_map() ? 1 : 0,
                                   goblin::overlay_api::vmap_redirect() ? 1 : 0,
@@ -2002,7 +2016,9 @@ namespace
                 ImDrawList *idl = ImGui::GetForegroundDrawList();
                 const ImVec2 sz = ImGui::CalcTextSize(s_in_buf);
                 idl->AddRectFilled(ImVec2(8, 100), ImVec2(24 + sz.x, 116 + sz.y), IM_COL32(0, 0, 0, 190), 4.f);
-                idl->AddText(ImVec2(16, 108), IM_COL32(180, 255, 190, 255), s_in_buf);
+                idl->AddText(ImVec2(16, 108),
+                             s_in_ok ? IM_COL32(150, 245, 165, 255) : IM_COL32(255, 190, 90, 255),
+                             s_in_buf);
             }
             // Draw ImGui's software cursor while the F1 panel is up (map closed) OR the vmap is standing in
             // as the fullscreen map (native-map redirect: ER no longer draws its own cursor, so without this
