@@ -24,6 +24,9 @@ GetRawInputDataFn o_get_raw_input_data = nullptr;
 GetRawInputBufferFn o_get_raw_input_buffer = nullptr;
 
 std::atomic<unsigned> g_diag_get_raw_input_data{0};
+// [INPUTDIAG] events we actually blanked for the game (mouse deltas/buttons, or a key), across
+// BOTH raw paths — the counter that says "the game asked and got nothing".
+std::atomic<unsigned> g_diag_ri_blanked{0};
 std::atomic<unsigned> g_diag_get_raw_input_buffer{0};
 
 // ROOT CAUSE, confirmed live by <user> 2026-07-01 via the [DIAG] crosshairs (goblin_overlay.cpp):
@@ -158,6 +161,7 @@ UINT WINAPI hk_get_raw_input_data(HRAWINPUT h, UINT cmd, LPVOID data, PUINT size
             }
             ri->data.mouse.usButtonFlags = 0;
             ri->data.mouse.usButtonData = 0;
+            g_diag_ri_blanked.fetch_add(1, std::memory_order_relaxed);
         }
         else if (ri->header.dwType == RIM_TYPEKEYBOARD &&
                  (menu_open() ||
@@ -175,6 +179,7 @@ UINT WINAPI hk_get_raw_input_data(HRAWINPUT h, UINT cmd, LPVOID data, PUINT size
             ri->data.keyboard.Message = WM_NULL;
             ri->data.keyboard.MakeCode = 0;
             ri->data.keyboard.Flags = RI_KEY_BREAK; // treat as key-up
+            g_diag_ri_blanked.fetch_add(1, std::memory_order_relaxed);
         }
     }
     return ret;
@@ -289,4 +294,5 @@ float take_wheel_delta()
 
 unsigned diag_get_raw_input_data_exchange() { return g_diag_get_raw_input_data.exchange(0, std::memory_order_relaxed); }
 unsigned diag_get_raw_input_buffer_exchange() { return g_diag_get_raw_input_buffer.exchange(0, std::memory_order_relaxed); }
+unsigned diag_raw_blanked_exchange() { return g_diag_ri_blanked.exchange(0, std::memory_order_relaxed); }
 } // namespace goblin::input

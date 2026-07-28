@@ -26,4 +26,9 @@ bool xinput_available();
 // while the menu is open, bypassing the zeroing hk_xinput_get_state applies to outside
 // callers. Only valid after xinput_available() is true.
 DWORD xinput_get_state_real(DWORD user_index, XINPUT_STATE *state);
+
+// [INPUTDIAG] read-and-reset: the GAME's own polls we answered this second, and how many of them
+// we altered (zeroed while the F1 menu is up, or button-masked under the fullscreen vmap).
+unsigned diag_xinput_calls_exchange();
+unsigned diag_xinput_masked_exchange();
 } // namespace goblin::input

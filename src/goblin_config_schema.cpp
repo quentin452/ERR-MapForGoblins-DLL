@@ -101,6 +101,7 @@ namespace goblin::config
     bool overlayMarkersProto = false;
     bool debugRenderDims = false;
     bool debugCursorDiagnostic = false;
+    bool debugInputOverlay = false;   // on-screen "who is eating my input" readout
     bool fixMidsessionResolution = false;
     bool benchLogIndividual = false;
     bool benchLogSession = true;
@@ -728,6 +729,8 @@ namespace
                   "Dev diagnostic (mid-session resolution bug): every ~2s log ER's render-\noutput dims (active +0x118/+0x11c vs the live backbuffer) + dirty bits to\nMapForGoblins.log as [RENDIMS]. Change the resolution in-game, then read the\nlog: the entry that stays at the OLD resolution is the stale one. Off by default."),
                 B("debug_cursor_diagnostic", debugCursorDiagnostic, "false",
                   "Dev diagnostic (Alt+Tab cursor bug): while F1 is open, draw two live\ncrosshairs -- cyan at the raw polled OS cursor position, magenta at what\nImGui itself thinks the mouse position is. If they diverge, that IS the\nstale cursor, visible live instead of needing a log round-trip. Off by default."),
+                B("debug_input_overlay", debugInputOverlay, "false",
+                  "On-screen INPUT overlay: the four gates that decide how much of the game's\nown input our hooks swallow, plus per-hook calls/sec vs blanked/sec (XInput,\nDirectInput, raw input). Draws with the panel CLOSED -- for catching an input\nfreeze in the act: screenshot it while the game stops responding and it names\nthe culprit. Off by default."),
                 B("bench_log_individual", benchLogIndividual, "false",
                   "Log each individual '[BENCH] label: X ms' timing line to MapForGoblins.log\nas it happens. OFF by default -- per-call lines are a dev-only flood (they\ndominated the log); the end-of-session summary table (bench_log_session) keeps\nthe useful avg/min/max/total per label, and [BENCH][SPIKE] lag-hitch warnings\nalways fire regardless. Turn this on for live per-call timing while profiling."),
                 B("bench_log_session", benchLogSession, "true",

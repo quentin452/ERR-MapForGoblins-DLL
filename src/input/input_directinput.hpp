@@ -10,4 +10,9 @@ namespace goblin::input
 // GetDeviceState/GetDeviceData (ER's primary input path). Safe to call once, after MinHook
 // is initialized. Logs its own success/failure via spdlog.
 void install_directinput_hooks();
+
+// [INPUTDIAG] read-and-reset: the GAME's own DirectInput reads this second, and how many we zeroed.
+// DI is ER's PRIMARY keyboard/mouse path, so a nonzero `zeroed` with the overlay closed IS the bug.
+unsigned diag_di_calls_exchange();
+unsigned diag_di_zeroed_exchange();
 } // namespace goblin::input

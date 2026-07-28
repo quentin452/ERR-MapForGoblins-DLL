@@ -6,6 +6,7 @@
 #define DIRECTINPUT_VERSION 0x0800
 #include <dinput.h>
 
+#include <atomic>
 #include <intrin.h>   // _ReturnAddress() — caller-module gate
 
 #include <MinHook.h>
@@ -26,6 +27,11 @@ using DIGetDeviceDataFn = HRESULT(STDMETHODCALLTYPE *)(IDirectInputDevice8 *, DW
 DIGetDeviceStateFn o_di_get_device_state = nullptr;
 DIGetDeviceDataFn o_di_get_device_data = nullptr;
 
+// [INPUTDIAG] — this is ER's PRIMARY keyboard/mouse path, so "the game reads it N times a second
+// and we zeroed N of them" is the single most diagnostic pair on the overlay.
+std::atomic<unsigned> g_diag_calls{0};
+std::atomic<unsigned> g_diag_zeroed{0};
+
 // DirectInput8 device hooks. The vtable is shared by all devices (mouse +
 // keyboard), so zeroing on menu_open() blocks both — which is exactly what we
 // want while the menu owns input.
@@ -36,8 +42,12 @@ HRESULT STDMETHODCALLTYPE hk_di_get_device_state(IDirectInputDevice8 *dev, DWORD
     // lands here too. Zero the state ONLY for the game's own reads — see goblin::caller_is_game.
     const bool for_game = goblin::caller_is_game(_ReturnAddress());
     HRESULT hr = o_di_get_device_state(dev, cb, data);
+    if (for_game) g_diag_calls.fetch_add(1, std::memory_order_relaxed);
     if (for_game && menu_open() && data && SUCCEEDED(hr))
+    {
         memset(data, 0, cb);   // no axes / no buttons / no keys
+        g_diag_zeroed.fetch_add(1, std::memory_order_relaxed);
+    }
     return hr;
 }
 HRESULT STDMETHODCALLTYPE hk_di_get_device_data(IDirectInputDevice8 *dev, DWORD cb,
@@ -46,11 +56,18 @@ HRESULT STDMETHODCALLTYPE hk_di_get_device_data(IDirectInputDevice8 *dev, DWORD 
 {
     const bool for_game = goblin::caller_is_game(_ReturnAddress());
     HRESULT hr = o_di_get_device_data(dev, cb, rg, inout, flags);
+    if (for_game) g_diag_calls.fetch_add(1, std::memory_order_relaxed);
     if (for_game && menu_open() && inout)
+    {
         *inout = 0;            // report zero buffered events
+        g_diag_zeroed.fetch_add(1, std::memory_order_relaxed);
+    }
     return hr;
 }
 } // namespace
+
+unsigned diag_di_calls_exchange() { return g_diag_calls.exchange(0, std::memory_order_relaxed); }
+unsigned diag_di_zeroed_exchange() { return g_diag_zeroed.exchange(0, std::memory_order_relaxed); }
 
 void install_directinput_hooks()
 {

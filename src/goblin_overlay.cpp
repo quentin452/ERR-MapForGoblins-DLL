@@ -1958,6 +1958,49 @@ namespace
                               goblin::input::diag_set_cursor_pos_swallowed());
                 diagDl->AddText(ImVec2(10, 10), IM_COL32(255, 255, 255, 255), diagBuf);
             }
+            // ── [INPUTDIAG] on-screen "who is eating my input" (config::debug_input_overlay) ──────
+            // The menu-input freeze clears itself the moment you alt-tab, so every live read arrives
+            // after the evidence is gone (user 2026-07-28). This draws with the panel CLOSED, on the
+            // FOREGROUND list, so it can be screenshotted mid-freeze and names the culprit outright:
+            // each hook shows the GAME's own calls/sec and how many of those we blanked. The gates
+            // line is the cause, the hook lines are the effect — read together they separate "a gate
+            // is stuck" (gate 1, blanked high) from "nothing of ours is blocking" (all 0, blanked 0,
+            // so the freeze is the game's own state and our hooks are exonerated).
+            if (goblin::config::debugInputOverlay)
+            {
+                static auto s_in_last = std::chrono::steady_clock::now();
+                static char s_in_buf[512] = "[INPUTDIAG] sampling...";
+                const auto in_now = std::chrono::steady_clock::now();
+                if (in_now - s_in_last >= std::chrono::seconds(1))
+                {
+                    s_in_last = in_now;
+                    const unsigned xi = goblin::input::diag_xinput_calls_exchange();
+                    const unsigned xim = goblin::input::diag_xinput_masked_exchange();
+                    const unsigned di = goblin::input::diag_di_calls_exchange();
+                    const unsigned diz = goblin::input::diag_di_zeroed_exchange();
+                    const unsigned rid = goblin::input::diag_get_raw_input_data_exchange();
+                    const unsigned rib = goblin::input::diag_get_raw_input_buffer_exchange();
+                    const unsigned rbl = goblin::input::diag_raw_blanked_exchange();
+                    std::snprintf(s_in_buf, sizeof(s_in_buf),
+                                  "[INPUTDIAG]  gates: menu=%d vmapcover=%d redirect=%d fg=%d map=%d => CAPTURE=%d\n"
+                                  "XInput  (pad)      game polls/s %5u   masked/s %5u\n"
+                                  "DirectInput (kb+m) game reads/s %5u   ZEROED/s %5u   <- ER's primary path\n"
+                                  "RawInput (kb+m)    game reads/s %5u   blanked/s %5u\n"
+                                  "wndproc keydown/s %u   (blanked>0 with every gate 0 = a hook is wrong)",
+                                  goblin::input::menu_open() ? 1 : 0,
+                                  goblin::input::vmap_covers_map() ? 1 : 0,
+                                  goblin::overlay_api::vmap_redirect() ? 1 : 0,
+                                  goblin::input::has_focus() ? 1 : 0,
+                                  goblin::world_map_open() ? 1 : 0,
+                                  goblin::input::input_capture_active() ? 1 : 0,
+                                  xi, xim, di, diz, rid + rib, rbl,
+                                  goblin::input::diag_wm_keydown_exchange());
+                }
+                ImDrawList *idl = ImGui::GetForegroundDrawList();
+                const ImVec2 sz = ImGui::CalcTextSize(s_in_buf);
+                idl->AddRectFilled(ImVec2(8, 100), ImVec2(24 + sz.x, 116 + sz.y), IM_COL32(0, 0, 0, 190), 4.f);
+                idl->AddText(ImVec2(16, 108), IM_COL32(180, 255, 190, 255), s_in_buf);
+            }
             // Draw ImGui's software cursor while the F1 panel is up (map closed) OR the vmap is standing in
             // as the fullscreen map (native-map redirect: ER no longer draws its own cursor, so without this
             // the mouse is invisible on the vmap). Gate on mouse input — in gamepad mode the vmap draws its

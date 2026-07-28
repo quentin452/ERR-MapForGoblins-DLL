@@ -25,6 +25,8 @@ float virtual_cursor_y();
 // matching the original atomic.exchange(0) call sites in the [CURSORDIAG] dump.
 unsigned diag_get_raw_input_data_exchange();
 unsigned diag_get_raw_input_buffer_exchange();
+// [INPUTDIAG] raw events BLANKED for the game (both paths) — read-and-reset, per second.
+unsigned diag_raw_blanked_exchange();
 
 // Mouse-wheel delta accumulated (in ImGui units: raw usButtonData / WHEEL_DELTA) from the
 // raw-input hooks while the menu is open, drained once per frame by hk_present into

@@ -1,6 +1,7 @@
 #include "input_gamepad.hpp"
 #include "input_shared.hpp"
 
+#include <atomic>
 #include <intrin.h>   // _ReturnAddress() — caller-range check in hk_xinput_get_state
 
 #include <MinHook.h>
@@ -18,6 +19,12 @@ using XInputGetStateFn = DWORD(WINAPI *)(DWORD, XINPUT_STATE *);
 XInputGetStateFn o_xinput_get_state = nullptr;
 bool g_xinput_available = false;
 
+// [INPUTDIAG] per-second accounting for the on-screen input overlay: how many of the GAME's own
+// polls we answered, and how many of those we altered. "polls high, masked high, gates all 0" is
+// the contradiction that names a stuck gate without a debugger.
+std::atomic<unsigned> g_diag_calls{0};
+std::atomic<unsigned> g_diag_masked{0};
+
 // XInputGetState is polled, not message-based, so unlike mouse/keyboard it can't be
 // swallowed via a wndproc — the game and ImGui's own gamepad-nav backend read the SAME
 // physical controller state. While the menu is open: a caller inside OUR OWN module
@@ -34,20 +41,22 @@ DWORD WINAPI hk_xinput_get_state(DWORD user_index, XINPUT_STATE *state)
     const DWORD result = o_xinput_get_state(user_index, state);
     if (result == ERROR_SUCCESS && state)
     {
+        bool masked = false;
         const auto [self_base, self_end] = goblin::self_module_range();
         const uintptr_t ret = reinterpret_cast<uintptr_t>(_ReturnAddress());
         const bool caller_is_us = self_base && ret >= self_base && ret < self_end;
         if (!caller_is_us)
         {
+            g_diag_calls.fetch_add(1, std::memory_order_relaxed);
             if (menu_open())
-                state->Gamepad = {};   // connected, real packet number, but nothing held
+            { state->Gamepad = {}; masked = true; }   // connected, real packet number, nothing held
             // The fullscreen vmap STANDS IN for the native map, so the game must not act on the pad
             // either — B closed our map AND rolled/cancelled in ER underneath, X placed a pin AND fired
             // its own action (user 2026-07-28: "double input"). Everything is masked EXCEPT the map
             // button itself (BACK/START): that press is what the WorldMapDialog create-hook toggles the
             // redirect on, i.e. the way out. Buttons only — sticks stay live so the game keeps stepping.
             else if (vmap_covers_map())
-                state->Gamepad.wButtons &= (XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START);
+            { state->Gamepad.wButtons &= (XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START); masked = true; }
             // F1 CLOSED, native map open, and our in-world reticle is sitting on a region chip: hide
             // ONLY X from the game, so activating the chip can't also fire the map screen's own X
             // action. Exactly the contract the mouse path already has (input_wndproc eats the L-press
@@ -55,8 +64,9 @@ DWORD WINAPI hk_xinput_get_state(DWORD user_index, XINPUT_STATE *state)
             // to happen here. ImGui's own backend polls from inside this module (caller_is_us) and
             // still sees the real X, which is what toggles the chip.
             else if (goblin::world_map_open() && goblin::overlay_render_loader::call_inworld_hovered())
-                state->Gamepad.wButtons &= ~XINPUT_GAMEPAD_X;
+            { state->Gamepad.wButtons &= ~XINPUT_GAMEPAD_X; masked = true; }
         }
+        if (masked) g_diag_masked.fetch_add(1, std::memory_order_relaxed);
     }
     return result;
 }
@@ -96,6 +106,9 @@ void install_xinput_hook()
 }
 
 bool xinput_available() { return g_xinput_available; }
+
+unsigned diag_xinput_calls_exchange() { return g_diag_calls.exchange(0, std::memory_order_relaxed); }
+unsigned diag_xinput_masked_exchange() { return g_diag_masked.exchange(0, std::memory_order_relaxed); }
 
 DWORD xinput_get_state_real(DWORD user_index, XINPUT_STATE *state)
 {
