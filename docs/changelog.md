@@ -23,6 +23,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Added
 
+- **Farmable-drop markers say so on hover** — "dropped by enemies here, nothing on the ground". They
+  mark respawning enemies that drop a notable farm target, not an item lying there, but they carried an
+  item name like every other loot marker and read as a pickup that does not exist.
 - Dev: **marker provenance in the map tooltips** (`debug_marker_tooltip`, live toggle in F1 ▸ Dev
   tools). Hovering a marker also shows where it came from — source, the raw map id (`m<area>_<gx>_<gz>`
   + local x/z), the projected world position and its lot / row / name ids — so a marker that looks

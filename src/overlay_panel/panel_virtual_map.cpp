@@ -2467,6 +2467,14 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             if (!nm.empty()) ImGui::TextUnformatted(nm.c_str());
             else ImGui::TextDisabled("(unnamed)");
             if (clab) ImGui::TextDisabled("%s", clab);
+            // Farmable drops are NOT a pickup lying on the ground — they mark respawning ENEMIES that
+            // drop a notable farm target. Every other loot marker means "go here and take it", so an
+            // item name on this one reads the same way and sends you looking for something that was
+            // never there (user 2026-07-28: pointed at a Smithing Stone [7] as a suspected phantom;
+            // its provenance was perfectly sound, the marker just means something else). Say so.
+            if (hoverCat == static_cast<int>(goblin::generated::Category::WorldFarmableCollectible))
+                ImGui::TextColored(ImVec4(0.72f, 0.80f, 0.55f, 1.f),
+                                   "%s", tr("dropped by enemies here - nothing on the ground"));
             if (hoverGrace)
             {
                 graceDiscovered ? ImGui::TextColored(ImVec4(0.90f, 0.78f, 0.35f, 1.f), "double-click to warp")
