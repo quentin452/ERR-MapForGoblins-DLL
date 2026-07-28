@@ -11,12 +11,24 @@ invariant 5), and as of 2026-07-28 the **solver is specified**: least-fixpoint m
 an independent verifier, and the directional-error policy that makes a derived graph safe. Still
 nothing implemented, nothing deployed, no build touched. Resume in this order:
 
-1. **EMEVD condition-group evaluator — RE opened 2026-07-28**,
-   `docs/re/windows_emevd_condition_evaluator_re_prompt.md` (an agent ran it; read the findings doc if
-   present). This absorbs the old "optional sharpening" item: the flag probe attributes a gate by
-   CO-OCCURRENCE, so 2089 is a ceiling, and every wrong edge is a candidate softlock. **G1** = hook the
-   evaluator and passively log `(event, group, instruction, result)` during normal play ⇒ the wiring is
-   *observed* instead of inferred. NOT a hunt for a native solver — no engine has one.
+1. **★ EMEVD VM — FOUND (static, 2026-07-28). One live check is the next action.**
+   `windows_emevd_condition_evaluator_re_findings.md` (prompt: `..._re_prompt.md`). Route B, Ghidra
+   `D:\ghidra_proj2\ER.rep`, app **2.6.2.0**; **nothing measured live** (game not running that session).
+   - **G1 = YES (statically).** ONE hook at the bank dispatcher `FUN_140567d40` (rva `0x567d40`) yields
+     `(event instance, bank, index, raw operand blob, result)` for every instruction executed, and the
+     condition group is uniformly `arg[0]`. That is causation READ, not co-occurrence inferred — it
+     retires the "2089 is a ceiling" limitation and absorbs the old *sharpening* item. Mod-agnostic by
+     construction. ⚠ fires every instruction every tick ⇒ ring buffer, dev-only.
+   - **G2 = NO** (documented, expected): slot-1 `Evaluate` takes only `this`, reads the *live* world and
+     writes its answer into the object ⇒ it can only answer "is G true NOW", never the counterfactual.
+     Observation, not interrogation.
+   - **NEXT ACTION (needs the game booted):** live-verify `EMEVD_DISPATCH` before writing any hook —
+     resolve the AOB, arm `mem_fwa` on it, confirm it fires continuously in-world and **stops at the
+     main menu** (the cheap proof it is the real VM), then dump `[this+0xD0]`/`[+0xD8]` and check the
+     bank lands in `{0..20, 1000..1020, 2000..2020}`. Close the one inferred field in the chain while
+     there: the condition-group byte at `cond+0x00`.
+   - 8 AOBs proposed in the findings, **not wired into `re_signatures.hpp`**; two flagged thin (bank-3 /
+     bank-1003 share an MSVC prologue, disambiguated only by frame size), `EMEVD_IP_ADVANCE` rejected.
 2. **Three cheap measurements, all specified in the plan's NEXT section:**
    - grace state byte before/after burning the Erdtree ⇒ settles the **monotonicity** hypothesis
      (the whole fixpoint model rests on it); no new probe, `[WARPPIN]` already logs it;
