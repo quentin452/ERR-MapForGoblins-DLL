@@ -438,6 +438,19 @@ void draw_run_tracker(Filter &f)
         // default, and the region you are standing in opened for you. A flat list of 216 rows (what
         // this was) forces a scroll hunt for the one region you care about.
         static int s_set_all = 0;  // 1 = expand all, -1 = collapse all, applied for one frame
+        static char s_boss_filter[64] = "";
+
+        // Search box, same shape as the category / quest / item filters (gamepad on-screen
+        // keyboard included): 216 fights across ~30 regions is a scroll hunt without one, and
+        // the region grouping only helps when you already know WHICH region. Matching mirrors
+        // panel_categories: a region whose OWN name matches shows all its rows, otherwise only
+        // its matching rows show and a region with no hit is hidden entirely.
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        ImGui::InputTextWithHint("##bossfilter", tr("search bosses... (e.g. godrick, dragon, knight)"),
+                                 s_boss_filter, sizeof(s_boss_filter));
+        draw_gamepad_keyboard_button("##bossfilter_kbd", s_boss_filter, sizeof(s_boss_filter));
+        const bool boss_filtering = s_boss_filter[0] != '\0';
+
         if (ImGui::SmallButton(tr("Expand all"))) s_set_all = 1;
         ImGui::SameLine();
         if (ImGui::SmallButton(tr("Collapse all"))) s_set_all = -1;
@@ -448,9 +461,25 @@ void draw_run_tracker(Filter &f)
         }
 
         ImGui::BeginChild("##runbosses", ImVec2(0.0f, 320.0f), true);
+        int shown_regions = 0;
         for (const RegionGroup &g : s.regions)
         {
-            if (s_set_all) ImGui::SetNextItemOpen(s_set_all > 0);
+            // A region name match shows the whole region; otherwise it survives only if one of
+            // its rows matches. Computed before the header so an empty region is never drawn.
+            const bool region_match = boss_filtering && contains_ci(g.name.c_str(), s_boss_filter);
+            if (boss_filtering && !region_match)
+            {
+                bool any = false;
+                for (size_t i = g.first; i < g.first + g.count && !any; ++i)
+                    any = contains_ci(s.bosses[i].name.c_str(), s_boss_filter);
+                if (!any) continue;
+            }
+            ++shown_regions;
+
+            // While filtering, force every surviving region open — a filter that still needs a
+            // click to reveal its own hits is worse than no filter.
+            if (boss_filtering) ImGui::SetNextItemOpen(true);
+            else if (s_set_all) ImGui::SetNextItemOpen(s_set_all > 0);
             else if (!s.auto_open.empty() && g.name == s.auto_open) ImGui::SetNextItemOpen(true);
             // Count in the header so a collapsed region still reports its progress — the whole
             // reason to collapse is to read the summary without the rows.
@@ -464,6 +493,8 @@ void draw_run_tracker(Filter &f)
             for (size_t i = g.first; i < g.first + g.count; ++i)
             {
                 const BossRow &r = s.bosses[i];
+                if (boss_filtering && !region_match && !contains_ci(r.name.c_str(), s_boss_filter))
+                    continue;
                 // Read-only state: this mirrors the save, it does not edit it. (EROverlay offers a
                 // "revive" that clears the flag — a save write we deliberately do not do here.)
                 if (r.defeated) ImGui::TextUnformatted("[x]");
@@ -474,6 +505,9 @@ void draw_run_tracker(Filter &f)
             }
             ImGui::TreePop();
         }
+        // Silence is ambiguous in a filtered list — say "no match" rather than show an empty box.
+        if (boss_filtering && shown_regions == 0)
+            ImGui::TextDisabled("%s", tr("no boss matches that search"));
         ImGui::EndChild();
         s_set_all = 0;
         s.auto_open.clear();  // one-shot: consumed by this frame's draw

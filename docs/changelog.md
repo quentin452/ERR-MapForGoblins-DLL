@@ -21,6 +21,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ## [Unreleased]
 
+### Added
+
+- Run tab: a search box in the **Boss checklist**, with the gamepad on-screen keyboard like the
+  other filters. Regions with no match are hidden and the surviving ones open themselves, so you
+  can find one fight among 200+ without hunting through region sections.
+
 ## [v2.6.0] - 2026-07-27
 
 ### Added
