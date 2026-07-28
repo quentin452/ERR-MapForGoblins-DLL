@@ -21,6 +21,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ## [Unreleased]
 
+### Added
+
+- Dev: **marker provenance in the map tooltips** (`debug_marker_tooltip`, live toggle in F1 ▸ Dev
+  tools). Hovering a marker also shows where it came from — source, the raw map id (`m<area>_<gx>_<gz>`
+  + local x/z), the projected world position and its lot / row / name ids — so a marker that looks
+  wrong can be identified by pointing at it instead of matching it up in the log.
+
 ## [v2.8.0] - 2026-07-28
 
 ### Added

@@ -77,6 +77,17 @@ void draw_dev_tools_danger(Filter &f)
                         goblin::overlay_api::cfg_debugEventFlags_ptr());
         ImGui::Checkbox("Item-grant hook (coverage-gap detector)",
                         goblin::overlay_api::cfg_debugItemGrants_ptr());
+        // LIVE toggle, unlike the hook-installing ones below (no Save, no restart): it only adds
+        // lines to a tooltip that is already being drawn. Point at a suspect marker and read where
+        // it came from, instead of hunting it in the log.
+        ImGui::Checkbox("Marker provenance in map tooltips (live)",
+                        goblin::overlay_api::cfg_debugMarkerTooltip_ptr());
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
+            ImGui::SetTooltip("Hovering a marker also shows its source (baked / disk MSB / live),\n"
+                              "the raw map id it came from (m<area>_<gx>_<gz> + local x/z), the\n"
+                              "projected world position, and its lot / row / name ids.\n"
+                              "A sane raw id with a wrong world position = bad projection;\n"
+                              "a raw id that should not exist = a phantom placement.");
         ImGui::Checkbox("World-map cursor probe (logs cursor coords)",
                         goblin::overlay_api::cfg_debugWorldmapProbe_ptr());
         ImGui::Checkbox("Marker-dump hotkey (F9 → markers log)",

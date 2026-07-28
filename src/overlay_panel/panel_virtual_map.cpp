@@ -1933,6 +1933,9 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     float hoverBestD = 1e18f; int hoverName = -1, hoverCat = -1, hoverDisc = 0, hoverPrio = -1; std::string hoverV; uint64_t hoverRow = 0;
     ImVec2 hoverPs(0, 0);                // SCREEN pos of the hovered marker — drives the grace lock ring
                                          // + the pad reticle's magnetic snap (see kGraceSnapSq below).
+    const goblin::worldmap::Marker *hoverMp = nullptr;  // the hovered marker itself — drives the
+                                         // provenance block (config::debugMarkerTooltip). Points into
+                                         // s_vmarkers, which is static and outlives the frame.
     bool hoverAnon = false;              // spoiler-free hides this marker's name in the tooltip (same predicate as the native map)
     float hoverWx = 0.f, hoverWz = 0.f;  // world pos of the hovered marker (for warp diagnostics)
     int hoverArea = -1;                  // the hovered marker's REAL area (mp->raw_area), for warp diagnostics
@@ -1971,7 +1974,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             // (ring below) and the pad reticle snaps to it.
             const float rad2 = mIco * mIco * (cat == kGraceCat ? kGraceSnapSq : 2.0f);
             if (d < rad2 && (prio > hoverPrio || (prio == hoverPrio && d < hoverBestD)))
-            { hoverBestD = d; hoverPrio = prio; hoverName = nameId; hoverCat = cat; hoverV = vname ? vname : ""; hoverRow = rowId; hoverDisc = discFlag; hoverWx = wx; hoverWz = wz; hoverArea = mp ? mp->raw_area : -1; hoverAnon = mp && goblin::worldmap::marker_is_anonymized(*mp); hoverPs = ps; }
+            { hoverBestD = d; hoverPrio = prio; hoverName = nameId; hoverCat = cat; hoverV = vname ? vname : ""; hoverRow = rowId; hoverDisc = discFlag; hoverWx = wx; hoverWz = wz; hoverArea = mp ? mp->raw_area : -1; hoverAnon = mp && goblin::worldmap::marker_is_anonymized(*mp); hoverPs = ps; hoverMp = mp; }
         }
     };
     // ── Region-hide gate precompute (A7 interactive region labels) ─────────────────────────────────
@@ -2384,7 +2387,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     if (hoverPrio < 1 && mdx * mdx + mdy * mdy <= absorbR * absorbR)
                     {
                         hoverBestD = 1e18f; hoverPrio = -1; hoverName = -1; hoverCat = -1;
-                        hoverV.clear(); hoverRow = 0; hoverDisc = 0; hoverAnon = false;
+                        hoverV.clear(); hoverRow = 0; hoverDisc = 0; hoverAnon = false; hoverMp = nullptr;
                     }
                     dl->AddCircleFilled(c, max_r + icoHalf + 6.0f * uiScale, IM_COL32(18, 22, 30, 150));
                     for (int k = 0; k < n; ++k)
@@ -2407,6 +2410,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                             // unnamed.
                             hoverV = m->live_name; hoverRow = m->row_id; hoverDisc = m->discover_flag;
                             hoverAnon = goblin::worldmap::marker_is_anonymized(*m);
+                            hoverMp = m;   // fanned member: provenance follows the icon you point at
                             hoverWx = m->worldX; hoverWz = m->worldZ; hoverArea = m->raw_area;
                         }
                     }
@@ -2471,6 +2475,38 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                 // (a base grace — area 60 — carrying a DLC rowId, or an area-61 grace shown in group 0).
                 ImGui::TextDisabled("rowId %llu · area %d · group %d", (unsigned long long)hoverRow,
                                     hoverArea, s_group);
+            }
+            // ── Provenance block (config::debug_marker_tooltip) ───────────────────────────────
+            // "This thing is on the map and not in the game" is otherwise a log-matching exercise:
+            // find the marker in [VMFIND], read its lot, chase the source. Pointing at it and being
+            // told where it came from collapses that to one hover (user 2026-07-28, a Smithing-Stone
+            // forge that is either absent in game or mis-projected). Everything here is what the
+            // marker itself carries, so it also answers the OTHER question the same symptom raises:
+            // a bad PROJECTION shows as a sane raw map id next to a wrong world position, while a
+            // phantom shows as a raw id that has no business existing.
+            if (hoverMp && *goblin::overlay_api::cfg_debugMarkerTooltip_ptr())
+            {
+                const goblin::worldmap::Marker &m = *hoverMp;
+                ImGui::Separator();
+                const char *srcName = m.source == goblin::worldmap::Source::DiskMSB ? "DiskMSB"
+                                    : m.source == goblin::worldmap::Source::Live    ? "Live"
+                                                                                    : "Baked";
+                ImGui::TextDisabled("src=%s  cat=%d  group=%d  srcArea=%d", srcName, m.category,
+                                    m.group, m.srcArea);
+                if (m.raw_area >= 0)
+                    ImGui::TextDisabled("raw m%02d_%02d_%02d  local(%.0f, %.0f)", m.raw_area, m.raw_gx,
+                                        m.raw_gz, m.raw_px, m.raw_pz);
+                else
+                    ImGui::TextDisabled("raw: none (baked position, no live re-projection)");
+                ImGui::TextDisabled("world(%.0f, %.0f)  y=%.0f", m.worldX, m.worldZ, m.worldY);
+                if (m.lotId)
+                    ImGui::TextDisabled("lot=%u/%u  lot_backed=%d", m.lotId, (unsigned)m.lotType,
+                                        m.lot_backed ? 1 : 0);
+                ImGui::TextDisabled("row=%llu  name_id=%d  cluster_key=%d",
+                                    (unsigned long long)m.row_id, m.name_id, m.cluster_key);
+                ImGui::TextDisabled("flags: frag=%d coll=%d clear=%d disc=%d sec=%d",
+                                    m.fragment_flag, m.collected_flag, m.cleared_flag,
+                                    m.discover_flag, m.secondary_flag);
             }
             ImGui::EndTooltip();
         }

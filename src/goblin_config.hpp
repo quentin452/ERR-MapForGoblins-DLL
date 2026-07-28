@@ -260,6 +260,7 @@ namespace goblin
         // no log round-trip needed to see it happen. Read-only, off by default.
         extern GOBLIN_RENDER_API bool debugCursorDiagnostic;
         extern GOBLIN_RENDER_API bool debugInputOverlay;  // on-screen input-gate/hook readout
+        extern GOBLIN_RENDER_API bool debugMarkerTooltip; // marker provenance appended to map tooltips
 
         // EXPERIMENTAL: on a swapchain resize, raw-poke ER's stale render-output dims
         // to the new size so a mid-session resolution change doesn't leave the world
