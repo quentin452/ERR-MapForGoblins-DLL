@@ -98,9 +98,12 @@ Each looked like a bug and is not. Check these explanations before filing anythi
 ## Gotchas that already cost a run
 
 - **SoulsFormats keeps a mapped section open on the temp file it reads**, so every read needs a FRESH
-  temp path. `extract_all_items._read_from_bytes` reuses ONE path: calling it twice in a process makes
-  the SECOND load fail silently and return partial data (it produced a bogus "0 % coverage" pass here).
-  The tool has its own `_read` with a counter.
+  temp path. `extract_all_items._read_from_bytes` used to reuse ONE path: calling it twice in a process
+  made the SECOND load fail silently and return partial data (it produced a bogus "0 % coverage" pass
+  here). The tool has its own `_read` with a counter. **Fixed at the source 2026-07-28** —
+  `_read_from_bytes` now mkstemps a unique path per call, so importers no longer need their own
+  counter/tolerant-unlink copy (the ones already written stay harmless). See
+  [[mapforgoblins-pipeline-setup]].
 - **Some real item names END in a bracketed number** ("Golden Rune [7]"). Stripping a trailing `[N]` as
   a quantity before matching loses them — and with them ~600 of our markers. Match the RAW left-hand
   side first, strip only as a fallback.

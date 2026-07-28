@@ -4,6 +4,7 @@ Extract all treasure items from ERR mod MSB files + regulation.bin.
 Outputs items_database.json with positions, items, event flags, and categories.
 """
 
+import atexit
 import json
 import re
 import struct
@@ -60,14 +61,39 @@ _fmg_read   = _get_read_str('SoulsFormats.FMG')
 _msbe_read  = _get_read_str('SoulsFormats.MSBE')
 
 
+# Temp files whose delete failed because .NET still holds them; retried at exit.
+_pending_tmp = []
+
+
+@atexit.register
+def _drop_pending_tmp():
+    for p in _pending_tmp:
+        try:
+            os.unlink(p)
+        except OSError:
+            pass
+
+
 def _read_from_bytes(read_method, data, suffix='.bin'):
-    tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + f'_mfg_tmp{suffix}')
+    # Every call gets its OWN temp path. SoulsFormats' Read(string) keeps a
+    # memory-mapped section open on the file for the lifetime of the object it
+    # returns (BND4 notably reads member bytes lazily), so on Windows:
+    #   - the unlink below raises PermissionError/WinError 5, and
+    #   - a REUSED path can't be rewritten either ("The requested operation
+    #     cannot be performed on a file with a user-mapped section open"),
+    # which made a second archive read in the same process fail outright.
+    # Hence: unique name + best-effort delete, deferred to process exit.
+    fd, tmp = tempfile.mkstemp(prefix=f'mfg_{os.getpid()}_', suffix=suffix)
+    os.close(fd)
     if hasattr(data, 'ToArray'):
         SysFile.WriteAllBytes(tmp, data.ToArray())
     else:
         SysFile.WriteAllBytes(tmp, data)
     result = read_method.Invoke(None, Array[Object]([tmp]))
-    os.unlink(tmp)
+    try:
+        os.unlink(tmp)
+    except OSError:
+        _pending_tmp.append(tmp)  # still mapped — retried at exit
     return result
 
 
@@ -134,6 +160,78 @@ def read_fmg_names(bnd, fmg_filename):
                 if text and text != '[ERROR]':
                     names[int(e.ID)] = text
     return names
+
+
+# lotItemCategory -> the FMG holding that category's names.
+ITEM_NAME_FMGS = {
+    1: 'GoodsName.fmg',
+    2: 'WeaponName.fmg',
+    3: 'ProtectorName.fmg',
+    4: 'AccessoryName.fmg',
+    5: 'GemName.fmg',
+}
+
+_msg_family_cache = {}
+
+
+def msg_archive_family(path):
+    """Every sibling message archive of `path`, base first.
+
+    A UXM-unpacked install keeps item text in SEPARATE sibling archives:
+        msg/engus/item.msgbnd.dcx
+        msg/engus/item_dlc01.msgbnd.dcx
+        msg/engus/item_dlc02.msgbnd.dcx
+    MSGBND_PATH seeds the newest of them, which is CUMULATIVE in practice
+    (measured 2026-07-28: vanilla GoodsName 1710 base / 2218 dlc01 / 2219
+    dlc02, and merging the family adds nothing on err, vanilla or erte). So the
+    merge is a safety net, not a fix: which archives a mod ships varies (ERR
+    ships ONLY item_dlc02 and re-bakes every name into it), and a base-game
+    install without the DLC has no item_dlc02 at all — there the seed path
+    doesn't exist and only the glob finds item.msgbnd.dcx.
+
+    Resolved by GLOB, never by hardcoded 'dlc01'/'dlc02'. Sorting puts the base
+    first ('.' < '_'), so the newest archive wins on merge.
+    """
+    path = Path(path)
+    head, _, ext = path.name.partition('.')          # 'item_dlc02', 'msgbnd.dcx'
+    stem = re.sub(r'_dlc\d+$', '', head)             # 'item'
+    fam_re = re.compile(re.escape(stem) + r'(_[A-Za-z0-9]+)?\.' + re.escape(ext) + '$',
+                        re.IGNORECASE)
+    found = sorted(p for p in path.parent.glob(stem + '*') if fam_re.match(p.name))
+    return found or ([path] if path.exists() else [])
+
+
+def open_msg_archives(path=None):
+    """Open (and cache) the whole message-archive family for `path`.
+
+    Cached because each BND4 keeps a file mapping open for its lifetime and the
+    same family gets asked for several FMGs in a row.
+    """
+    path = Path(path) if path else MSGBND_PATH
+    key = str(path)
+    if key not in _msg_family_cache:
+        bnds = []
+        for p in msg_archive_family(path):
+            try:
+                bnds.append(_read_from_bytes(
+                    _bnd4_read, SoulsFormats.DCX.Decompress(str(p)), '.bnd'))
+            except Exception as e:
+                print(f'  WARN: could not read {p.name}: {e}')
+        _msg_family_cache[key] = bnds
+    return _msg_family_cache[key]
+
+
+def read_item_names(fmg_filename, path=None):
+    """`read_fmg_names` merged across the whole archive family (see above)."""
+    names = {}
+    for bnd in open_msg_archives(path):
+        names.update(read_fmg_names(bnd, fmg_filename))
+    return names
+
+
+def load_item_name_dbs(path=None):
+    """lotItemCategory -> {itemId: name}, merged across the archive family."""
+    return {cat: read_item_names(fmg, path) for cat, fmg in ITEM_NAME_FMGS.items()}
 
 
 def parse_map_name(msb_filename):
@@ -362,24 +460,15 @@ def main():
     print(f'  {len(gem_db)} gems')
 
     print('\n=== Loading FMG item names ===')
-    msgbnd = _read_from_bytes(_bnd4_read, SoulsFormats.DCX.Decompress(str(MSGBND_PATH)), '.bnd')
-
-    weapon_names = read_fmg_names(msgbnd, 'WeaponName.fmg')
-    goods_names  = read_fmg_names(msgbnd, 'GoodsName.fmg')
-    armor_names  = read_fmg_names(msgbnd, 'ProtectorName.fmg')
-    talisman_names = read_fmg_names(msgbnd, 'AccessoryName.fmg')
-    gem_names    = read_fmg_names(msgbnd, 'GemName.fmg')
-    print(f'  Weapons: {len(weapon_names)}, Goods: {len(goods_names)}, '
-          f'Armor: {len(armor_names)}, Talismans: {len(talisman_names)}, '
-          f'Gems: {len(gem_names)}')
-
-    name_dbs = {
-        1: goods_names,
-        2: weapon_names,
-        3: armor_names,
-        4: talisman_names,
-        5: gem_names,
-    }
+    archives = [p.name for p in msg_archive_family(MSGBND_PATH)]
+    if not archives:
+        # Fail loudly: an empty name db would bake a silently nameless database.
+        sys.exit(f'ERROR: no message archive found next to {MSGBND_PATH}')
+    print(f'  archives: {", ".join(archives)}')
+    name_dbs = load_item_name_dbs()
+    print(f'  Weapons: {len(name_dbs[2])}, Goods: {len(name_dbs[1])}, '
+          f'Armor: {len(name_dbs[3])}, Talismans: {len(name_dbs[4])}, '
+          f'Gems: {len(name_dbs[5])}')
 
     print('\n=== Scanning MSB files ===')
     msb_files = sorted(MSB_DIR.glob('*.msb.dcx'))
