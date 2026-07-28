@@ -597,11 +597,15 @@ so serialized either way.
 
 ## NEXT — open items (2026-07-28)
 
-- **RE opened:** `docs/re/windows_emevd_condition_evaluator_re_prompt.md`. Target = the EMEVD
-  condition-group evaluator, so we stop reimplementing the engine's condition semantics. **G1** (hook
-  + passively log `(event, group, instruction, result)` during normal play) would retire the
-  co-occurrence limitation by observation. Explicitly **not** a hunt for a native solver: no engine
-  has one — evaluation is local and reactive, never planning.
+- **★ RE ANSWERED (static) same day** — `docs/re/windows_emevd_condition_evaluator_re_findings.md`.
+  **G1 = YES:** ONE hook at the bank dispatcher (`0x567d40`, app 2.6.2.0) yields
+  `(event instance, bank, index, raw operands, result)` per executed instruction, with the condition
+  group uniformly `arg[0]` ⇒ **the co-occurrence ceiling above is retirable by observation**, and
+  `0x57ef10` turns out to encode the exact 4-way logical op (`AllOn/AllOff/AnyOn/AnyOff`) that
+  `_probe_flag_gates.py` reimplements blind. **G2 = NO:** `Evaluate` reads the *live* world, so it
+  answers "is G true now", never the counterfactual — observation, not interrogation, which is the
+  "oracle, not planner" framing the prompt opened with. ⚠ **Nothing measured live yet**; the next
+  action is a read-only `mem_fwa` check that the dispatcher fires in-world and stops at the main menu.
 - **Measure:** the grace state byte before/after burning the Erdtree ⇒ settles monotonicity (a)/(b).
 - **Measure:** the end-of-game instruction family across all maps ⇒ does the DLC add an ending; split
   the emevd counts base vs DLC.
