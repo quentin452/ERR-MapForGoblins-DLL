@@ -41,21 +41,20 @@ Resume in this order (1 = cold-start immediately):
    anything: `modelIndex` indexes the TILE's own MODEL section, so a tile declaring 3 chr models makes
    the shuffle worthless. Count the per-tile candidate set FIRST.
 
-**⚠ UNVERIFIED IN GAME (2026-07-28, pad batch — verify BEFORE anything else next session).** Two
-commits fix the five pad/HUD symptoms `<user>` reported (details + lessons: [[dx-bugs-backlog]] items
-18–24). Both builds link (`build-err` + `build-err-hotreload`), **nothing was tested on a running
-game.** What to check, in order:
-1. **Native map, pad: does X on a region chip conflict with ER's own map-screen X?** We mask
-   `XINPUT_GAMEPAD_X` from the game only while the reticle is on a chip
-   (`input/input_gamepad.cpp`), so the game should see nothing — confirm ER does not also place/
-   delete its native marker, and that X still works normally OFF a chip. If the binding is wrong,
-   it is one key constant to change.
-2. Native map, pad: the pointer is now the SCREEN CENTRE — chips highlight where the reticle is, and
-   marker tooltips follow it. Confirm the tooltip is not permanently noisy at the centre.
-3. vmap, pad: X toggles a chip under the reticle, drops/deletes a pin elsewhere, and does NOTHING
-   while the Marker sidebar or the on-screen keyboard has focus. Pins draw OVER region names.
-4. Custom markers: delete "Marker 2" of 3 → the next one is named "Marker 2" again. `Kbd` renames.
-5. Run HUD: set its offsets onto the minimap corner → the line should slide above/below the disc.
+**✅ VERIFIED IN GAME 2026-07-28 — the whole pad/vmap/HUD batch.** `<user>` played through it and
+confirmed: START mask, vmap auto-close when an ER menu covers it, boss-count live update, overlay
+sidebars, Roundtable grace group, page-switch reframe, grace `locate` centring, pin lock, B-to-close,
+warp-closes-the-map, region chips on both maps. Details per item: [[dx-bugs-backlog]] 18-30.
+
+**⚠ ONE BUG LEFT OPEN, and it is NOT ours: ER's own menus stop accepting a selection.** Reproduced
+with the `[INPUTDIAG]` overlay on screen: every gate 0, `CAPTURE=0`, and the game polling XInput 53/s,
+DirectInput 53/s, RawInput at rate with **0 altered by us** — so no hook of ours is involved (that is
+what the overlay was built to settle, and it did). `<user>`'s reading, which the evidence supports: an
+ER-side fault, correlated with repeated Alt+Tab. It clears on a focus cycle. Instruments left armed for
+the next occurrence: `debug_input_overlay = true` (verdict + gates + per-hook altered counts, draws
+with the panel closed) and `[GATEDIAG]` (logs the four gates on CHANGE). If it is ever pinned down, the
+standing suspect is the WorldMapDialog redirect returning null without calling the original — see
+[[dx-bugs-backlog]] 29.
 
 **Deployed state:** the only shipped change this session is the Run-tab **Boss checklist search box**
 (`65b649a`, `build-err` links clean). ⚠ the install that runs here loads the DLL from

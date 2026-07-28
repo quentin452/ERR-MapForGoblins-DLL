@@ -389,3 +389,10 @@ faut retenir au-delà des fixes eux-mêmes :
     `worldmap_probe::menu_covers_map()` (état du jeu, pas le nôtre) devient vrai avec la redirection
     active, on la baisse. La vmap remplace la CARTE ; si le jeu met un autre menu devant, la carte
     n'est plus la surface active et la vmap n'a rien à faire ouverte.
+
+**MISE À JOUR 29 (2026-07-28, vérifié en jeu par <user>)** : overlay `[INPUTDIAG]` affiché pendant le
+gel → **0 altération de notre côté**, toutes portes à 0, le jeu interrogeant ses trois chemins à
+cadence pleine. Conclusion partagée avec <user> : **bug externe / côté ER**, corrélé aux **Alt+Tab
+répétés**, réparé par un cycle de focus. Ce n'est PAS une régression du cycle et ce n'est pas dans notre
+code d'input — ne pas repartir chasser nos hooks à la prochaine occurrence, l'overlay a déjà tranché ce
+point. Le reste du lot pad/vmap/HUD (items 18-30) est **validé en jeu** le même jour.
