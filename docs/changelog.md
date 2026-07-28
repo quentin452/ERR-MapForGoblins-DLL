@@ -47,6 +47,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Changed
 
+- Virtual map: the sidebars (markers, graces, item search, custom markers) now **overlay the map**
+  instead of squeezing it. Opening one — dropping a pin with X opens the marker list, for instance —
+  used to shrink the canvas and slide the whole map sideways under your cursor mid-action.
+- Virtual map: pointing at a custom marker **rings it**, like a grace, and the tooltip names it and says
+  what the next press does. The catch radius is the same one the delete uses (and scales with
+  resolution now — it was a fixed 14 px, nearly unhittable at 4K), so the ring is a promise: that pin,
+  and no other, is the one that goes.
 - Virtual map: **switching page** (the group selector) now frames the new one — on your character when
   you are standing on it, otherwise on that page's markers. It used to keep the old camera and drop you
   on empty canvas.

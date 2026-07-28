@@ -1100,13 +1100,38 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         ImGui::SameLine(0.0f, 0.0f);
     };
 
+    // ── Sidebars OVERLAY the map, they no longer eat its width ────────────────────────────────────
+    // They used to be laid out in the flow, so opening one (e.g. X drops a pin AND opens the marker
+    // list) shrank the canvas — and since the canvas centre moved with it, the whole map JUMPED
+    // sideways under the cursor mid-action (user 2026-07-28). Now each sidebar is placed absolutely
+    // over the canvas and the cursor is restored afterwards, so the canvas keeps the FULL region and
+    // its geometry never changes when a panel opens. Child windows render after their parent's draw
+    // list, so they sit on top of the map for free; ImGui also hit-tests children in front of the
+    // parent, so the canvas InvisibleButton underneath can't steal their clicks, drags or wheel.
+    // The one thing they need is an opaque background — ImGuiCol_ChildBg is transparent by default,
+    // which was fine over a solid panel and is not over map art.
+    const ImVec2 sb_origin = ImGui::GetCursorScreenPos();
+    float sb_x = 0.0f;   // width already taken by the sidebars placed so far (they sit side by side)
+    auto sidebar_begin = [&](const char *id, float w) {
+        ImGui::SetCursorScreenPos(ImVec2(sb_origin.x + sb_x, sb_origin.y));
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.07f, 0.08f, 0.10f, 0.97f));
+        ImGui::BeginChild(id, ImVec2(w, 0.0f), true);
+    };
+    auto sidebar_end = [&](const char *splitId, float &w, float wmin, float wmax) {
+        ImGui::EndChild();
+        ImGui::PopStyleColor();
+        vsplitter(splitId, w, wmin, wmax);   // still a real drag-to-resize, drawn at the sidebar's edge
+        sb_x += w + 6.0f;                    // 6 = the splitter's own width
+        ImGui::SetCursorScreenPos(sb_origin);
+    };
+
     // F1→vmap port (first slice): host the F1 "Sections & categories" controls in a vmap sidebar. It's a
     // standalone draw_X(ctx, Filter&) with zero coupling to the F1 window, so it drops straight in — the
     // toggles it drives are shared config, so hiding a category here hides it on the vmap markers too. The
     // eventual home is a unified tabbed sidebar (Markers|Search|Quests|…); this proves the reuse path.
     if (s_show_markers_panel)
     {
-        ImGui::BeginChild("##markers_panel", ImVec2(s_markers_w, 0.0f), true);
+        sidebar_begin("##markers_panel", s_markers_w);
         // Master "show all markers" toggle (the F1 icon master) — ported here so the categories list has
         // its on/off head; drives overlay_api::icons_enabled (gates every vmap marker + the native map).
         bool master_on = goblin::overlay_api::icons_enabled();
@@ -1114,8 +1139,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             goblin::overlay_api::set_icons_enabled(master_on);
         ImGui::Separator();
         draw_sections_categories(ctx, s_markers_filter, /*with_err_integration=*/false);   // ERR moot on ImGui map
-        ImGui::EndChild();
-        vsplitter("##markers_split", s_markers_w, 200.0f, 640.0f);
+        sidebar_end("##markers_split", s_markers_w, 200.0f, 640.0f);
     }
 
     // Track B — grace warp-menu sidebar (Base ER only; graces are ER's). A collapsible list next to the
@@ -1187,7 +1211,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             });
             s_graces_built = true;
         }
-        ImGui::BeginChild("##grace_sidebar", ImVec2(s_graces_w, 0.0f), true);
+        sidebar_begin("##grace_sidebar", s_graces_w);
         ImGui::Text(tr("Graces (%d)"), (int)s_graces.size());
         ImGui::SameLine();
         if (ImGui::SmallButton(tr("Refresh"))) s_graces_built = false;
@@ -1268,8 +1292,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             render_row(g, disc);
         }
         ImGui::EndChild();
-        ImGui::EndChild();
-        vsplitter("##graces_split", s_graces_w, 180.0f, 520.0f);
+        sidebar_end("##graces_split", s_graces_w, 180.0f, 520.0f);
     }
 
     // Item-search sidebar (A9): search PLACED item markers by name and click to locate on THIS canvas —
@@ -1284,7 +1307,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         static std::vector<IHit> s_ihits;
         static std::string s_ihits_q = "\x01";   // sentinel ≠ "" so an empty box builds once (clears list)
 
-        ImGui::BeginChild("##item_sidebar", ImVec2(s_items_w, 0.0f), true);
+        sidebar_begin("##item_sidebar", s_items_w);
         ImGui::Text(tr("Item search"));
         ImGui::SetNextItemWidth(-1.0f);
         ImGui::InputTextWithHint("##ifilter", tr("item name (2+ chars)"), s_item_filter, sizeof(s_item_filter));
@@ -1421,15 +1444,14 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             }
         }
         ImGui::EndChild();
-        ImGui::EndChild();
-        vsplitter("##items_split", s_items_w, 180.0f, 520.0f);
+        sidebar_end("##items_split", s_items_w, 180.0f, 520.0f);
     }
 
     // Custom-marker LIST sidebar (#2) — the DX answer to "where's my custom marker?": each shows which map
     // (group) + coords, with Go (pan the canvas there), TP (teleport in-game, intra-region), and delete.
     if (s_show_custom && active_world == 0)
     {
-        ImGui::BeginChild("##custom_panel", ImVec2(s_custom_w, 0.0f), true);
+        sidebar_begin("##custom_panel", s_custom_w);
         auto cm = goblin::custom_markers::snapshot();
         ImGui::Text(tr("Custom markers (%d/%d this map)"),
                     (int)goblin::custom_markers::count_in_group(s_group), goblin::custom_markers::kMaxPerGroup);
@@ -1465,8 +1487,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             ImGui::PopID();
         }
         if (del >= 0) goblin::custom_markers::remove_at((size_t)del);
-        ImGui::EndChild();
-        vsplitter("##custom_split", s_custom_w, 180.0f, 480.0f);
+        sidebar_end("##custom_split", s_custom_w, 180.0f, 480.0f);
     }
 
     // Gamepad focus arbitration (user 2026-07-28: pressing X while browsing the custom-marker sidebar
@@ -1543,6 +1564,25 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         wz = s_cam_z + (s.y - center.y) / (s_sz * s_zoom);
     };
 
+    // PIN LOCK (the custom-marker twin of the grace lock, user 2026-07-28): catch radius in screen px,
+    // resolution-scaled — the old delete test was a bare 14 px, so it shrank to nothing at 4K. Nearest
+    // same-group pin to a screen point, or -1. ONE place, because the lock ring, the right-click delete
+    // and the pad-X delete must never disagree about which pin you are on: the ring IS the promise that
+    // this is the one that goes. (This folded the two pre-existing copies of the loop into the helper.)
+    const float kPinCatch = 16.0f * uiScale;
+    auto pin_at = [&](ImVec2 p, const std::vector<goblin::custom_markers::Marker> &cm) -> int {
+        int hit = -1;
+        float bestd = kPinCatch * kPinCatch;
+        for (int i = 0; i < (int)cm.size(); ++i)
+        {
+            if (cm[i].group != s_group) continue;
+            const ImVec2 ps = w2s(cm[i].wx, cm[i].wz);
+            const float dx = ps.x - p.x, dy = ps.y - p.y, d = dx * dx + dy * dy;
+            if (d < bestd) { bestd = d; hit = i; }
+        }
+        return hit;
+    };
+
     // Extract mode (dev): left-drag draws a selection box instead of panning; on release, dump every marker
     // inside it to the log. Takes over the left-drag while active, so panning is suspended.
     if (hovered && s_extract_mode)
@@ -1573,15 +1613,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         float mwx, mwz;
         s2w(io.MousePos, mwx, mwz);
         auto cm = goblin::custom_markers::snapshot();
-        int hit = -1;
-        float bestd = 14.0f * 14.0f;   // delete radius in px
-        for (int i = 0; i < (int)cm.size(); ++i)
-        {
-            if (cm[i].group != s_group) continue;
-            ImVec2 ps = w2s(cm[i].wx, cm[i].wz);
-            float dx = ps.x - io.MousePos.x, dy = ps.y - io.MousePos.y, d = dx * dx + dy * dy;
-            if (d < bestd) { bestd = d; hit = i; }
-        }
+        const int hit = pin_at(io.MousePos, cm);
         if (hit >= 0)
             goblin::custom_markers::remove_at((size_t)hit);
         else if (!goblin::custom_markers::add(mwx, mwz, s_group,
@@ -2564,15 +2596,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         float mwx, mwz;
         s2w(s_pad_cursor, mwx, mwz);
         auto cm = goblin::custom_markers::snapshot();
-        int hit = -1;
-        float bestd = 14.0f * 14.0f;
-        for (int i = 0; i < (int)cm.size(); ++i)
-        {
-            if (cm[i].group != s_group) continue;
-            ImVec2 ps = w2s(cm[i].wx, cm[i].wz);
-            float dx = ps.x - s_pad_cursor.x, dy = ps.y - s_pad_cursor.y, d = dx * dx + dy * dy;
-            if (d < bestd) { bestd = d; hit = i; }
-        }
+        const int hit = pin_at(s_pad_cursor, cm);
         if (hit >= 0)
             goblin::custom_markers::remove_at((size_t)hit);
         else if (!goblin::custom_markers::add(mwx, mwz, s_group,
@@ -2586,17 +2610,39 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // the canvas (or pad X) to drop one.
     if (active_world == 0)
     {
-        for (const goblin::custom_markers::Marker &c : goblin::custom_markers::snapshot())
+        const std::vector<goblin::custom_markers::Marker> cpins = goblin::custom_markers::snapshot();
+        // Which pin the pointer has latched onto — the SAME test the delete uses (pin_at).
+        const int lockPin = hovered_eff ? pin_at(vptr, cpins) : -1;
+        for (int ci = 0; ci < (int)cpins.size(); ++ci)
         {
+            const goblin::custom_markers::Marker &c = cpins[ci];
             if (c.group != s_group) continue;
             ImVec2 p = w2s(c.wx, c.wz);
             if (p.x < origin.x || p.x > canvas_end.x || p.y < origin.y || p.y > canvas_end.y) continue;
             const float r = 8.0f * uiScale;
             const ImVec2 head(p.x, p.y - r * 1.3f);
+            // LOCK FEEDBACK, same idea as the grace ring: the catch radius is wider than the pin, so
+            // without a ring "am I on it?" is a guess — and here a wrong guess DELETES the wrong pin.
+            // Drawn under the pin so it reads as a halo, not an outline.
+            if (ci == lockPin)
+            {
+                dl->AddCircle(head, kPinCatch, IM_COL32(0, 0, 0, 150), 0, 4.0f * uiScale);
+                dl->AddCircle(head, kPinCatch, IM_COL32(120, 215, 255, 235), 0, 2.0f * uiScale);
+            }
             dl->AddTriangleFilled(ImVec2(p.x - r * 0.7f, p.y - r * 1.3f), ImVec2(p.x + r * 0.7f, p.y - r * 1.3f), p, c.color);
             dl->AddCircleFilled(head, r * 0.7f, c.color);
             dl->AddCircle(head, r * 0.7f, IM_COL32(255, 255, 255, 240), 0, 1.5f * uiScale);
             dl->AddText(ImVec2(p.x + 7.0f * uiScale, p.y - r * 1.3f - 8.0f * uiScale), IM_COL32(230, 240, 255, 255), c.name.c_str());
+        }
+        // Name + what the next press will do. Drawn after the loop so it wins over a marker tooltip
+        // underneath (the pin is on top, so its tooltip should be too).
+        if (lockPin >= 0)
+        {
+            pin_tooltip_to_pointer(s_pad_mode, vptr);
+            ImGui::BeginTooltip();
+            ImGui::TextUnformatted(cpins[(size_t)lockPin].name.c_str());
+            ImGui::TextDisabled("%s", s_pad_mode ? tr("X: delete this marker") : tr("right-click: delete this marker"));
+            ImGui::EndTooltip();
         }
         // Death marker (dropped runes / bloodstain) — the NATIVE MENU_MAP_DropSoul sprite from the resident
         // map-symbol sheet (mod-agnostic; same resolve path as the grace glyph). Falls back to a red disc
