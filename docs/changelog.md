@@ -21,6 +21,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ## [Unreleased]
 
+## [v2.7.0] - 2026-07-28
+
 ### Added
 
 - Run tab: a search box in the **Boss checklist**, with the gamepad on-screen keyboard like the
