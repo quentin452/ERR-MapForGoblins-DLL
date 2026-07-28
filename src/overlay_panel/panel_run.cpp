@@ -267,6 +267,28 @@ void rebuild()
                      s.flags_live ? "live" : "COLD - counts are not readable yet");
     }
 }
+
+// Re-read the defeat flags of the ALREADY-built fight list and recount. This is the cheap half of
+// rebuild(): no marker walk, no EMEVD list, no sorting — just N flag reads through the game's own
+// resolver, the same call the quest cache makes 200+ times a frame-tick. Split out because the HUD
+// needs the COUNT to be current within a couple of seconds of a kill, while the LIST it counts only
+// changes when the map data does. Rebuilding wholesale at that cadence would be wasteful; refreshing
+// only every 20 s reads as broken (user 2026-07-28: "it only updates when I press F1" — it did
+// update, just far too late to connect to the kill). No-op until the list exists.
+void recount()
+{
+    RunSnapshot &s = snap();
+    if (s.bosses.empty()) return;
+    s.flags_live = goblin::overlay_api::read_event_flag(6001);   // AlwaysOn — flag API warm?
+    if (!s.flags_live) return;                                   // cold: keep the last good count
+    int killed = 0;
+    for (BossRow &r : s.bosses)
+    {
+        r.defeated = r.flag != 0 && goblin::overlay_api::read_event_flag((uint32_t)r.flag);
+        if (r.defeated) ++killed;
+    }
+    s.killed = killed;
+}
 }  // namespace
 
 // In-game HUD: one compact CLICK-THROUGH line (NoInputs — it must never eat a click or a
@@ -298,6 +320,17 @@ void draw_run_hud_window()
     const double refresh_after = s.built ? 20.0 : 5.0;
     if (goblin::config::runHudBosses && ImGui::GetTime() - s.last_refresh > refresh_after)
         rebuild();
+    // …and RECOUNT on a 2 s tick in between, so a kill shows up while you are still standing in the
+    // arena instead of up to 20 s later. Cheap by construction (flag reads only, see recount()).
+    else if (goblin::config::runHudBosses)
+    {
+        static double s_last_recount = 0.0;
+        if (ImGui::GetTime() - s_last_recount > 2.0)
+        {
+            s_last_recount = ImGui::GetTime();
+            recount();
+        }
+    }
 
     char line[160];
     // Boss part only once the flag API is warm — a cold "Bosses 0/201" on the HUD would be a lie
