@@ -2003,6 +2003,30 @@ namespace
             // the frame after the key goes up (UpdateKeyboardInputs). It lands on the NEXT frame's
             // NavUpdate (which already ran inside NewFrame), which is why this must be unconditional
             // rather than armed on the first press. A/FaceDown still activates widgets normally.
+            // ── [GATEDIAG] input-gate EDGE log ────────────────────────────────────────────────
+            // Every hook that takes input away from the game reads one of these four; when one is
+            // stuck on with the overlay closed, the game stops responding and nothing said why
+            // (user 2026-07-28: menu selection dead across pad+kb+mouse, cleared by an alt-tab).
+            // Logged on CHANGE only — no cadence, no spam — so the log carries a timestamped
+            // record of every flip and the bug can be read off it afterwards instead of guessed at
+            // live. `status` prints the same four for a spot check.
+            {
+                const unsigned gates = (goblin::input::menu_open() ? 1u : 0u) |
+                                       (goblin::input::vmap_covers_map() ? 2u : 0u) |
+                                       (goblin::overlay_api::vmap_redirect() ? 4u : 0u) |
+                                       (goblin::input::has_focus() ? 8u : 0u) |
+                                       (goblin::world_map_open() ? 16u : 0u);
+                static unsigned s_gates_prev = 0xffffffffu;
+                if (gates != s_gates_prev)
+                {
+                    s_gates_prev = gates;
+                    spdlog::info("[GATEDIAG] menu={} vmapcover={} redirect={} fg={} map_open={} "
+                                 "=> capture={}",
+                                 (gates & 1u) ? 1 : 0, (gates & 2u) ? 1 : 0, (gates & 4u) ? 1 : 0,
+                                 (gates & 8u) ? 1 : 0, (gates & 16u) ? 1 : 0,
+                                 goblin::input::input_capture_active() ? 1 : 0);
+                }
+            }
             {
                 constexpr ImGuiID kMfgPadOwner = 0x4D464721;  // 'MFG!'
                 ImGui::SetKeyOwner(ImGuiKey_GamepadFaceUp, kMfgPadOwner);

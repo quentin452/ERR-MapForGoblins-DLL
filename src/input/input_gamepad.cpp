@@ -41,6 +41,13 @@ DWORD WINAPI hk_xinput_get_state(DWORD user_index, XINPUT_STATE *state)
         {
             if (menu_open())
                 state->Gamepad = {};   // connected, real packet number, but nothing held
+            // The fullscreen vmap STANDS IN for the native map, so the game must not act on the pad
+            // either — B closed our map AND rolled/cancelled in ER underneath, X placed a pin AND fired
+            // its own action (user 2026-07-28: "double input"). Everything is masked EXCEPT the map
+            // button itself (BACK/START): that press is what the WorldMapDialog create-hook toggles the
+            // redirect on, i.e. the way out. Buttons only — sticks stay live so the game keeps stepping.
+            else if (vmap_covers_map())
+                state->Gamepad.wButtons &= (XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START);
             // F1 CLOSED, native map open, and our in-world reticle is sitting on a region chip: hide
             // ONLY X from the game, so activating the chip can't also fire the map screen's own X
             // action. Exactly the contract the mouse path already has (input_wndproc eats the L-press

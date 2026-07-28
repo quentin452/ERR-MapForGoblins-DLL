@@ -349,3 +349,22 @@ faut retenir au-delà des fixes eux-mêmes :
     réglage `anonymous_loot_altitude`, **défaut `true`** (le badge survit à l'anonymisation, toujours
     sous le gate `altitude_cue`), `false` = blackout strict. Leçon générale : un `return` anticipé dans
     un chemin de rendu "dégradé" emporte silencieusement TOUT ce qui est en aval — lister ce qu'on perd.
+
+27. ✅ **FIXÉ 2026-07-28 — le compteur de boss du HUD ne bougeait JAMAIS en jeu.** `draw_run_hud_window`
+    ne relançait `rebuild()` que sous `!s.built` — or `s.built = s.flags_live`, donc dès que l'API de
+    flags devient chaude, la condition est fausse **pour toujours** : le compteur ne se mettait à jour
+    qu'en ouvrant l'onglet Run de F1 (qui tick à 1 s). Preuve dans le log : une seule ligne
+    `[RUN] bosses 6/216 defeated ... flag API live` à 13:00:23, plus jamais ensuite (la ligne n'est émise
+    qu'au CHANGEMENT du compte) alors que <user> avait tué un Night Cavalry. Fix : garder le retry rapide
+    (5 s) tant que l'API est FROIDE, et ajouter un keep-alive lent (20 s) une fois chaude. Leçon : un
+    garde « ne recalcule qu'une fois » (`!built`) sur une valeur qui ÉVOLUE pendant la partie = compteur
+    gelé ; ce qu'on voulait borner était la *fréquence*, pas le *nombre* de recalculs.
+28. 📌 **Ember of Messmer 9 (mod) vs 20 (spoiler randomizer) — PAS un bug de comptage** (mesuré en jeu
+    2026-07-28, `vmap find 'Ember of Messmer'`). Les 9 hits sont **tous `src=DiskMSB`**, c.-à-d. du
+    trésor posé dans les MSB — et l'un est un doublon (`lot=116402` listé 2× au même `area20 grid(1,0)`,
+    à investiguer séparément), donc 8 emplacements distincts. Le mod affiche ce qu'il peut **situer sur
+    la carte** ; le spoiler compte **tout slot rempli** par le randomizer, y compris des classes sans
+    position : boutiques, récompenses de dialogue/quête (déjà notées ligne ~115 comme classe non
+    modélisée) et **lots d'assets destructibles** (les statues à casser — <user> 2026-07-28). Les deux
+    chiffres sont justes, ils ne mesurent pas la même chose. Pour trancher un cas précis : prendre un
+    Ember du spoiler qu'on n'affiche pas et faire `vmap prov <lot>` pour voir si le lot est connu du tout.

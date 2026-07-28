@@ -289,7 +289,14 @@ void draw_run_hud_window()
     // The boss count reuses the panel's snapshot and its 1 s throttle, but the HUD must NOT
     // trigger the rebuild walk on its own every second while the player is just walking around:
     // it shows whatever the last rebuild produced (0/0 until the map/panel built it once).
-    if (goblin::config::runHudBosses && !s.built && ImGui::GetTime() - s.last_refresh > 5.0)
+    // …but `!s.built` meant it stopped refreshing FOREVER once the flag API went live: the count then
+    // only moved if you opened the F1 Run tab (which ticks it every second). Kill a boss while playing
+    // and the HUD sat on its old number — user 2026-07-28 killed a Night Cavalry and stayed at 6/216,
+    // and the [RUN] log confirmed the count never changed again after the first live build. So: keep the
+    // fast retry while the API is COLD, and add a slow keep-alive once it is warm. A rebuild reads the
+    // registered fights' flags through the game's own resolver — nothing at a 20 s cadence.
+    const double refresh_after = s.built ? 20.0 : 5.0;
+    if (goblin::config::runHudBosses && ImGui::GetTime() - s.last_refresh > refresh_after)
         rebuild();
 
     char line[160];
