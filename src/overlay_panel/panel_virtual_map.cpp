@@ -850,6 +850,17 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         }
         s_prev_map = map_now;
     }
+    // Close the map from INSIDE the panel (pad B, a queued warp). With vmap_on_map_key the open state is
+    // SLAVED to the redirect flag by the block above — it re-reads it every frame, so clearing s_open
+    // alone would be undone on the next one. The flag is the real switch, the same one the map key and
+    // Escape flip. The custom-world path has no flag, so there the local state IS the state.
+    auto close_vmap = [&]() {
+        if (*goblin::overlay_api::cfg_vmapOnMapKey_ptr() || goblin::overlay_api::vmap_redirect())
+            goblin::overlay_api::set_vmap_redirect(false);
+        s_open = false;
+        s_from_map = false;
+    };
+
     // Focus the player on OPEN (rising edge of s_open, ANY open path). Tracked BEFORE the early return
     // so a close→reopen RE-fires — else s_was_open never resets while closed (the fn returns first) and
     // focus fired only on the very first open.
@@ -1711,6 +1722,14 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // press-order-independent Y-vs-Y+R3 rule). `pad_warp_taken` means a focused grace ROW in the sidebar
     // already spent this press, so the reticle must not warp on the same tap.
     const bool pad_activate = pad_warp_fire && !pad_warp_taken;
+    // B (Cancel) CLOSES the map — the button every ER menu is closed with, so reaching for it was the
+    // reflex (user 2026-07-28). Layered under ImGui's own Cancel rather than fighting it: while nav
+    // focus sits in a sidebar or a popup is open, B belongs to ImGui (back out of the child, close the
+    // on-screen keyboard) and only a second press — once there is nothing left to back out of — closes
+    // the map. Not part of the toggle combo, so no latch needed.
+    if (s_pad_mode && !pad_combo && !nav_in_sidebar &&
+        ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false))
+        close_vmap();
     // Place/delete a custom marker: press-edge is fine (X is not part of the toggle combo). Suppressed
     // while nav focus sits on a sidebar/popup widget — X there belongs to the widget, not the canvas.
     const bool pad_place = s_pad_mode && !pad_combo && !nav_in_sidebar &&
@@ -2818,6 +2837,14 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // TODO(slice B): project the mod's markers for the virtual world's group here (w2s per marker + the
     // marker icon draw), then (slice C) tag markers to a synthetic group / bundle-backed custom world.
     dl->PopClipRect();
+
+    // A warp is queued (from the sidebar row, the sidebar Y, or the reticle Y — all three land in the
+    // same latch) → CLOSE the map, like the native one does when you fast-travel. Otherwise the panel
+    // stayed up and clickable across the load: you could queue a second warp, or fiddle with buttons
+    // belonging to a map you have already left (user 2026-07-28). Done here, once, after everything has
+    // drawn — the warp itself is serviced POST-frame by virtual_map_service_pending_warp(), which does
+    // not care whether the panel is open, so nothing is lost by closing first.
+    if (s_warp_pending) close_vmap();
 
     if (s_pad_mode) io.MousePos = s_pad_saved_mouse;   // restore the real mouse (see the top-of-fn override)
     ImGui::End();

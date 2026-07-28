@@ -47,6 +47,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Changed
 
+- Virtual map, **gamepad**: **B closes the map**, like every other Elden Ring menu. It stays layered
+  under ImGui's own Cancel — in a sidebar or on the on-screen keyboard, B backs out of that first.
+- Virtual map: **fast-travelling closes the map**, as the native one does. It used to stay open and
+  clickable across the load, so you could queue a second warp or press buttons belonging to a map you
+  had already left.
 - Virtual map: the sidebars (markers, graces, item search, custom markers) now **overlay the map**
   instead of squeezing it. Opening one — dropping a pin with X opens the marker list, for instance —
   used to shrink the canvas and slide the whole map sideways under your cursor mid-action.
