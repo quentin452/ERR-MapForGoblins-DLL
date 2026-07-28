@@ -1983,6 +1983,7 @@ namespace
                     const unsigned rbl = goblin::input::diag_raw_blanked_exchange();
                     std::snprintf(s_in_buf, sizeof(s_in_buf),
                                   "[INPUTDIAG]  gates: menu=%d vmapcover=%d redirect=%d fg=%d map=%d => CAPTURE=%d\n"
+                                  "             paused=%d menucover=%d  (both are GAME state, not our hooks)\n"
                                   "XInput  (pad)      game polls/s %5u   masked/s %5u\n"
                                   "DirectInput (kb+m) game reads/s %5u   ZEROED/s %5u   <- ER's primary path\n"
                                   "RawInput (kb+m)    game reads/s %5u   blanked/s %5u\n"
@@ -1993,6 +1994,8 @@ namespace
                                   goblin::input::has_focus() ? 1 : 0,
                                   goblin::world_map_open() ? 1 : 0,
                                   goblin::input::input_capture_active() ? 1 : 0,
+                                  goblin::pause::available() && goblin::pause::paused() ? 1 : 0,
+                                  goblin::worldmap_probe::menu_covers_map() ? 1 : 0,
                                   xi, xim, di, diz, rid + rib, rbl,
                                   goblin::input::diag_wm_keydown_exchange());
                 }
@@ -2128,6 +2131,19 @@ namespace
                 // respawn flow isn't stuck behind the map. Signal = LocalPlayer null (get_player_world_pos()
                 // returns false — the codebase's clean in-world signal). Debounced 2 frames so a torn mid-frame
                 // read can't spuriously close it. (coop_player_list_re_prompt.md follow-up)
+                // ER opened one of ITS menus over our stand-in (Start → Equipment/Inventory/System…):
+                // drop the redirect. The map key can no longer reach us in that state — the game's own
+                // menu manager routes it to the top of ITS stack, so our WorldMapDialog create-hook
+                // never fires and the vmap could not be closed until the ER menu was dismissed first
+                // (user 2026-07-28). The vmap stands in for the MAP; the moment the game puts another
+                // menu in front, the map is no longer the active surface, so it has no business staying
+                // open. menu_covers_map() is the game's own "a menu covers the map" state.
+                if (redirect && goblin::worldmap_probe::menu_covers_map())
+                {
+                    spdlog::info("[VMAP-REDIRECT] an ER menu covers the map -> closing the vmap");
+                    goblin::overlay_api::set_vmap_redirect(false);
+                    redirect = false;
+                }
                 if (redirect)
                 {
                     static int s_not_playable = 0;

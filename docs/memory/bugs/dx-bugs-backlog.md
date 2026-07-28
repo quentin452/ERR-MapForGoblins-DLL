@@ -368,3 +368,24 @@ faut retenir au-delà des fixes eux-mêmes :
     modélisée) et **lots d'assets destructibles** (les statues à casser — <user> 2026-07-28). Les deux
     chiffres sont justes, ils ne mesurent pas la même chose. Pour trancher un cas précis : prendre un
     Ember du spoiler qu'on n'affiche pas et faire `vmap prov <lot>` pour voir si le lot est connu du tout.
+
+29. 🔎 **Gel des menus ER : NOS HOOKS SONT INNOCENTÉS (mesuré 2026-07-28, screenshot [INPUTDIAG]).**
+    Capture prise PENDANT le gel, menu Équipement/Inventaire d'ER à l'écran, sélection impossible :
+    `gates: menu=0 vmapcover=0 redirect=0 fg=1 map=0 => CAPTURE=0`, et surtout
+    `XInput 53 polls/s masked 0 · DirectInput 53 reads/s ZEROED 0 · RawInput 10 reads/s blanked 0`.
+    Donc **le jeu interroge ses trois chemins d'input à cadence normale et on ne blanchit RIEN** — ce
+    n'est ni une porte restée armée ni un hook d'input. Le jeu REÇOIT et n'agit pas. Piste suivante :
+    l'état de menu du jeu lui-même. Suspect n°1 = notre **redirect de WorldMapDialog**
+    (`goblin_native_map_redirect.cpp`) qui renvoie `nullptr` **sans appeler l'original** : si le
+    gestionnaire de menus d'ER enregistre l'ouverture indépendamment de la valeur de retour, sa pile
+    garde une entrée fantôme et le focus d'input va à un dialogue qui n'existe pas. La même racine
+    expliquerait l'item 30. Le combo « F1 + perte de focus » évoqué par <user> reste à confirmer.
+    Instruments en place pour la prochaine occurrence : overlay `debug_input_overlay` (instantané
+    pendant le gel, montre aussi `paused`/`menucover`) + `[GATEDIAG]` (log au CHANGEMENT).
+30. ✅ **FIXÉ 2026-07-28 — vmap impossible à fermer tant qu'un menu ER est ouvert par-dessus.** Back
+    ouvre la vmap, Start ouvre le menu ER : la touche carte ne pouvait plus atteindre notre hook (le
+    gestionnaire de menus d'ER la route vers le SOMMET de SA pile), donc le create-callback ne se
+    déclenchait plus et la redirection ne pouvait plus être basculée. Fix : dès que
+    `worldmap_probe::menu_covers_map()` (état du jeu, pas le nôtre) devient vrai avec la redirection
+    active, on la baisse. La vmap remplace la CARTE ; si le jeu met un autre menu devant, la carte
+    n'est plus la surface active et la vmap n'a rien à faire ouverte.
