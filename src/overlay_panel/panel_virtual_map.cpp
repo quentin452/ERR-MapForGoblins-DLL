@@ -876,6 +876,23 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     const ImVec2 s_pad_saved_mouse = ImGui::GetIO().MousePos;
     if (s_pad_mode) ImGui::GetIO().MousePos = s_pad_cursor;
 
+    // ── Y-warp latch, shared by the grace SIDEBAR and the canvas reticle ──────────────────────────
+    // Hoisted here (it only needs key state) because the sidebar draws before the canvas and both fire
+    // on it. Press-order-independent: armed on Y-down, CLEARED the moment the toggle combo's other
+    // button (R3) joins the hold, consumed on Y-up. So a Y tap = warp, and Y+R3 in ANY order = close
+    // the overlay, never a warp. That collision is why the sidebar's Y-warp was pulled in the input
+    // pass — it fired off mere nav focus, so closing with the combo teleported you. With the latch the
+    // binding is safe again, and the row tooltip that still promised "Y: warp" stops lying (user
+    // 2026-07-28). pad_warp_taken keeps ONE press from warping twice when a grace row holds nav focus
+    // AND the reticle sits on a grace: the focused row wins (it is the more explicit aim).
+    static bool s_y_warp_armed = false;
+    const bool pad_combo = goblin::overlay_api::gamepad_combo_held();
+    if (s_pad_mode && ImGui::IsKeyPressed(ImGuiKey_GamepadFaceUp, false)) s_y_warp_armed = true;
+    if (pad_combo) s_y_warp_armed = false;
+    const bool pad_warp_fire = s_y_warp_armed && ImGui::IsKeyReleased(ImGuiKey_GamepadFaceUp);
+    if (ImGui::IsKeyReleased(ImGuiKey_GamepadFaceUp)) s_y_warp_armed = false;
+    bool pad_warp_taken = false;
+
     // Opened by the game MAP KEY (s_from_map) → draw FULLSCREEN + opaque so it stands in for the
     // native map (which still renders underneath; we cover it rather than suppress it — the native
     // render flag "does not hide the map", proven live). Otherwise a floating dev window.
@@ -1215,8 +1232,15 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                 }
             }
             // Gamepad: A (nav-activate) LOCATES the grace (pans the canvas to it), like a single mouse
-            // click. To WARP, point the right-stick reticle at the grace on the canvas and tap Y — the
-            // sidebar list itself no longer warps on Y (that fired on mere nav focus; see bug-2 note).
+            // click; Y on the FOCUSED row warps it, the list equivalent of aiming the reticle at it on
+            // the canvas. Gated on IsItemFocused (this exact row, not "some row exists") and on the
+            // shared Y latch, so the Y+R3 close-combo can never teleport you — the reason this binding
+            // was pulled. Discovered only: warping to an undiscovered grace hangs on a load screen.
+            if (disc && pad_warp_fire && !pad_warp_taken && ImGui::IsItemFocused())
+            {
+                s_warp_pending = g.rowId;
+                pad_warp_taken = true;   // this press is spent; the canvas reticle must not warp too
+            }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))   // mouse-only (bug-1: no nav-focus teleport)
                 ImGui::SetTooltip("%s", disc ? tr("double-click / Y: warp · click: locate")
                                              : tr("undiscovered — click: locate"));
@@ -1651,24 +1675,16 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     const bool pad_over_canvas = s_pad_mode && s_pad_cursor.x >= origin.x && s_pad_cursor.x <= canvas_end.x &&
                                  s_pad_cursor.y >= origin.y && s_pad_cursor.y <= canvas_end.y;
     const bool hovered_eff = hovered || pad_over_canvas;
-    const bool pad_combo = goblin::overlay_api::gamepad_combo_held();
-    // WARP TRIGGER (bug 4, press-order-independent): fire on Y RELEASE, and only if the toggle combo's
-    // OTHER button (R3) was never held during the Y hold. A Y-tap-release = warp; a Y+R3 combo (in ANY
-    // order) = close, never a warp. The old press-edge check missed Y-before-R3 (R3 not down yet at the
-    // Y edge, so combo suppression hadn't asserted). One latched flag: armed on Y-down, cleared the moment
-    // the combo forms, consumed on Y-up.
-    static bool s_y_warp_armed = false;
-    if (s_pad_mode && ImGui::IsKeyPressed(ImGuiKey_GamepadFaceUp, false)) s_y_warp_armed = true;
-    if (pad_combo) s_y_warp_armed = false;                               // R3 joined the hold → it's the combo
-    const bool pad_activate = s_y_warp_armed && ImGui::IsKeyReleased(ImGuiKey_GamepadFaceUp);
-    if (ImGui::IsKeyReleased(ImGuiKey_GamepadFaceUp)) s_y_warp_armed = false;
+    // WARP TRIGGER: the shared Y latch computed at the top of this function (see its comment for the
+    // press-order-independent Y-vs-Y+R3 rule). `pad_warp_taken` means a focused grace ROW in the sidebar
+    // already spent this press, so the reticle must not warp on the same tap.
+    const bool pad_activate = pad_warp_fire && !pad_warp_taken;
     // Place/delete a custom marker: press-edge is fine (X is not part of the toggle combo). Suppressed
     // while nav focus sits on a sidebar/popup widget — X there belongs to the widget, not the canvas.
     const bool pad_place = s_pad_mode && !pad_combo && !nav_in_sidebar &&
                            ImGui::IsKeyPressed(ImGuiKey_GamepadFaceLeft, false);
-    // NOTE (bug 2): Y warps ONLY the canvas reticle's hovered grace (below). The sidebar grace-list
-    // Y-warp was removed — it fired whenever a grace row merely held nav focus, so navigating a selector
-    // and tapping Y warped unexpectedly ("toggle + teleport"). Point the reticle at the grace to warp it.
+    // Y warps EITHER the sidebar's focused grace row (handled up there) or the reticle's hovered grace
+    // (below) — never both, and never on the close combo.
     // X is CONTEXT-SENSITIVE, mirroring the mouse split (left-click a region chip toggles it, right-click
     // the canvas drops a pin): the region-label loop further down consumes this latch when the reticle is
     // over a chip, otherwise the place/delete runs right after that loop. Deferred that far because the

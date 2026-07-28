@@ -27,6 +27,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
   says nothing about *what* a marker is, so anonymized markers keep their up/down arrow instead of
   losing it with everything else. Turn it off for a strict blackout.
 
+- Virtual map, **gamepad**: **Y warps the selected grace in the list** again. The binding had been pulled
+  because the close combo (Y+R3) teleported you, but the row tooltip kept promising it; it is back on the
+  same press-order-independent latch the canvas uses, so a Y tap warps and Y+R3 only closes.
 - Virtual map: clicking a grace in the list now centres **exactly on its icon**. The list panned to the
   marker's baked position while the canvas draws graces at their live-projected one, so the view landed
   slightly beside the grace.
