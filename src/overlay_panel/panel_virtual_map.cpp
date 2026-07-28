@@ -77,7 +77,26 @@ namespace
     bool s_show_item_search = false;   // A9: item-search sidebar (locate items ON the vmap, no native map)
     float s_items_w = 320.0f;          // its resizable width (wide enough for the Royal/Ashen state tag)
     char s_item_filter[64] = "";       // file-scope so a dev RPC (vmap items <q>) can drive it for tests
-    int s_custom_seq = 1;              // auto-name counter
+    // Auto-name for a new pin: the SMALLEST FREE "Marker N" (N>=1) across the store, recomputed at each
+    // add. A plain ++ counter never came back down when a pin was deleted, so after deleting "Marker 3"
+    // the next pin was still "Marker 7" (user 2026-07-28). Scanning is O(pins) with a 24/group cap.
+    std::string next_marker_name()
+    {
+        std::vector<bool> used;
+        for (const goblin::custom_markers::Marker &m : goblin::custom_markers::snapshot())
+        {
+            if (m.name.compare(0, 7, "Marker ") != 0) continue;
+            char *end = nullptr;
+            const char *digits = m.name.c_str() + 7;
+            const long n = std::strtol(digits, &end, 10);
+            if (end == digits || n < 1 || n >= 4096) continue;   // "Marker foo" / out of range → not a slot
+            if ((long)used.size() <= n) used.resize((size_t)n + 1, false);
+            used[(size_t)n] = true;
+        }
+        int n = 1;
+        while (n < (int)used.size() && used[(size_t)n]) ++n;
+        return std::string("Marker ") + std::to_string(n);
+    }
     char s_grace_filter[64] = "";   // grace-list search box
     // Grace list cache (rebuilt on open / Refresh; discovered-state re-read live per visible row).
     struct GraceRow { std::string name; float wx, wz; uint64_t rowId; int discFlag; int group;
@@ -1352,7 +1371,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         auto cm = goblin::custom_markers::snapshot();
         ImGui::Text(tr("Custom markers (%d/%d this map)"),
                     (int)goblin::custom_markers::count_in_group(s_group), goblin::custom_markers::kMaxPerGroup);
-        ImGui::TextDisabled("%s", tr("right-click the map to add / delete"));
+        ImGui::TextDisabled("%s", tr("right-click the map (pad: X) to add / delete"));
         ImGui::Separator();
         int del = -1;
         for (int i = 0; i < (int)cm.size(); ++i)
@@ -1363,6 +1382,11 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             std::snprintf(nbuf, sizeof(nbuf), "%s", c.name.c_str());
             ImGui::SetNextItemWidth(-1.0f);
             if (ImGui::InputText("##nm", nbuf, sizeof(nbuf))) goblin::custom_markers::set_name((size_t)i, nbuf);
+            // Rename with a gamepad: the InputText alone is unreachable without a keyboard (user
+            // 2026-07-28) — same on-screen keyboard every filter field already uses. It writes into
+            // nbuf, which is re-seeded from the store each frame, so commit whatever it produced.
+            draw_gamepad_keyboard_button("##nm_kbd", nbuf, sizeof(nbuf));
+            if (c.name != nbuf) goblin::custom_markers::set_name((size_t)i, nbuf);
             const char *gname = (c.group >= 0 && c.group < 4) ? kGroupNames[c.group] : "?";
             ImGui::TextDisabled("%s  (%.0f, %.0f)", tr(gname), c.wx, c.wz);
             if (ImGui::SmallButton(tr("Go")))
@@ -1382,6 +1406,15 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         ImGui::EndChild();
         vsplitter("##custom_split", s_custom_w, 180.0f, 480.0f);
     }
+
+    // Gamepad focus arbitration (user 2026-07-28: pressing X while browsing the custom-marker sidebar
+    // dropped a pin on the canvas behind it). The canvas X-place is only legal when nav focus is NOT
+    // parked on a sidebar widget — every sidebar is a CHILD window, so "a child is focused, not this
+    // window itself" is exactly the sidebar case — nor inside a popup (the on-screen keyboard, a combo).
+    // Evaluated after all sidebars are drawn and before the canvas, so it reflects THIS frame's focus.
+    const bool nav_in_sidebar =
+        (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows) && !ImGui::IsWindowFocused()) ||
+        ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
 
     // Canvas = the remaining content region. An InvisibleButton captures drag/scroll over exactly it.
     ImVec2 origin = ImGui::GetCursorScreenPos();
@@ -1490,7 +1523,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         if (hit >= 0)
             goblin::custom_markers::remove_at((size_t)hit);
         else if (!goblin::custom_markers::add(mwx, mwz, s_group,
-                     std::string("Marker ") + std::to_string(s_custom_seq++), IM_COL32(90, 200, 255, 255)))
+                     next_marker_name(), IM_COL32(90, 200, 255, 255)))
             s_tile_status = "custom marker cap reached for this map";
         s_show_custom = true;
     }
@@ -1591,34 +1624,18 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     if (pad_combo) s_y_warp_armed = false;                               // R3 joined the hold → it's the combo
     const bool pad_activate = s_y_warp_armed && ImGui::IsKeyReleased(ImGuiKey_GamepadFaceUp);
     if (ImGui::IsKeyReleased(ImGuiKey_GamepadFaceUp)) s_y_warp_armed = false;
-    // Place/delete a custom marker: press-edge is fine (X is not part of the toggle combo).
-    const bool pad_place = s_pad_mode && !pad_combo && ImGui::IsKeyPressed(ImGuiKey_GamepadFaceLeft, false);
+    // Place/delete a custom marker: press-edge is fine (X is not part of the toggle combo). Suppressed
+    // while nav focus sits on a sidebar/popup widget — X there belongs to the widget, not the canvas.
+    const bool pad_place = s_pad_mode && !pad_combo && !nav_in_sidebar &&
+                           ImGui::IsKeyPressed(ImGuiKey_GamepadFaceLeft, false);
     // NOTE (bug 2): Y warps ONLY the canvas reticle's hovered grace (below). The sidebar grace-list
     // Y-warp was removed — it fired whenever a grace row merely held nav focus, so navigating a selector
     // and tapping Y warped unexpectedly ("toggle + teleport"). Point the reticle at the grace to warp it.
-    // Pad place/delete a custom marker at the reticle (mirrors the right-click path above; s_pad_cursor is
-    // now current this frame). Near an existing same-group pin → delete, else drop a new one (cap-enforced).
-    if (pad_place && pad_over_canvas && active_world == 0)
-    {
-        float mwx, mwz;
-        s2w(s_pad_cursor, mwx, mwz);
-        auto cm = goblin::custom_markers::snapshot();
-        int hit = -1;
-        float bestd = 14.0f * 14.0f;
-        for (int i = 0; i < (int)cm.size(); ++i)
-        {
-            if (cm[i].group != s_group) continue;
-            ImVec2 ps = w2s(cm[i].wx, cm[i].wz);
-            float dx = ps.x - s_pad_cursor.x, dy = ps.y - s_pad_cursor.y, d = dx * dx + dy * dy;
-            if (d < bestd) { bestd = d; hit = i; }
-        }
-        if (hit >= 0)
-            goblin::custom_markers::remove_at((size_t)hit);
-        else if (!goblin::custom_markers::add(mwx, mwz, s_group,
-                     std::string("Marker ") + std::to_string(s_custom_seq++), IM_COL32(90, 200, 255, 255)))
-            s_tile_status = "custom marker cap reached for this map";
-        s_show_custom = true;
-    }
+    // X is CONTEXT-SENSITIVE, mirroring the mouse split (left-click a region chip toggles it, right-click
+    // the canvas drops a pin): the region-label loop further down consumes this latch when the reticle is
+    // over a chip, otherwise the place/delete runs right after that loop. Deferred that far because the
+    // chip rects are only known there — and it also stops X from burying a pin under a region name.
+    bool pad_place_pending = pad_place && pad_over_canvas && active_world == 0;
 
     ImDrawList *dl = ImGui::GetWindowDrawList();
     dl->PushClipRect(origin, canvas_end, true);
@@ -2402,8 +2419,86 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // NOTE: the PLAYER cursor is drawn further down (after custom pins + the death marker) so it sits ON
     // TOP of them — it used to draw here and got covered. See the "Player cursor" block below.
 
-    // Custom player-placed markers — drawn under the player cursor (moved below): a colored pin
-    // (teardrop) + name, for the markers tagged to the displayed group. Right-click the canvas to drop one.
+    // Region name labels (A7 parity — the coarse major-region names Limgrave/Caelid/… the native map
+    // draws). Base ER only (custom worlds carry no ER regions) and only anchors on the displayed group
+    // (underground overlaps the overworld in XZ). Reuses the world-space projection precomputed above so
+    // the label rides the same pan/zoom as its region's markers. CLICKABLE, parity with the native chip:
+    // a click toggles that region off — which hides its CLUTTER markers (loot/landmarks/bosses) while
+    // graces + the player stay visible (see region_hide_exempt above). The on/off flag is the SHARED
+    // map_renderer state, so a toggle syncs with the native map and persists via config::regionToggles.
+    // Drawn HERE — under the custom pins / death marker / player cursor that follow — so a player-placed
+    // pin is never buried under a region name (user 2026-07-28). Only the map's OWN markers pass beneath.
+    // Gamepad: the reticle already hovers a chip (io.MousePos IS the reticle in pad-mode), and X activates
+    // it — the pad had NO way to toggle a region before, only highlight one (user 2026-07-28).
+    if (active_world == 0 && s_show_labels)
+    {
+        ImFont *font = ImGui::GetFont();
+        const float fontSize = ImGui::GetFontSize() * 1.4f * uiScale;
+        const bool clicked = hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+        for (int i = 0; i < regN && i < kRegCap; ++i)
+        {
+            if (!regValid[i] || regGrp[i] != s_group)
+                continue;
+            const char *name = goblin::generated::MAJOR_REGION_ANCHORS[i].name;
+            ImVec2 p = w2s(regWx[i], regWz[i]);
+            if (p.x < origin.x - 64 || p.x > canvas_end.x + 64 ||
+                p.y < origin.y - 32 || p.y > canvas_end.y + 32)
+                continue;
+            ImVec2 ts = font->CalcTextSizeA(fontSize, FLT_MAX, 0.f, name);
+            ImVec2 tp(p.x - ts.x * 0.5f, p.y - ts.y * 0.5f);
+            const float pad = 5.f * uiScale;
+            ImVec2 r0(tp.x - pad, tp.y - pad), r1(tp.x + ts.x + pad, tp.y + ts.y + pad);
+            const bool hot = vptr.x >= r0.x && vptr.x <= r1.x && vptr.y >= r0.y && vptr.y <= r1.y;
+            // Pad X over a chip toggles the region and is CONSUMED here, so the same press can't also
+            // drop a pin under the label (the place/delete below only runs on a still-pending latch).
+            if (hot && pad_place_pending) { pad_place_pending = false; goblin::worldmap::region_set_enabled(i, !goblin::worldmap::region_enabled(i)); }
+            else if (hot && clicked)
+                goblin::worldmap::region_set_enabled(i, !goblin::worldmap::region_enabled(i));
+            const bool on = goblin::worldmap::region_enabled(i);
+            // Pill (warmer when hovered, reddish when off) + hover outline + text (gold on / dim off) +
+            // a strike-through when off — same visual language as the native draw_region_labels chip.
+            const ImU32 bg = on ? IM_COL32(30, 26, 18, hot ? 175 : 120)
+                                : IM_COL32(46, 22, 22, hot ? 175 : 120);
+            dl->AddRectFilled(r0, r1, bg, 4.f);
+            if (hot)
+                dl->AddRect(r0, r1, IM_COL32(238, 226, 188, 220), 4.f, 0, 1.5f);
+            const ImU32 col = on ? IM_COL32(238, 226, 188, 235) : IM_COL32(150, 140, 120, 160);
+            dl->AddText(font, fontSize, ImVec2(tp.x + 1.5f * uiScale, tp.y + 1.5f * uiScale), IM_COL32(0, 0, 0, 190), name);
+            dl->AddText(font, fontSize, tp, col, name);
+            if (!on)
+                dl->AddLine(ImVec2(tp.x, p.y), ImVec2(tp.x + ts.x, p.y), col, 2.0f * uiScale);
+        }
+    }
+
+    // Pad place/delete a custom marker at the reticle (mirrors the right-click path above). Deferred to
+    // here from the input block so a region chip under the reticle gets the press first (see the latch).
+    // Near an existing same-group pin → delete, else drop a new one (cap-enforced).
+    if (pad_place_pending)
+    {
+        pad_place_pending = false;
+        float mwx, mwz;
+        s2w(s_pad_cursor, mwx, mwz);
+        auto cm = goblin::custom_markers::snapshot();
+        int hit = -1;
+        float bestd = 14.0f * 14.0f;
+        for (int i = 0; i < (int)cm.size(); ++i)
+        {
+            if (cm[i].group != s_group) continue;
+            ImVec2 ps = w2s(cm[i].wx, cm[i].wz);
+            float dx = ps.x - s_pad_cursor.x, dy = ps.y - s_pad_cursor.y, d = dx * dx + dy * dy;
+            if (d < bestd) { bestd = d; hit = i; }
+        }
+        if (hit >= 0)
+            goblin::custom_markers::remove_at((size_t)hit);
+        else if (!goblin::custom_markers::add(mwx, mwz, s_group,
+                     next_marker_name(), IM_COL32(90, 200, 255, 255)))
+            s_tile_status = "custom marker cap reached for this map";
+        s_show_custom = true;
+    }
+
+    // Custom player-placed markers — drawn under the player cursor (moved below) but OVER the region
+    // labels: a colored pin (teardrop) + name, for the markers tagged to the displayed group. Right-click
+    // the canvas (or pad X) to drop one.
     if (active_world == 0)
     {
         for (const goblin::custom_markers::Marker &c : goblin::custom_markers::snapshot())
@@ -2449,54 +2544,9 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         }
     }
 
-    // NOTE: the PLAYER cursor is drawn further down, AFTER the region labels, so it sits on top of them
-    // too (region name pills used to cover it). See the "Player cursor" block below the region labels.
-
-    // Region name labels (A7 parity — the coarse major-region names Limgrave/Caelid/… the native map
-    // draws). Base ER only (custom worlds carry no ER regions) and only anchors on the displayed group
-    // (underground overlaps the overworld in XZ). Reuses the world-space projection precomputed above so
-    // the label rides the same pan/zoom as its region's markers. CLICKABLE, parity with the native chip:
-    // a click toggles that region off — which hides its CLUTTER markers (loot/landmarks/bosses) while
-    // graces + the player stay visible (see region_hide_exempt above). The on/off flag is the SHARED
-    // map_renderer state, so a toggle syncs with the native map and persists via config::regionToggles.
-    // Drawn last-but-one so names sit over the markers.
-    if (active_world == 0 && s_show_labels)
-    {
-        ImFont *font = ImGui::GetFont();
-        const float fontSize = ImGui::GetFontSize() * 1.4f * uiScale;
-        const bool clicked = hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
-        for (int i = 0; i < regN && i < kRegCap; ++i)
-        {
-            if (!regValid[i] || regGrp[i] != s_group)
-                continue;
-            const char *name = goblin::generated::MAJOR_REGION_ANCHORS[i].name;
-            ImVec2 p = w2s(regWx[i], regWz[i]);
-            if (p.x < origin.x - 64 || p.x > canvas_end.x + 64 ||
-                p.y < origin.y - 32 || p.y > canvas_end.y + 32)
-                continue;
-            ImVec2 ts = font->CalcTextSizeA(fontSize, FLT_MAX, 0.f, name);
-            ImVec2 tp(p.x - ts.x * 0.5f, p.y - ts.y * 0.5f);
-            const float pad = 5.f * uiScale;
-            ImVec2 r0(tp.x - pad, tp.y - pad), r1(tp.x + ts.x + pad, tp.y + ts.y + pad);
-            const bool hot = io.MousePos.x >= r0.x && io.MousePos.x <= r1.x &&
-                             io.MousePos.y >= r0.y && io.MousePos.y <= r1.y;
-            if (hot && clicked)
-                goblin::worldmap::region_set_enabled(i, !goblin::worldmap::region_enabled(i));
-            const bool on = goblin::worldmap::region_enabled(i);
-            // Pill (warmer when hovered, reddish when off) + hover outline + text (gold on / dim off) +
-            // a strike-through when off — same visual language as the native draw_region_labels chip.
-            const ImU32 bg = on ? IM_COL32(30, 26, 18, hot ? 175 : 120)
-                                : IM_COL32(46, 22, 22, hot ? 175 : 120);
-            dl->AddRectFilled(r0, r1, bg, 4.f);
-            if (hot)
-                dl->AddRect(r0, r1, IM_COL32(238, 226, 188, 220), 4.f, 0, 1.5f);
-            const ImU32 col = on ? IM_COL32(238, 226, 188, 235) : IM_COL32(150, 140, 120, 160);
-            dl->AddText(font, fontSize, ImVec2(tp.x + 1.5f * uiScale, tp.y + 1.5f * uiScale), IM_COL32(0, 0, 0, 190), name);
-            dl->AddText(font, fontSize, tp, col, name);
-            if (!on)
-                dl->AddLine(ImVec2(tp.x, p.y), ImVec2(tp.x + ts.x, p.y), col, 2.0f * uiScale);
-        }
-    }
+    // NOTE: the region labels are drawn EARLIER now (above the marker loop's output but UNDER the custom
+    // pins / death marker / player cursor) so a pin dropped on a region name is not buried by it. The
+    // player cursor still draws last of all, so it stays on top of every layer.
 
     // Co-op partner markers — the native MENU_MAP_Host figure-in-ring, drawn axis-aligned (NO rotation:
     // remote players' facing isn't reliably synced). Under the local player cursor (below), on the current

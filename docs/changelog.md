@@ -21,6 +21,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ## [Unreleased]
 
+### Fixed
+
+- Virtual map, **gamepad**: region name chips (Limgrave, Caelid, …) can now be toggled with the pad.
+  The reticle highlighted them but nothing happened on press — toggling was mouse-click only. **X**
+  over a chip now toggles that region (and no longer drops a pin under the name).
+- Virtual map: player-placed **pins draw over the region names** instead of under them.
+- Virtual map, **gamepad**: **X** no longer drops a pin on the map while you are navigating a sidebar
+  (the custom-marker list, a filter, the on-screen keyboard) — it belongs to the focused widget there.
+- Virtual map: a new pin reuses the **lowest free "Marker N"** name. The counter only ever went up, so
+  after deleting markers the next one was named with a number that no longer matched the list.
+- Virtual map: custom markers are **renamable with a gamepad** — the name field now carries the same
+  on-screen keyboard as the search/filter fields.
+
 ## [v2.7.0] - 2026-07-28
 
 ### Added
