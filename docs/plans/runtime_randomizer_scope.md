@@ -538,6 +538,7 @@ nothing. ⇒ **use as an oracle and a pacing metric, not as a logic input** — 
 | Tier | When | Cost | What it proves |
 |---|---|---|---|
 | **1 — sphere search** | every roll, systematic | ms | the placement respects the graph |
+| **1.5 — their spoiler as a corpus** | when a reference log is at hand | minutes | our verifier does not reject a world thousands of people finished |
 | **2 — in-game oracle** | once per mod / after a derivation change | hours, serialized | the graph matches the game |
 | **2.5 — passive corpus** | continuously, free | ~0 | regression against real playthroughs |
 | **3 — a bot that plays** | never | — | nothing useful |
@@ -545,6 +546,22 @@ nothing. ⇒ **use as an oracle and a pacing metric, not as a logic input** — 
 Tier 1 is the standard technique of every serious randomizer (playthrough generation / spoiler
 spheres) and is already specified above. Tier 3 is a non-goal: we never need to prove a boss is
 *beatable*, only that **the world opens** — player skill is the class-D problem, not a logic one.
+
+**Tier 1.5 — differential test against the reference randomizer.** Its worlds are validated by mass
+play, so its spoiler log is a **known-completable placement**. Run OUR verifier over THEIR placement:
+a "not beatable" verdict on a world thousands of people finished is a bug or an over-constraint in
+our graph, found without playing. A "beatable" verdict proves little, so pair it with a **mutation
+test** — move one key item behind its own door in that same known-good placement and require the
+verifier to reject it. Two caveats, both load-bearing:
+
+- **LEGAL:** their log is an **oracle, never a source.** Reading a locally-generated log to test our
+  verifier is fine; tuning our graph until it agrees with theirs launders their curated table into
+  ours through a feedback loop — forbidden by LEGAL below *and* by the mod-agnostic doctrine. A
+  disagreement is a reason to go measure the game (tier 2), never to copy their verdict. Their logs
+  never enter this repo.
+- **COVERAGE:** it validates only what the log records — see MEASURED §1: unique drops only, not the
+  ~two thirds of enemy lots a roll rewrites. And it is vanilla-keyed, so it says nothing about
+  Convergence/ERR, which is exactly where the mod-agnostic claim lives.
 
 ### Tier 2 — what `set_flag` / `read_flag` must actually touch
 
@@ -595,6 +612,80 @@ so serialized either way.
 
 ---
 
+## MEASURED 2026-07-28 — the reference randomizer, on a real install
+
+Measured on the user's own install (vanilla ER + the reference randomizer v0.11.4, 13 archived
+spoiler logs and 6 hand-captured `regulation.bin` snapshots), with `tools/diff_regulation.py`
+(written for this — param-level, because **byte hashes of `regulation.bin` are meaningless**: six
+snapshots had six different sha256 while several were param-identical).
+
+### 1. The spoiler log is NOT a record of the world it generated
+
+A roll rewrites **67.3 %** of `ItemLotParam_enemy` and **75.3 %** of `ItemLotParam_map` rows (vs
+vanilla). But the log reports only **unique** drops — 497 `Dropped by` lines, every one a boss, a
+named NPC, or an individually-described enemy. **Generic respawning mob drop tables appear nowhere
+in it.** And a re-roll overwrites `regulation.bin`, so the previous world is unrecoverable unless
+someone snapshotted it first.
+
+Two corrections to this doc follow:
+
+- **`tools/audit_markers_vs_spoiler.py` has a structural blind spot** — it treats the spoiler as
+  ground truth, so it can say nothing about two thirds of the enemy lots.
+- **The "their spoiler = corpus of known-completable worlds" idea (VALIDATION, tier 1.5) is
+  requalified**: an oracle for the *logged* subset only, not for the world. Still useful, not the
+  broad safety net it was written as.
+
+### 2. Determinism: CONFIRMED — and the real hazard is settings persistence, not RNG
+
+Controlled experiment (6 snapshots, one variable each):
+
+| transition | result |
+|---|---|
+| re-roll, no exe restart | **param-identical** |
+| exe restart | **param-identical** |
+| profile export + import round-trip | **param-identical** |
+| ONE setting changed (shadow-realm blessing → anywhere) | 6 params differ: enemy **65.9 %**, map **75.4 %**, `ShopLineupParam` 51.4 %, `CharaInitParam` 6.2 %, `NpcParam` 1.2 % |
+| exe restart after that | the setting **silently reverted to default**, and the world went **exactly back** (identical to the pre-change snapshot) |
+
+So the RNG is reproducible and the `--preset Custom` note at the top of this doc, while true, is not
+what bites. **What bites is a UI setting that does not persist.** One silently-reverted toggle swaps
+~two thirds of the world with no user action.
+
+**DESIGN RULE this forces on us:** the configuration that produced a permutation is written **BY
+VALUE into the sidecar at roll time**, and the world is re-derived from the sidecar — never re-read
+from the UI or the INI at the next launch. Same lesson as `--preset Custom`, sharper: there the user
+edited something, here the tool forgot.
+
+### 3. Invariant 3 has a demonstrated failure mode behind it
+
+The reference tool has **no "are you sure you want to re-roll?" confirmation**, so the destructive
+action sits next to the play action. Visible in the user's log folder: repeated rolls of an
+*identical* seed minutes and days apart (nobody re-rolls the same seed on purpose), and a 0-byte log
+one minute before a full roll.
+
+The structural remedy is **not** a confirmation dialog — that lowers the probability and leaves the
+category. It is making a re-roll *unreachable* for a save that has already been played, which is what
+invariant 3 already says: the permutation lives in the save's sidecar, so the world is DERIVED from
+the save and there are not two states that can desync.
+
+### 4. ★ Invariant 6's risk surface is BOUNDED — and tiny on the enemy side
+
+"An item on a lot whose flag is already set is invisible" applies **only to lots carrying a
+`getItemFlagId`**. A repeatable probability drop has none, so it is structurally immune.
+
+| | `ItemLotParam_enemy` | `ItemLotParam_map` |
+|---|--:|--:|
+| vanilla | **244 / 5135 flagged (4.8 %)** | 5047 / 5564 (90.7 %) |
+| rolled | **13 / 4510 flagged (0.3 %)** | 5388 / 5905 (91.2 %) |
+
+⇒ **the desync risk is concentrated almost entirely in WORLD PICKUPS, not enemy drops.** The solver's
+"already-collected ⇒ not a valid slot" check (invariant 6) only has to run over the flagged subset;
+the 95–99 % unflagged enemy lots need no save-state check at all.
+
+Worked example that closed a live investigation: Smithing Stone [6] appears in **108** enemy lots,
+**zero** flagged, 1–8 % chance each. A player who "stopped getting it" is unlucky, not desynced —
+and no amount of spoiler-log reading could have shown that, because none of those lots are logged.
+
 ## NEXT — open items (2026-07-28)
 
 - **★ RE ANSWERED (static) same day** — `docs/re/windows_emevd_condition_evaluator_re_findings.md`.
@@ -613,8 +704,15 @@ so serialized either way.
 - **Specify:** counted-resource and k-of-n support in the fixed point (classes B5/B6).
 - **Find:** an ObjAct-state read and an asset-enable read (tier-2 oracle gap).
 - **Config:** everything above that changes a roll — goal mode, dlc mode, logic mode, sphere-depth
-  constraint, assumed capabilities — must be in the exported configuration by VALUE, per the
-  `--preset Custom` lesson at the top of this doc.
+  constraint, assumed capabilities — must be in the exported configuration by VALUE, and written into
+  the **sidecar at roll time**, never re-read from the UI/INI at the next launch (MEASURED §2: a
+  silently-reverting toggle swapped two thirds of a world with no user action).
+- **Scope invariant 6 to the flagged subset** (MEASURED §4): the already-collected check only has to
+  run over lots carrying a `getItemFlagId` — ~91 % of map lots, but only 0.3–4.8 % of enemy lots.
+- **Tooling gap found live:** no RPC exposes the LOCKED-ON target's identity (`combat` only counts
+  enemies, `hp_probe` is the *player's* HP). A `target` verb — locked ChrIns → `npcParamId` → its
+  `ItemLotParam_enemy` row → resolved items + flags — would answer "what does this thing drop, and is
+  its flag set" directly, and is the natural in-game half of the tier-2 oracle.
 
 ---
 
