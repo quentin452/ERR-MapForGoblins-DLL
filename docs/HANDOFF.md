@@ -3,65 +3,56 @@
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
 
-## ⇒ NEXT SESSION — runtime randomizer: solver SPECIFIED, four cheap measurements queued
+## ⇒ NEXT SESSION — runtime randomizer: research is DONE, next is CODE
 
-State: `docs/plans/runtime_randomizer_scope.md` — both graph axes MEASURED (`63aed60`), architecture
-settled (**a MODULE of MapForGoblins**, off by default, own config section, write surface bounded by
-invariant 5), and as of 2026-07-28 the **solver is specified**: least-fixpoint model, assumed fill,
-an independent verifier, and the directional-error policy that makes a derived graph safe. Still
-nothing implemented, nothing deployed, no build touched. Resume in this order:
+State (2026-07-28 wrap): `docs/plans/runtime_randomizer_scope.md` now carries the graph measurement,
+the architecture decision (**a MODULE of MapForGoblins**), the **solver spec** (least-fixpoint model,
+assumed fill, independent verifier, directional-error policy), the ER **softlock taxonomy**, the
+**goal definition** (endings + DLC), and four corrections **measured on a real install** (the
+reference randomizer's spoiler log is not a record of the world; determinism confirmed; invariant 3's
+demonstrated failure mode; invariant 6's risk surface bounded). The EMEVD VM is **found and
+live-verified**. **Nothing of the randomizer is implemented** — no build touched by it.
 
-1. **★ EMEVD VM — FOUND (static, 2026-07-28). One live check is the next action.**
-   `windows_emevd_condition_evaluator_re_findings.md` (prompt: `..._re_prompt.md`). Route B, Ghidra
-   `D:\ghidra_proj2\ER.rep`, app **2.6.2.0**; **nothing measured live** (game not running that session).
-   - **G1 = YES (statically).** ONE hook at the bank dispatcher `FUN_140567d40` (rva `0x567d40`) yields
-     `(event instance, bank, index, raw operand blob, result)` for every instruction executed, and the
-     condition group is uniformly `arg[0]`. That is causation READ, not co-occurrence inferred — it
-     retires the "2089 is a ceiling" limitation and absorbs the old *sharpening* item. Mod-agnostic by
-     construction. ⚠ fires every instruction every tick ⇒ ring buffer, dev-only.
-   - **G2 = NO** (documented, expected): slot-1 `Evaluate` takes only `this`, reads the *live* world and
-     writes its answer into the object ⇒ it can only answer "is G true NOW", never the counterfactual.
-     Observation, not interrogation.
-   - **✅ LIVE-VERIFIED 2026-07-28 (findings §10), on VANILLA 2.6.2.0.** `EMEVD_DISPATCH` dumps
-     byte-for-byte at `er_base+0x567d40`; the per-step `mov [CSEmkSystem+0x120], this` / `mov …, 0`
-     pair fires 6 ms after arming while standing still, and both rip-relative displacements resolve
-     to the same singleton `0x3d67bd0` — an independent double confirmation. ⚠ **`mem_fwa` cannot
-     watch CODE** (DR7 `RW` is data-only, `goblin_field_probe.cpp:57`), so the original "arm it on the
-     dispatcher entry" plan was void — watch the `+0x120` write instead. Polling that slot always
-     reads zero (set+cleared inside one step): use the watchpoint, not a read.
-   - **✅ MAIN-MENU DISCRIMINATOR ANSWERED (findings §10.7)** — and better than planned: at the menu
-     the **singleton itself is NULL** (`er+0x3d67bd0` = 0), so the EMEVD kernel is **world-scoped**
-     and the step cannot run. A positive measurement, not an absence of hits. Bonus (§10.8): the
-     construction site was captured (`call er+0x585af0` → store to the slot at `er+0x66e397`), a 3rd
-     independent confirmation of `0x3d67bd0`. ⚠ that bonus probe **crashed the game** — `mem_fwa`
-     does not auto-disarm, see `docs/memory/tooling/mfg-rpc-driver-hardening.md`: **disarm before any
-     world load**.
-   - **NEXT:** nothing further needs the game. The one field still inferred in the whole chain is the
-     condition-group byte at `cond+0x00` — not reachable by a point probe, it falls out of the G1
-     hook itself. So the next real step is **scoping the G1 tracer** (ring buffer, dev-only, one hook
-     at `EMEVD_DISPATCH`), not more probing.
-   - 8 AOBs proposed in the findings, **not wired into `re_signatures.hpp`**; two flagged thin (bank-3 /
-     bank-1003 share an MSVC prologue, disambiguated only by frame size), `EMEVD_IP_ADVANCE` rejected.
-2. **Three cheap measurements, all specified in the plan's NEXT section:**
-   - grace state byte before/after burning the Erdtree ⇒ settles the **monotonicity** hypothesis
-     (the whole fixpoint model rests on it); no new probe, `[WARPPIN]` already logs it;
-   - the end-of-game instruction family across ALL maps ⇒ does the DLC add an ending; plus a base-vs-DLC
-     split of the 517/592 emevd counts;
-   - a **third probe** for narrative milestones (Melina/grace-side events) — both existing probes miss
-     the class, they filter on a traversal action.
-3. **Two tooling gaps blocking tier-2 validation:** an **ObjAct-state read** and an **asset-enable
-   read**. Everything else the in-game oracle needs already exists (`flag` r/w + `range` snapshots,
-   `give_item`, warp, `loot_at`, grace state byte). ⚠ no item-REMOVE verb ⇒ negative tests need a fresh
-   save per test point.
-4. **Model gaps to specify:** counted consumables (Stonesword/Imbued Sword keys) and k-of-n thresholds
-   (2 Great Runes) cannot be expressed as booleans — classes B5/B6 in the plan's taxonomy.
-5. **Enemy randomization — measure before promising.** Out of v1, and unknown #2 in the doc decides
-   whether it is worth anything: `modelIndex` indexes the TILE's own MODEL section, so if a tile only
-   declares 3 chr models the shuffle is worthless. Count the per-tile candidate set FIRST.
+Resume in this order (1 = cold-start immediately):
 
-Re-run either measurement from `tools/` (needs oo2core in cwd), profile-switched:
+1. **`target` RPC verb — the gap that blocked a live investigation this session.** Locked-on ChrIns →
+   `npcParamId` → its `ItemLotParam_enemy` row → resolved items + `getItemFlagId` + the flag's live
+   state. Answers "what does this thing drop, and is its flag already set" — currently unanswerable:
+   `combat` only counts enemies, `hp_probe` is the **player's** HP, and the marker layer does not
+   carry generic mob drop tables. Start from the WCM-block `EnemyIns` walk that
+   `src/goblin_enemy_names.cpp` already does. This is also the in-game half of the plan's tier-2 oracle.
+2. **Scope the G1 EMEVD tracer.** ONE hook at `EMEVD_DISPATCH` (`rva 0x567d40`, AOB in findings §8,
+   live-verified §10), ring buffer, dev-only — it fires every instruction every tick. Retires the
+   "2089 is a ceiling" limitation by observation and closes the last inferred field (`cond+0x00`).
+   RE is finished: `docs/re/windows_emevd_condition_evaluator_re_findings.md`. 8 AOBs proposed there,
+   deliberately **not wired into `re_signatures.hpp`**; two flagged thin (bank-3 / bank-1003 share an
+   MSVC prologue, separated only by frame size).
+3. **Three cheap derivations**, all specified in the plan's NEXT section: the grace state byte before/
+   after burning the Erdtree ⇒ settles the **monotonicity** hypothesis the whole fixpoint rests on
+   (no new probe, `[WARPPIN]` already logs it); the end-of-game instruction family across ALL maps ⇒
+   does the DLC add an ending, plus a base-vs-DLC split of the emevd counts; and a **third probe** for
+   narrative milestones (Melina / grace-side events) — both existing probes filter on a traversal
+   action and miss that class entirely.
+4. **Two tooling gaps for tier-2 validation:** an **ObjAct-state read** and an **asset-enable read**.
+   ⚠ there is no item-REMOVE verb, so negative tests ("blocked without X") need a fresh save per point.
+5. **Model gaps to specify:** counted consumables (Stonesword / Imbued Sword keys) and k-of-n
+   thresholds (2 Great Runes) cannot be expressed as booleans — classes B5/B6 in the plan's taxonomy.
+6. **Enemy randomization — measure before promising.** Unknown #2 decides whether it is worth
+   anything: `modelIndex` indexes the TILE's own MODEL section, so a tile declaring 3 chr models makes
+   the shuffle worthless. Count the per-tile candidate set FIRST.
+
+**Deployed state:** the only shipped change this session is the Run-tab **Boss checklist search box**
+(`65b649a`, `build-err` links clean). ⚠ the install that runs here loads the DLL from
+`C:\Users\iamacat\Downloads\DLLS\`, while `tools/deploy.py` targets `$ERR_ROOT/dll/offline` — copy
+`build-err/MapForGoblins.dll` there manually and restart the game to see it.
+
+Re-run either graph measurement from `tools/` (needs oo2core in cwd), profile-switched:
 `MFG_PROFILE=err|convergence py -3 _probe_progression_gates.py` / `_probe_flag_gates.py`.
-Vanilla cannot be measured on this box (game not UXM-unpacked — the probe exits with a setup hint).
+**Vanilla CAN be measured on this Windows box** (corrected 2026-07-28): the Steam install at
+`E:\SteamLibrary\steamapps\common\ELDEN RING\Game` IS UXM-unpacked (loose `event/`, `map/`,
+`msg/`, `regulation.bin`). It needs `GAME_DIR` set in `.env.local`, which currently only has
+`ERR_ROOT` — so `tools/mfg_session.py` still falls back to a Linux path and `boot_hold.py` cannot
+launch here as configured.
 
 ## ⇒ 2026-07-27 (Windows, vanilla+randomizer) — ★ bug-5 CLOSED end-to-end; gamepad/vmap batch confirmed
 
