@@ -1,5 +1,6 @@
 #include "input_wndproc.hpp"
 #include "input_shared.hpp"
+#include "input_cursor.hpp"           // clip_cursor_real — release the desktop-global clip on focus loss
 
 #include <atomic>
 
@@ -160,6 +161,16 @@ LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     {
         set_last_input_was_gamepad(false);
         set_gamepad_active_streak(0);
+        // …and RELEASE the cursor clip. ClipCursor is the one OS call we make whose effect is
+        // DESKTOP-GLOBAL — every other hook here only falsifies what a caller reads inside this
+        // process. We re-apply a window clip on the F1-close falling edge (goblin_overlay.cpp) to
+        // restore what the game expects, but nothing then dropped it if focus left afterwards: the
+        // cursor stayed confined to a background game window, so the taskbar and every other app
+        // became unreachable (user 2026-07-28). A clip belonging to a window that is not foreground
+        // is never legitimate — same reasoning that already guards that re-clip with `fg`. The game
+        // re-applies its own clip when it regains focus, so nothing is lost.
+        if (clip_cursor_hooked())
+            clip_cursor_real(nullptr);
     }
 
     // Real mouse/keyboard activity means input is no longer pad-only (see the XInput poll

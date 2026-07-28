@@ -41,6 +41,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
   sit on a map inset, so they were filed under whichever region happened to be nearest — no help when
   the hall is the place you warp to most.
 
+- The mouse can no longer end up **locked out of the taskbar and other apps**. Closing the panel
+  re-applies the game's window cursor clip, and nothing released it if the game then lost focus — the
+  cursor stayed confined to a background window. Alt-tabbing away now always frees it.
+
 ### Changed
 
 - Virtual map: **switching page** (the group selector) now frames the new one — on your character when
