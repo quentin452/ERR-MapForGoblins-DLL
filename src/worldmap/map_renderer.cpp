@@ -1683,7 +1683,13 @@ void draw_region_labels(ImDrawList *fg, int open_grp,
 
     const float fontSize = ImGui::GetFontSize() * 1.6f * uiScale;
     const ImU32 shadow = with_alpha(IM_COL32(0, 0, 0, 190));
-    const bool clicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+    // Activate: left-click (mouse) or X (pad). On a pad the caller hands us the screen CENTRE as the
+    // pointer — the native map's reticle is fixed there and the map pans under it — so "hot" already
+    // means "the reticle is on this chip"; before this the pad could not even hover one (user
+    // 2026-07-28). The X press is hidden from the game for exactly that frame-window by the XInput
+    // hook (input_gamepad.cpp), the pad twin of input_wndproc eating the L-press over a chip.
+    const bool clicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
+                         ImGui::IsKeyPressed(ImGuiKey_GamepadFaceLeft, false);
     ImFont *font = ImGui::GetFont();
     const int n = (int)MAJOR_REGION_ANCHOR_COUNT < kMaxRegions ? (int)MAJOR_REGION_ANCHOR_COUNT
                                                                : kMaxRegions;
@@ -2336,10 +2342,26 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
 }
 
 
+// Where the minimap actually landed this frame (bounding square of the disc), for the OTHER corner-
+// anchored HUD surfaces to dodge — they each anchor themselves from config and knew nothing about each
+// other, so any offset pair in the same corner silently stacked the run HUD over the minimap (user
+// 2026-07-28). Cleared on every early return, so "not drawn this frame" reads as "no rect".
+bool s_minimap_rect_valid = false;
+float s_minimap_rect[4] = {0.f, 0.f, 0.f, 0.f};   // x0,y0,x1,y1
+
+bool minimap_screen_rect(float &x0, float &y0, float &x1, float &y1)
+{
+    if (!s_minimap_rect_valid) return false;
+    x0 = s_minimap_rect[0]; y0 = s_minimap_rect[1];
+    x1 = s_minimap_rect[2]; y1 = s_minimap_rect[3];
+    return true;
+}
+
 void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture, float screenW,
                   float screenH)
 {
     namespace cfg = goblin::config;
+    s_minimap_rect_valid = false;   // any early return below = no minimap on screen this frame
     if (!cfg::showMinimap || !goblin::overlay_api::icons_enabled())
         return;
     // Hide the minimap while a full map is open (it's a gameplay HUD): the native ER map OR our own
@@ -2384,6 +2406,9 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
                                               : (R + margin + cfg::minimapOffsetY);
     const ImVec2 ctr(ax, ay);
     const float cullR = R - 5.f;
+    s_minimap_rect[0] = ctr.x - R; s_minimap_rect[1] = ctr.y - R;
+    s_minimap_rect[2] = ctr.x + R; s_minimap_rect[3] = ctr.y + R;
+    s_minimap_rect_valid = true;    // published for the run HUD's anti-overlap nudge
 
     int bgA = (int)(cfg::minimapOpacity * 255.f);
     bgA = bgA < 0 ? 0 : (bgA > 255 ? 255 : bgA);

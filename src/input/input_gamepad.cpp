@@ -7,6 +7,8 @@
 #include <spdlog/spdlog.h>
 
 #include "goblin_crashdump.hpp"   // goblin::self_module_range() — XInputGetState hook caller check
+#include "goblin_inject.hpp"                 // goblin::world_map_open() — in-world chip input gate
+#include "goblin_overlay_render_loader.hpp"  // call_inworld_hovered() — "the reticle is on a chip"
 
 namespace goblin::input
 {
@@ -30,13 +32,24 @@ bool g_xinput_available = false;
 DWORD WINAPI hk_xinput_get_state(DWORD user_index, XINPUT_STATE *state)
 {
     const DWORD result = o_xinput_get_state(user_index, state);
-    if (result == ERROR_SUCCESS && menu_open() && state)
+    if (result == ERROR_SUCCESS && state)
     {
         const auto [self_base, self_end] = goblin::self_module_range();
         const uintptr_t ret = reinterpret_cast<uintptr_t>(_ReturnAddress());
         const bool caller_is_us = self_base && ret >= self_base && ret < self_end;
         if (!caller_is_us)
-            state->Gamepad = {};   // connected, real packet number, but nothing held
+        {
+            if (menu_open())
+                state->Gamepad = {};   // connected, real packet number, but nothing held
+            // F1 CLOSED, native map open, and our in-world reticle is sitting on a region chip: hide
+            // ONLY X from the game, so activating the chip can't also fire the map screen's own X
+            // action. Exactly the contract the mouse path already has (input_wndproc eats the L-press
+            // over a chip and nothing else) — pad input is polled, not message-based, so the mask has
+            // to happen here. ImGui's own backend polls from inside this module (caller_is_us) and
+            // still sees the real X, which is what toggles the chip.
+            else if (goblin::world_map_open() && goblin::overlay_render_loader::call_inworld_hovered())
+                state->Gamepad.wButtons &= ~XINPUT_GAMEPAD_X;
+        }
     }
     return result;
 }

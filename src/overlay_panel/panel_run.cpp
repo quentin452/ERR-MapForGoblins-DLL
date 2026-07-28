@@ -21,11 +21,13 @@
 #include "goblin_map_data.hpp"           // generated::Category
 #include "goblin_inject.hpp"             // boss_bar_display_name (tier 4 from an entity id)
 #include "worldmap/marker_layer.hpp"
+#include "worldmap/map_renderer.hpp"     // minimap_screen_rect — dodge the minimap instead of stacking
 #include "worldmap/loot_disk.hpp"        // emevd_boss_defeat_entities — the fight list
 
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <string>
 #include <unordered_map>
@@ -308,9 +310,30 @@ void draw_run_hud_window()
     const float x = goblin::config::runHudAnchorRight
                         ? io.DisplaySize.x - w - goblin::config::runHudOffsetX
                         : goblin::config::runHudOffsetX;
-    const float y = goblin::config::runHudAnchorBottom
-                        ? io.DisplaySize.y - h - goblin::config::runHudOffsetY
-                        : goblin::config::runHudOffsetY;
+    float y = goblin::config::runHudAnchorBottom
+                  ? io.DisplaySize.y - h - goblin::config::runHudOffsetY
+                  : goblin::config::runHudOffsetY;
+
+    // Anti-overlap with the minimap (user 2026-07-28: the line sat across the top of the minimap disc,
+    // hiding the compass N). Both surfaces anchor themselves from their own config corner+offsets and
+    // neither knew the other's rect, so a same-corner pair silently stacked — and since the minimap draws
+    // on the background list and this is a real window, the HUD always won. Slide VERTICALLY to whichever
+    // side of the minimap is nearer the position the player asked for, keeping it on screen. Horizontal
+    // placement is left alone: the offsets stay what the player set, this only resolves the collision.
+    float mx0, my0, mx1, my1;
+    if (goblin::worldmap::minimap_screen_rect(mx0, my0, mx1, my1) &&
+        x < mx1 && x + w > mx0 && y < my1 && y + h > my0)
+    {
+        constexpr float kGap = 6.0f;
+        const float above = my0 - h - kGap, below = my1 + kGap;
+        const bool aboveFits = above >= 0.0f, belowFits = below + h <= io.DisplaySize.y;
+        if (aboveFits && (!belowFits || std::fabs(above - y) <= std::fabs(below - y)))
+            y = above;
+        else if (belowFits)
+            y = below;
+        // Neither side fits (minimap taller than the screen minus the line) → leave it, overlapping
+        // beats pushing the HUD off screen.
+    }
 
     ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_Always);
     ImGui::SetNextWindowBgAlpha(goblin::config::runHudOpacity);

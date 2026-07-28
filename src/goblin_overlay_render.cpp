@@ -120,6 +120,17 @@ void goblin::overlay::request_f1_tab(int idx) { g_requested_tab = idx; }
         POINT pt{};
         BOOL ok = goblin::overlay_api::get_cursor_pos_real(&pt);
         if (ok && ctx.hwnd && ScreenToClient(ctx.hwnd, &pt)) { mx = (float)pt.x; my = (float)pt.y; }
+        // GAMEPAD: the native map has no free cursor on a pad — the selection reticle is FIXED at the
+        // screen centre and the player pans the map under it. So the effective pointer is the centre,
+        // not the parked OS cursor (which left the pad unable to even hover a region chip, user
+        // 2026-07-28). Same pointer drives the marker tooltip, which now follows the reticle like the
+        // engine's own does. Falls back to the OS cursor the moment mouse/kb input returns.
+        if (goblin::input::last_input_was_gamepad())
+        {
+            const ImGuiIO &pio = ImGui::GetIO();
+            mx = pio.DisplaySize.x * 0.5f;
+            my = pio.DisplaySize.y * 0.5f;
+        }
         // Hand the renderer the harvested grace sprite (once ready) so it draws graces itself.
         if (ensure_grace_srv())
         {

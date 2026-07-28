@@ -59,6 +59,12 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
 void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture, float screenW,
                   float screenH);
 
+// Screen rect (bounding square of the disc) the minimap occupied on the LAST draw_minimap call, so the
+// other corner-anchored HUD surfaces can dodge it instead of stacking on top (each one anchors itself
+// from config and would otherwise know nothing about the others). false = not on screen this frame
+// (hidden, map open, no player position) → nothing to dodge. Call after draw_minimap in the same frame.
+bool minimap_screen_rect(float &x0, float &y0, float &x1, float &y1);
+
 // Provide the harvested discovered-grace sprite so the overlay draws graces itself (RE e4b3f6a
 // §6): tex = the grace texture's ImGui id, uv0/uv1 = the grace sub-rect within it. When set, grace
 // markers draw with this sprite (discovered = full colour, undiscovered = grey) instead of being

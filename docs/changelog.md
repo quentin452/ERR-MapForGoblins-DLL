@@ -21,8 +21,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ## [Unreleased]
 
+### Changed
+
+- Native map, **gamepad**: the overlay now points at the **screen centre** — where Elden Ring's own map
+  reticle sits when you pan with a pad — instead of the parked mouse cursor. Region chips can be hovered
+  and toggled with **X**, and marker tooltips follow the reticle like the game's own do. That X press is
+  hidden from the game while you are on a chip, so it cannot also trigger the map screen's own action.
+
 ### Fixed
 
+- The **run HUD** line no longer sits on top of the minimap. Both were placed from their own corner
+  settings without knowing about each other; the HUD now slides above or below the minimap disc when
+  the two would overlap (whichever side is closer to where you put it).
 - Virtual map, **gamepad**: region name chips (Limgrave, Caelid, …) can now be toggled with the pad.
   The reticle highlighted them but nothing happened on press — toggling was mouse-click only. **X**
   over a chip now toggles that region (and no longer drops a pin under the name).

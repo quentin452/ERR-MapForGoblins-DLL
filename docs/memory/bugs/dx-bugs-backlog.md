@@ -276,3 +276,57 @@ F3. ✅ **FIXED + user-confirmed live 2026-07-01** (`90b3e2b`) — poll clavier
     checklist des `IO.ConfigFlags`/settings ImGui pertinents pour la coexistence manette+souris+
     clavier (liés aux items 2/3/6/12/F2 ci-dessus), chacun avec une note "pourquoi ça pourrait
     aider ici". Doc de référence, pas encore de flag testé en jeu — à cocher au fur et à mesure.
+
+---
+
+## Review-3 — session manette <user> 2026-07-28 (vmap markers + chips + HUD)
+
+Cinq symptômes rapportés d'un coup, tous ✅ **FIXÉS le 2026-07-28** (`master`, 2 commits). Ce qu'il
+faut retenir au-delà des fixes eux-mêmes :
+
+18. ✅ **Le pointeur pad n'est pas le même objet sur les deux cartes — et c'était la racine de
+    "sélectionnable mais pas interactable".** Sur la **vmap** le pointeur pad est la réticule stick-droit
+    et elle écrase `io.MousePos` → tout ce qui teste un rect en `io.MousePos` HOVER correctement, mais
+    tout ce qui teste `IsMouseClicked` reste MORT (aucun bouton pad ne synthétise un clic souris). D'où
+    le symptôme "le chip s'allume mais rien ne se passe". **Règle : un hit-test manuel dans un ImDrawList
+    doit toujours avoir sa branche d'activation pad explicite** — le hover pad est gratuit, l'activation
+    ne l'est jamais. Sur la **carte native** il n'y a AUCUNE réticule libre à la manette : ER fixe le
+    réticule au CENTRE DE L'ÉCRAN et fait défiler la carte dessous. Le pointeur effectif passé à
+    `render_markers` est donc le centre écran dès `last_input_was_gamepad()` (`goblin_overlay_render.cpp`),
+    pas le curseur OS resté garé — sinon le pad ne peut même pas survoler. (Le champ `+0xFC` "réticule"
+    de WorldMapArea ne sert à rien ici : il ne suit QUE la souris, cf. [[overlay-gamepad-cursor-bugs]].)
+19. ✅ **Le pendant pad de "le chip mange le clic".** `input_wndproc` bouffe déjà le `WM_LBUTTONDOWN`
+    quand `call_inworld_hovered()` — mais la manette est POLLÉE, pas messagée, donc rien n'était
+    interceptable là. Fait dans `hk_xinput_get_state` (`input/input_gamepad.cpp`) : quand F1 est fermé,
+    la carte native ouverte et le réticule sur un chip, on masque **uniquement `XINPUT_GAMEPAD_X`** pour
+    les appelants HORS de notre module — ImGui (appelant interne, `caller_is_us`) voit toujours le vrai X
+    et fait le toggle. Le hook n'avait qu'un mode "tout zéro pendant `menu_open()`" ; c'est maintenant un
+    masque par bouton, le point d'entrée existe pour tout futur conflit binding mod/jeu.
+20. ✅ **Ordre de dessin = ordre d'écriture, et il n'y a aucune notion de z-index.** Les pins custom
+    étaient dessinés AVANT les labels de région → un pin posé sur "Limgrave" disparaissait sous la
+    pastille. Corrigé en remontant le bloc labels. Ordre canonique du canvas vmap, du fond vers le
+    dessus : tuiles → relief → markers/clusters → search marks → **labels de région** → pins custom +
+    death marker → co-op → curseur joueur. Toute nouvelle couche doit se placer explicitement dedans.
+21. ✅ **Un compteur monotone n'est pas un nom.** `s_custom_seq++` ne redescendait jamais : après
+    suppressions, le pin suivant s'appelait "Marker 9" à côté de trois entrées. Remplacé par le plus petit
+    "Marker N" libre recalculé à l'ajout (24 pins max/groupe, le scan est gratuit). Même piège partout où
+    un libellé auto est dérivé d'un compteur plutôt que de l'état.
+22. ✅ **Focus nav vs canvas : X tirait des deux côtés.** `pad_place` ne testait que "réticule sur le
+    canvas", donc naviguer la sidebar Marker et presser X posait un pin derrière. Gate publique, sans
+    ImGui internals : `IsWindowFocused(ChildWindows) && !IsWindowFocused()` = "un enfant (donc une
+    sidebar) a le focus, pas la fenêtre elle-même", plus `IsPopupOpen(AnyPopup)` pour le clavier virtuel.
+    À réutiliser pour tout futur bouton pad "action de canvas".
+23. ✅ **Champ texte sans clavier virtuel = inaccessible au pad.** Tous les champs *filtre* appelaient
+    `draw_gamepad_keyboard_button` ; le champ *nom* des markers custom était le seul InputText non-filtre
+    et avait été oublié → renommer un pin était impossible à la manette. **Checklist : tout nouvel
+    InputText doit câbler l'OSK**, sinon il est mort pour la moitié des joueurs.
+24. ✅ **Deux surfaces HUD ancrées chacune dans son coin, aucune ne connaît l'autre.** La minimap
+    (`map_renderer.cpp`) et le HUD run (`panel_run.cpp`) calculent leur position depuis leur propre
+    `*AnchorRight/Bottom` + offsets ; n'importe quelle paire d'offsets dans le même coin les empile en
+    silence, et comme la minimap est sur le `BackgroundDrawList` alors que le HUD est une vraie fenêtre,
+    le HUD gagne toujours (la ligne "Deaths … Bosses" barrait le disque et cachait le N de la boussole).
+    Fix minimal choisi avec <user> : la minimap publie son rect (`worldmap::minimap_screen_rect`) et le
+    HUD run glisse VERTICALEMENT du côté le plus proche de la position demandée. **C'est un patch 1-vs-1,
+    pas un système** : à la 3ᵉ surface HUD ancrée (boussole, tracker de quête, coords…) il faudra le
+    vrai système de slots (coin + ordre, pile auto) plutôt que N patchs d'évitement croisés — le dire à
+    <user> à ce moment-là au lieu d'empiler (cf. plafond de complexité).
