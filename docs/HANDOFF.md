@@ -3,20 +3,34 @@
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
 
-## ⇒ NEXT SESSION — runtime randomizer: graph source ANSWERED, architecture DECIDED
+## ⇒ NEXT SESSION — runtime randomizer: solver SPECIFIED, four cheap measurements queued
 
-State: `docs/plans/runtime_randomizer_scope.md` is scoping-only, with both axes MEASURED (`63aed60`)
-and the architecture settled — **a MODULE of MapForGoblins**, off by default, own config section, write
-surface bounded by invariant 5 (params + `<save>.mfg`, never the `.sl2`). Nothing implemented, nothing
-deployed, no build touched. Resume in this order:
+State: `docs/plans/runtime_randomizer_scope.md` — both graph axes MEASURED (`63aed60`), architecture
+settled (**a MODULE of MapForGoblins**, off by default, own config section, write surface bounded by
+invariant 5), and as of 2026-07-28 the **solver is specified**: least-fixpoint model, assumed fill,
+an independent verifier, and the directional-error policy that makes a derived graph safe. Still
+nothing implemented, nothing deployed, no build touched. Resume in this order:
 
-1. **Spec the solver, GRAPH-FIRST.** Not for the fog-gate reuse (speculative), but because the
-   invariants ARE graph statements: invariant 2 (no transitive cycle) cannot even be *expressed*
-   item-first. Nodes = regions/slots, edges = "passable if holding S", solve parameterized by the save's
-   already-set flags (invariant 6). Input is in hand: ~19 item locks + ~175 boss-death edges.
-2. **Optional sharpening, not a blocker:** the flag probe attributes a gate by CO-OCCURRENCE inside an
-   event, so 2089 is a ceiling. Following the EMEVD condition-group wiring would give the true edge set.
-3. **Enemy randomization — measure before promising.** Out of v1, and unknown #2 in the doc decides
+1. **EMEVD condition-group evaluator — RE opened 2026-07-28**,
+   `docs/re/windows_emevd_condition_evaluator_re_prompt.md` (an agent ran it; read the findings doc if
+   present). This absorbs the old "optional sharpening" item: the flag probe attributes a gate by
+   CO-OCCURRENCE, so 2089 is a ceiling, and every wrong edge is a candidate softlock. **G1** = hook the
+   evaluator and passively log `(event, group, instruction, result)` during normal play ⇒ the wiring is
+   *observed* instead of inferred. NOT a hunt for a native solver — no engine has one.
+2. **Three cheap measurements, all specified in the plan's NEXT section:**
+   - grace state byte before/after burning the Erdtree ⇒ settles the **monotonicity** hypothesis
+     (the whole fixpoint model rests on it); no new probe, `[WARPPIN]` already logs it;
+   - the end-of-game instruction family across ALL maps ⇒ does the DLC add an ending; plus a base-vs-DLC
+     split of the 517/592 emevd counts;
+   - a **third probe** for narrative milestones (Melina/grace-side events) — both existing probes miss
+     the class, they filter on a traversal action.
+3. **Two tooling gaps blocking tier-2 validation:** an **ObjAct-state read** and an **asset-enable
+   read**. Everything else the in-game oracle needs already exists (`flag` r/w + `range` snapshots,
+   `give_item`, warp, `loot_at`, grace state byte). ⚠ no item-REMOVE verb ⇒ negative tests need a fresh
+   save per test point.
+4. **Model gaps to specify:** counted consumables (Stonesword/Imbued Sword keys) and k-of-n thresholds
+   (2 Great Runes) cannot be expressed as booleans — classes B5/B6 in the plan's taxonomy.
+5. **Enemy randomization — measure before promising.** Out of v1, and unknown #2 in the doc decides
    whether it is worth anything: `modelIndex` indexes the TILE's own MODEL section, so if a tile only
    declares 3 chr models the shuffle is worthless. Count the per-tile candidate set FIRST.
 

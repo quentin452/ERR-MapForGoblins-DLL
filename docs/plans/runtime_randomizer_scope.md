@@ -117,6 +117,9 @@ to pick which gates may be required, and extra requirements before the final bos
 
 ## INVARIANTS (the part that must not be got wrong)
 
+> These are the **what**. The **how** — the fixpoint model, assumed fill, the independent verifier and
+> the directional-error policy that actually deliver 1/2/6 — is the SOLVER section below (2026-07-28).
+
 1. **No key item behind itself.** The classic softlock: the item that opens a door placed behind that
    door. Requires a real reachability solve, not a shuffle with retries.
 2. **No softlock, transitively.** Not just self-reference — no *cycle*. A behind B, B behind C, C
@@ -268,6 +271,346 @@ here is blast radius — a tracker cannot break a save, a randomizer can.
 
 This was the gate on implementation, because it decides where the solver lives. **It is now open: the
 solver lives in MapForGoblins.** Next is its spec — graph-first (see the measured graph source above).
+
+---
+
+## SOLVER — how completability is GUARANTEED (design, 2026-07-28)
+
+The INVARIANTS above say *what* must not break. This says *how*. Nothing here is implemented; the
+algorithm choices are settled, the derivation gaps are named.
+
+### The model — least fixed point over a monotone state
+
+State = `(items held, flags set, nodes reached)`. Each edge carries a boolean formula over items and
+flags (the 19 ObjAct locks + the ~175 boss-death edges measured above). Reachability = the **least
+fixed point** of a monotone function, computed by Kleene iteration: take what is reachable, collect
+its items/flags, repeat to stability.
+
+**Invariant 2 (no transitive cycle) therefore needs no cycle detector.** A cycle `A←B←C←A` simply
+never enters the fixed point — the iteration converges without it and the goal is not met. Cycle
+detection bolted onto a shuffle is exactly what misses this; a fixpoint cannot be fooled by it.
+
+### Monotonicity — the load-bearing hypothesis, stated so it can be attacked
+
+The model assumes **reaching a node once grants access forever**. In ER that holds because of grace
+fast-travel — a luxury a Zelda/Metroid randomizer does not have (there, "can I get back" must be
+modelled). If this ever falls, the solver changes *nature*, not just a special case. So it is
+recorded as a hypothesis, with its evidence:
+
+- **Data point (quentin, 2026-07-28, not reproduced by us):** with a "reveal all graces" cheat,
+  Leyndell Royal Capital remained warpable *after* burning the Erdtree. ⇒ the pre-burn map is **not
+  destroyed**; Ashen Capital is an added map, not a destructive replacement.
+- **Confound:** that cheat forces the very bit a filter would clear. Two worlds remain open —
+  **(a)** the graces stay in the normal warp list post-burn, or **(b)** the game filters them and the
+  cheat bypassed exactly that filter.
+- **Cheap settle, no new probe:** we already read the game's own per-grace state byte
+  (`registered/discovered/visible`, `warpData+0x8 +0x1E`) at warp-pin build time —
+  `src/goblin_grace_suppression.cpp:52`, with its `[WARPPIN]` log. Burn, re-read, done. Static side:
+  `BONFIRE_WARP_PARAM_ST` carries `eventflagId`, `clearedEventFlagId`, `dispMask0/1`.
+- Worst case (b) costs little: pre-burn-only lots become junk-only. No content leaves the shuffle,
+  only placement depth.
+
+**⚠ Capability-dependence — do NOT let the mod into the logic.** MapForGoblins can warp anywhere
+(`goblin_warp.cpp`), which would paper over (b). Tempting and wrong: a graph that assumes "any lit
+grace is warpable *because the mod can*" becomes valid only while a toggle is on. Turning it off, or
+loading the save without the mod, softlocks retroactively — and unlike invariant 3 it is the *graph*
+moving under the permutation, invisibly. **Rule: the graph stays valid under VANILLA capabilities;
+the mod's warp is a RESCUE (below), never an edge.** A capability is safe only while it is not
+*assumed* by the proof.
+
+### The placement algorithm — assumed fill
+
+1. Split into a progression pool `P` and junk `J`.
+2. Remove one item `i` from `P` at random. **Assume the player holds all of the remaining `P`**,
+   compute the fixed point → the set `L` of reachable, still-empty locations.
+3. Place `i` at random in `L`. Recurse until `P` is empty; fill the rest with `J`, unconstrained.
+
+By induction, `i` always lands somewhere reachable *without* `i` and without anything placed deeper,
+so no circular dependency can form. **Zero retries, zero rejection sampling**, and items land deep.
+(Forward fill also guarantees completability but frontloads everything — a boring randomizer.)
+`L` empty at any step ⇒ **loud failure, re-seed**. Never a degraded placement.
+
+### The independent verifier — because the placer can be wrong
+
+A second module sharing **no code** with the fill runs a sphere search from the empty state and
+asserts: the goal flag is in the fixed point; (option `all-reachable`) every location is; and no `P`
+item sits on a lot whose flag is already set in the target save (invariant 6 — an *apply-time* check,
+not a roll-time one).
+
+Falls out for free: the **spoiler log** (the spheres *are* the playthrough, in
+`tools/audit_markers_vs_spoiler.py`'s format) and a **seed-quality metric** — sphere count, depth of
+the last progression item, size of sphere 0 — so degenerate seeds can be *rejected*, not just
+validated.
+
+### Directional error policy — the real risk is the graph, not the algorithm
+
+The algorithm is known-good. The risk is that the graph is derived by heuristic scan (this doc's own
+"co-occurrence, not proven causation"). Errors are **not symmetric**:
+
+| Derivation error | Effect | Verdict |
+|---|---|---|
+| Requirement too strong / lock invented | solver over-constrained | **safe** (worst case: infeasible roll → loud failure) |
+| Whole edge missed | region believed unreachable | **safe** (smaller pool) |
+| **Requirement missed on a known edge** | edge believed free | **SOFTLOCK** |
+| **Edge invented** | idem | **SOFTLOCK** |
+
+Hence three rules, to be applied literally:
+
+1. **Edge requirements: OVER-approximate.** The 2089-flag ceiling stays as measured; do not prune it
+   for elegance.
+2. **Progression pool: OVER-approximate.** All 242 noisy ERR key items go in `P`. A useless quest
+   item placed carefully costs nothing; a real lock classed as junk kills the save.
+3. **Progression-eligible LOCATIONS: UNDER-approximate.** The decisive lever: the graph does not have
+   to be right everywhere, only on the subset where a progression item may land. Everything else takes
+   junk and can be shuffled freely.
+
+**Corollary — default-deny.** The 42/32 "caller-supplied, no caller found" gates and the 12–16 % of
+traversal with no flag found are **unknowns, not free edges**. An unknown is treated as blocked (or
+its locations leave the eligible set). That is precisely where a softlock would hide.
+
+### Two exclusions, not one
+
+| Exclusion | Protects |
+|---|---|
+| cannot **RECEIVE** a progression item (junk-only) | the graph — nothing vital lands somewhere unproven |
+| cannot **DONATE** its item to the pool (vanilla-locked) | the chain — the item stays where the game expects it |
+
+Conflating these was a drafting error worth naming: quest-chain items and endings are preserved by
+the **second**, not the first. Junk-only on a quest slot would still rip the quest item out of it.
+
+### Runtime safety net
+
+- The map already resolves each lot live, so a player is never *lost*, at worst spoiled.
+- **Rescue, not re-roll:** if the verifier finds at load time that the current save can no longer
+  reach the goal, grant the missing item (or warp) via the sidecar. **Grant ≠ remap** — invariant 3
+  holds, the permutation never moves.
+- **Refuse rather than corrupt** (invariant 4) — warn before the player invests time.
+
+---
+
+## SOFTLOCK TAXONOMY — ELDEN RING (design input, 2026-07-28)
+
+> **⚠ The instances named below are from general ER knowledge, NOT measured on this box.** This is a
+> **catalogue of CLASSES**; every instance is a hypothesis to be derived per install (doctrine: no
+> embedded table). The classes are the deliverable; the examples only make them concrete.
+
+**A — handled natively by the boolean fixpoint**
+
+1. Key behind its own door, and any transitive cycle.
+2. Boss chains (a defeat flag opening a region).
+3. Physical item-gated doors — the 19 `ObjActParam.spQualified*` locks.
+4. **Traversal items — Torrent above all.** Many routes require the horse. ⚠ *Invisible to both
+   probes*: not an EMEVD test, not an ObjAct requirement — it is geometry.
+
+**B — needs machinery beyond booleans**
+
+5. **Counted consumables.** Stonesword Keys (finite, consumed per imp seal), Imbued Sword Keys. A
+   boolean solver concludes "has one key ⇒ can open every seal". False. Needs **quantitative
+   requirements** in the fixed point, and it is recursive since the keys are themselves shuffled.
+6. **k-of-n thresholds.** Leyndell's "two Great Runes" is `|runes| ≥ 2` over a set that is itself
+   randomized — neither a specific item nor a conjunction.
+7. **Items consumed by handover** (given to an NPC and gone). Breaks monotonicity ⇒ **excluded from
+   the progression pool**, no attempt to model.
+
+**C — outside the item/flag graph entirely ⇒ exclusion, not modelling**
+
+8. **One-way / world mutation** past a point of no return (the Erdtree burn) — see the monotonicity
+   hypothesis above; maps look survivable, NPCs do not.
+9. **NPC quests / ESD** — the repo's acknowledged wall. Failable, advanceable-past, killable.
+10. **Online-gated progression.** One of the two chains into Mohgwyn (hence the DLC) runs through
+    PvP invasions. On an offline or modded install that edge may not exist ⇒ **unknown = blocked**.
+11. **Lot whose flag is already set** in the target save (invariant 6) — an apply-time problem.
+
+**D — not a logic softlock**
+
+12. **Power softlock:** logically completable, practically unbeatable (no upgrade materials, no
+    usable weapon). No solver catches it; it is balance. Handled by junk-fill weighting.
+13. **Menu gates, not room gates:** whetblades and friends gate a *menu*. This is most of the EMEVD
+    noise (3098 → 242 → 19); over-approximating puts them in `P`, which is free and safe.
+
+**Blind spots of the two existing probes**
+
+| Class | Why invisible | Policy |
+|---|---|---|
+| Geometric traversal locks (Torrent, spiritsprings) | neither EMEVD nor ObjAct — collision | out of the eligible set, or an OPTIONAL user-supplied overlay |
+| Counted consumables | possession is tested, quantity is not | quantitative requirements in the fixpoint |
+| k-of-n thresholds | appears as N separate tests | encode the threshold |
+| NPC quest slots | ESD, not parsed | vanilla-locked |
+| Post-point-of-no-return mutation | the scan is atemporal | junk-only on the pre-mutation side |
+
+---
+
+## GOAL DEFINITION — multiple endings, and the DLC (2026-07-28)
+
+**Multiple endings do not multiply the completability problem.** All ER endings share the same final
+node (Radagon + Elden Beast). What differs is a **post-condition at the moment of choice**, not a
+path. So the reachability target is **single**, and endings are optional extra requirements to
+satisfy *before* it — the same shape as the fog-gate mod's "extra requirements before the final boss".
+
+**Derivable, by the probe already written.** The ending choice is an **EMEVD decision tree in the
+final map**: `IF Player Has Item (Mending Rune…)` / event-flag tests selecting a cutscene and the
+end-of-game action — literally the instruction class `_probe_progression_gates.py` already counts.
+Locate the end-of-game family **by name** in the EMEDF, read the branch conditions ⇒ the set of
+endings *and* each one's prerequisite formula, derived. A mod that adds or changes an ending is
+covered automatically; a hardcoded "6 endings" is not.
+
+- **⚠ Here the condition-group wiring must actually be followed.** Co-occurrence is an acceptable
+  over-approximation everywhere else; for endings we need *which branch*. Bounded to a handful of
+  events, so affordable locally even though the doc defers the refinement globally.
+- **Bonus — the goal flag itself is derived.** The target of the fixed point = the flag the ending
+  tree tests as "the final boss is dead". No hand-designation of the final boss anywhere.
+- **The endings survive for free** via the *vanilla-locked* exclusion above: quest-chain items stay
+  in place ⇒ Ranni / Fia / Goldmask chains stay intact ⇒ every ending stays reachable, without
+  modelling a line of ESD. Cost: a few dozen items out of the shuffle.
+- Goal modes: `beatable` (default, single target, no extra cost) · `ending:<X>` (adds the derived
+  branch formula) · `all-endings` (the conjunction, near-free given the vanilla lock).
+
+### The DLC
+
+**Expectation: SotE adds no new game ending** — its own final boss and closing cutscene, but the
+end-of-game remains the base game's. **⚠ unverified.** Settle it with the same scan: look for the
+end-of-game instruction family across *all* maps including DLC. This matters **more for mods than for
+vanilla** — nothing stops an overhaul from adding an ending. While there: the 517/592 emevd counts
+above do not split base vs DLC; a split by map-id prefix would size the DLC subtree.
+
+The DLC is an **optional subtree** hanging off `Radahn ∧ Mohg ∧ cocoon`, with no required return into
+base-game progression. Hence three roll modes:
+
+| Mode | Effect |
+|---|---|
+| `dlc = excluded` (default) | DLC lots receive no base-game progression. Zero risk |
+| `dlc = in-logic` | DLC lots eligible ⇒ the entry edge becomes a **hard requirement** of the run |
+| `dlc = internal` | DLC randomized in a closed loop (its items stay there) |
+
+**A base-game item placed in the DLC was never a logic softlock** — it is a normal edge and assumed
+fill respects it. The real damage is **pacing**: an early-needed item behind end-game-scaled content
+makes a world that is completable and unplayable. Fix = a **sphere-depth constraint at fill** ("an
+item of sphere ≤ N may not land in a zone of sphere ≥ M"), not a solver change. Two problems, two
+mechanisms.
+
+**DLC-specific trap — a parallel power system.** Scadutree Fragments / Revered Spirit Ashes are
+essential inside the DLC and useless outside; the two scaling systems are not interchangeable. Scatter
+them into the base game and the DLC becomes brutal; the reverse starves the base game. ⇒ strong
+candidates for **vanilla-locked** (or DLC-internal-only), which removes a whole family of unplayable
+seeds at almost no cost to the shuffle.
+
+---
+
+## A THIRD PROBE — narrative milestones (2026-07-28)
+
+Melina appearing at graces, the Guidance of Grace ray, the Roundtable invitation, Varré showing up:
+all the same underlying thing — **the game's own set of story-milestone flags**, a distinguished
+subset of the flag space representing macro-progression. It is the closest thing to a native
+progression *order* that exists (there is no native solver — see the RE prompt below).
+
+**Both existing probes miss this class by construction.** `_probe_flag_gates.py` keeps an event only
+if it contains a *traversal action* (`Set ObjAct State`, `Change Asset Enable State`, warp family). A
+Melina event contains none — it fires dialogue and a cutscene — so it is filtered at the door.
+
+Derivation rule for the third probe, same doctrine (by NAME in the EMEDF, never `bank:id`):
+
+> an event fired independently of a map (grace-side / `common.emevd`) that tests or sets flags without
+> acting on geometry = a **milestone** candidate; the flags it tests are the milestone set.
+
+Three uses, in decreasing value:
+
+1. **Cross-check on the spheres — the best one.** An ordering from a **different data source** than
+   the one that produced the graph. Solver says sphere 2, milestone chain says late game ⇒ signal of a
+   graph error, obtained without playing. Exactly the redundancy that lets us trust the graph without
+   proving it line by line.
+2. **Native source for the pacing constraint** the DLC section needs — instead of inventing our own
+   difficulty tiers (which would be curated data, forbidden), take the game's. A mod that re-cuts its
+   progression is followed automatically.
+3. **Live error detector** (validation level 2.5 below): a player reaching milestone N that the solver
+   believed blocked is a free bug report.
+
+**Caveat + direction rule:** the conditions mix real milestones with **counters** ("3 sites of grace
+visited" is onboarding, not a story beat), so the derived set will be noisy exactly like the
+3098 → 242 → 19 collapse. Injecting a milestone as an extra edge requirement is technically in the
+*safe* direction (over-approximating requirements) but over-constrains the fill and fails rolls for
+nothing. ⇒ **use as an oracle and a pacing metric, not as a logic input** — with an optional
+`logic = conservative` mode for anyone who wants belt and braces.
+
+---
+
+## VALIDATION — "simulating a run", four tiers (2026-07-28)
+
+| Tier | When | Cost | What it proves |
+|---|---|---|---|
+| **1 — sphere search** | every roll, systematic | ms | the placement respects the graph |
+| **2 — in-game oracle** | once per mod / after a derivation change | hours, serialized | the graph matches the game |
+| **2.5 — passive corpus** | continuously, free | ~0 | regression against real playthroughs |
+| **3 — a bot that plays** | never | — | nothing useful |
+
+Tier 1 is the standard technique of every serious randomizer (playthrough generation / spoiler
+spheres) and is already specified above. Tier 3 is a non-goal: we never need to prove a boss is
+*beatable*, only that **the world opens** — player skill is the class-D problem, not a logic one.
+
+### Tier 2 — what `set_flag` / `read_flag` must actually touch
+
+**The trap: reading back a flag you just set is a tautology.** The oracle must come from a
+**different channel** than the one written. Write into the *state* space, read from the *consequence*
+space.
+
+**Write side — three channels, not one**
+
+| Channel | Verb | Note |
+|---|---|---|
+| Flags | `flag set <id> <0\|1>` | clearing works (`goblin_debug_rpc.cpp:1172`) |
+| **Inventory** | `give_item`, `goods_count`, `inv_probe` | ⚠ **no remove verb** |
+| Position / loaded map | `warp`, `warp_xyz`, `warp_local` | |
+
+**⚠ The item axis is not flags.** `IF Player Has Item` and `ObjActParam.spQualifiedId` test the
+**inventory**. Half the graph therefore simulates with `give_item`, not `flag set`.
+
+**Read side — the oracle, most direct first**
+
+| Observable | Answers | Available |
+|---|---|---|
+| **Grace state byte** (`registered/discovered/visible`) | "is this node a warp target" — *isomorphic* to what the fixpoint computes | ✅ `goblin_grace_suppression.cpp:52` |
+| Lot present + collected flag | "is this slot live" (invariant 6) | ✅ `loot_at`, `refresh_markers`, marker layer |
+| **ObjAct state** (item-gated door unlocked?) | the item axis, directly | ❌ no verb — **gap** |
+| **Asset enable state** | the flag axis, directly | ⚠ `objects` / `assets_probe` / `move_read` exist — unverified |
+| Position after an attempted traversal (`coords` + input) | universal; **the only oracle for the geometric class** | ✅ mechanically, but slow and fragile |
+
+**`flag range` is the sleeper asset.** It snapshots up to 20000 flags at once ⇒ *snapshot → perform
+the action → snapshot → diff* yields, empirically, **which flags an action actually sets**. That is a
+direct attack on this doc's own "co-occurrence, not causation" limitation: the static scan proposes
+candidates, the diff decides. Same trick in reverse for edges (set a candidate flag, re-snapshot the
+grace/asset state; nothing moves ⇒ not the lock).
+
+**Do NOT read `WorldMapPointParam.clearedEventFlagId`** — already measured as a decoy here (Godrick
+510010 vs the EMEVD's 10000800; classifying on it found 21 gates instead of 175).
+
+**Unit of test = ONE edge hypothesis with a MINIMAL state**, never "simulate sphere N". A state built
+by mass flag-writing is reachable by no real run (cutscenes fired, NPCs teleported, incoherent world
+mutation) and the oracle would then rule on a state that does not exist. Test = `edge E requires X` ⇒
+point A: minimal state **with** X (must read open); point B: minimal state **without** X (must read
+closed). B carries the value and B is what the missing item-removal verb blocks ⇒ **restart from a
+fresh save** per test point rather than mutating downward. Slow, but sound — and it is a game gate,
+so serialized either way.
+
+**Tooling gap this exposes:** an **ObjAct-state read** and an **asset-enable read**. Everything else
+(flag r/w, inventory write, warp, lots, graces, flag snapshots) already exists.
+
+---
+
+## NEXT — open items (2026-07-28)
+
+- **RE opened:** `docs/re/windows_emevd_condition_evaluator_re_prompt.md`. Target = the EMEVD
+  condition-group evaluator, so we stop reimplementing the engine's condition semantics. **G1** (hook
+  + passively log `(event, group, instruction, result)` during normal play) would retire the
+  co-occurrence limitation by observation. Explicitly **not** a hunt for a native solver: no engine
+  has one — evaluation is local and reactive, never planning.
+- **Measure:** the grace state byte before/after burning the Erdtree ⇒ settles monotonicity (a)/(b).
+- **Measure:** the end-of-game instruction family across all maps ⇒ does the DLC add an ending; split
+  the emevd counts base vs DLC.
+- **Write:** the third probe (narrative milestones).
+- **Specify:** counted-resource and k-of-n support in the fixed point (classes B5/B6).
+- **Find:** an ObjAct-state read and an asset-enable read (tier-2 oracle gap).
+- **Config:** everything above that changes a roll — goal mode, dlc mode, logic mode, sphere-depth
+  constraint, assumed capabilities — must be in the exported configuration by VALUE, per the
+  `--preset Custom` lesson at the top of this doc.
 
 ---
 

@@ -112,6 +112,14 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
 5. **Custom mob PLACEMENT** — NpcParam is param-driveable, but placing a custom enemy is MSB write (#1).
 
 ### Smaller tactical gaps (see HANDOFF)
+- **EMEVD condition-group evaluator (native logic oracle) — OPEN, `windows_emevd_condition_evaluator_re_prompt.md`.**
+  Opened 2026-07-28 for the runtime randomizer (`docs/plans/runtime_randomizer_scope.md`). Our progression graph
+  is derived by STATIC EMEVD scan, which reimplements the engine's condition semantics and stops at
+  co-occurrence, not causation — and every wrong edge is a candidate softlock. Target = the VM's instruction
+  dispatcher + the per-event condition-group state, so the wiring is READ rather than inferred. Anchor already
+  owned: `IS_EVENT_FLAG` AOB (`re_signatures.hpp:25`) → xref/`mem_fwa` its callers. Win condition (G1) = hook +
+  passively log `(event, group, instruction, result)` during normal play. NOT a hunt for a native "solver" —
+  no engine has one. Item axis (`IF Player Has Item`) is the same dispatcher.
 - **Loading-screen / world-load state (stuck-load watchdog) — SOLVED (static, 2026-07-04).** Load-in-progress
   flag + phase = **`CSFD4LocationStep+0x48`** (the area-transition step index; `-1`=idle, `>=0`=loading &
   advancing; getter vtable[5] `FUN_140b413c0`, idle test vtable[4] `==-1`; vtable er+0x2b6b750). Zero-RE
