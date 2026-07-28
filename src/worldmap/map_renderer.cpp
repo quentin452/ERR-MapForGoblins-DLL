@@ -803,6 +803,12 @@ static void draw_marker_impl(ImDrawList *fg, const Marker &m, ImVec2 p, const Ic
         fg->AddText(ImVec2(p.x - ts.x * 0.5f, p.y - ts.y * 0.5f), txt, q);
         if (cleared)
             draw_check(fg, p, half);
+        // Altitude badge on the "?" too (user 2026-07-28: it silently vanished the moment spoiler-free
+        // went on, because this branch returns before the badge every other path draws). Height vs the
+        // player is not an identity — it says the thing is above or below you, never WHAT it is — so it
+        // survives anonymization by default; anonymous_loot_altitude=false restores a strict blackout.
+        if (*goblin::overlay_api::cfg_anonymousLootAltitude_ptr())
+            draw_altitude_badge(fg, p, half, m);
         return;
     }
     const bool red = !done && redify_boss(m);

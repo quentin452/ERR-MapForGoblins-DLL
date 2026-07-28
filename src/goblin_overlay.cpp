@@ -2007,6 +2007,24 @@ namespace
                 constexpr ImGuiID kMfgPadOwner = 0x4D464721;  // 'MFG!'
                 ImGui::SetKeyOwner(ImGuiKey_GamepadFaceUp, kMfgPadOwner);
                 ImGui::SetKeyOwner(ImGuiKey_GamepadFaceLeft, kMfgPadOwner);
+                // …and kill the WINDOWING mode X also starts. Key ownership does NOT cover it:
+                // NavUpdateWindowing reads `IsKeyPressed(ImGuiKey_NavGamepadMenu, ImGuiInputFlags_None)`,
+                // whose owner_id defaults to ImGuiKeyOwner_Any = "ignore ownership" (imgui.cpp 1.90.9).
+                // So HOLDING X on the vmap armed ImGui's window-switcher: dimmed backdrop + highlighted
+                // title bar over the map (user 2026-07-28), and a TAP toggled the nav menu layer.
+                // NavUpdateWindowing already ran inside NewFrame, so clearing the target here disarms it
+                // the same frame it arms: the highlight alpha (grown only while the target lives) never
+                // leaves 0, TargetAnim fades out to null, and neither focus-change nor layer-toggle can
+                // fire on release. Re-arming needs a fresh press-edge, which a held X never produces.
+                // GAMEPAD ONLY — the keyboard CTRL+TAB switcher is untouched.
+                if (ImGuiContext *gctx = ImGui::GetCurrentContext())
+                    if (gctx->NavWindowingTarget && gctx->NavInputSource == ImGuiInputSource_Gamepad)
+                    {
+                        gctx->NavWindowingTarget = nullptr;
+                        gctx->NavWindowingTargetAnim = nullptr;
+                        gctx->NavWindowingHighlightAlpha = 0.0f;
+                        gctx->NavWindowingToggleLayer = false;
+                    }
             }
             if (g_show)
                 goblin::overlay_render_loader::call_draw_panel(frame_ctx);

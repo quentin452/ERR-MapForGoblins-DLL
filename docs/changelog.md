@@ -21,6 +21,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ## [Unreleased]
 
+### Added
+
+- Spoiler-free loot: **Keep the altitude badge on "?" markers** (on by default). Height relative to you
+  says nothing about *what* a marker is, so anonymized markers keep their up/down arrow instead of
+  losing it with everything else. Turn it off for a strict blackout.
+
 ### Changed
 
 - Native map, **gamepad**: the overlay now points at the **screen centre** — where Elden Ring's own map
@@ -37,6 +43,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
   The reticle highlighted them but nothing happened on press — toggling was mouse-click only. **X**
   over a chip now toggles that region (and no longer drops a pin under the name).
 - Virtual map: player-placed **pins draw over the region names** instead of under them.
+- **Gamepad**: holding **X** no longer opens ImGui's window switcher over the map (a dimmed backdrop
+  and a highlighted title bar appeared on top of the virtual map).
 - Virtual map, **gamepad**: **X** no longer drops a pin on the map while you are navigating a sidebar
   (the custom-marker list, a filter, the on-screen keyboard) — it belongs to the focused widget there.
 - Virtual map: a new pin reuses the **lowest free "Marker N"** name. The counter only ever went up, so

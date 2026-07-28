@@ -170,6 +170,15 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
                 ImGui::SetTooltip("%s", tr("Full blackout: EVERY marker except graces shows \"?\"\n"
                                            "(bosses, pieces, kindling, POI/landmarks). Positions only.\n"
                                            "Bosses keep a bigger red \"?\" so a threat still reads."));
+            // Altitude badge on anonymized markers: height vs you is not an identity, so it stays by
+            // default — this is the opt-out for a strict blackout (user 2026-07-28).
+            ImGui::Checkbox(tr("Keep the altitude badge on \"?\" markers"),
+                            goblin::overlay_api::cfg_anonymousLootAltitude_ptr());
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
+                ImGui::SetTooltip("%s", tr("Anonymized markers keep the height arrow (above/below you).\n"
+                                           "It says nothing about WHAT the marker is, so it is on by\n"
+                                           "default; turn it off for a strict blackout. Needs the\n"
+                                           "altitude cue itself to be on."));
             ImGui::Unindent();
         }
     }

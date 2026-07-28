@@ -111,6 +111,10 @@ namespace goblin
         extern GOBLIN_RENDER_API bool anonymousLootAggressive;  // spoiler-free LEVEL: false = light
                                     // (randomized loot only); true = aggressive "blackout" (every
                                     // marker except graces → "?", for a blind randomizer run).
+        extern GOBLIN_RENDER_API bool anonymousLootAltitude;  // keep the altitude badge on anonymized
+                                    // "?" markers: height vs the player says nothing about WHAT the
+                                    // marker is, so it is on by default; off = strict blackout.
+                                    // Still gated by altitudeCue like every other badge.
 
         // ── Loot source (experimental) ──────────────────────────────────
         // When true, derive the TREASURE loot slice from the ACTIVE mod's REAL

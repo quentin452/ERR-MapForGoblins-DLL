@@ -330,3 +330,22 @@ faut retenir au-delà des fixes eux-mêmes :
     pas un système** : à la 3ᵉ surface HUD ancrée (boussole, tracker de quête, coords…) il faudra le
     vrai système de slots (coin + ordre, pile auto) plutôt que N patchs d'évitement croisés — le dire à
     <user> à ce moment-là au lieu d'empiler (cf. plafond de complexité).
+
+25. ✅ **FIXÉ 2026-07-28 — `SetKeyOwner` NE couvre PAS le mode "windowing" d'ImGui.** Symptôme : X
+    MAINTENU sur la vmap affichait un fond assombri + la barre de titre surlignée par-dessus la carte
+    (screenshot <user>). `ImGuiKey_NavGamepadMenu == ImGuiKey_GamepadFaceLeft`, et on possédait déjà la
+    touche — mais `NavUpdateWindowing` la lit via `IsKeyPressed(key, ImGuiInputFlags_None)`, dont le
+    `owner_id` vaut par défaut **`ImGuiKeyOwner_Any` = "ignore l'ownership"** (imgui.cpp 1.90.9,
+    `NavUpdateWindowing`). Donc **posséder une touche ne suffit pas** : il faut vérifier CHAQUE
+    consommateur ImGui de cette touche. Fix : après `NewFrame` (où `NavUpdateWindowing` a déjà tourné),
+    on remet `NavWindowingTarget/TargetAnim/HighlightAlpha/ToggleLayer` à zéro **si la source est
+    Gamepad** — désarme dans la frame même où ça s'arme (l'alpha ne quitte jamais 0, ni focus-change ni
+    toggle-layer au relâchement), et un X maintenu ne peut pas ré-armer (il faut un front de pression).
+    CTRL+TAB clavier intact. Même piège pour toute autre touche pad qu'on réquisitionnerait.
+26. ✅ **FIXÉ 2026-07-28 — le mode spoiler-free mangeait le badge d'altitude par accident.** La branche
+    anonymisée de `draw_marker_impl` fait `return` AVANT le `draw_altitude_badge` que tous les autres
+    chemins appellent → activer `anonymous_loot` supprimait aussi la flèche de hauteur. Or la hauteur
+    relative au joueur **n'est pas une identité** (elle dit au-dessus/en-dessous, jamais QUOI). Nouveau
+    réglage `anonymous_loot_altitude`, **défaut `true`** (le badge survit à l'anonymisation, toujours
+    sous le gate `altitude_cue`), `false` = blackout strict. Leçon générale : un `return` anticipé dans
+    un chemin de rendu "dégradé" emporte silencieusement TOUT ce qui est en aval — lister ce qu'on perd.
