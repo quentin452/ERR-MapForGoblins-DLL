@@ -52,11 +52,17 @@ DWORD WINAPI hk_xinput_get_state(DWORD user_index, XINPUT_STATE *state)
             { state->Gamepad = {}; masked = true; }   // connected, real packet number, nothing held
             // The fullscreen vmap STANDS IN for the native map, so the game must not act on the pad
             // either — B closed our map AND rolled/cancelled in ER underneath, X placed a pin AND fired
-            // its own action (user 2026-07-28: "double input"). Everything is masked EXCEPT the map
-            // button itself (BACK/START): that press is what the WorldMapDialog create-hook toggles the
-            // redirect on, i.e. the way out. Buttons only — sticks stay live so the game keeps stepping.
+            // its own action (user 2026-07-28: "double input"). Everything is masked EXCEPT **BACK**,
+            // the map button: that press is what the WorldMapDialog create-hook toggles the redirect
+            // on, i.e. the only way out, so masking it would trap the player.
+            // START is NOT exempt (it was, briefly): it is ER's MENU button, and letting it through
+            // meant you could open the Equipment/Inventory menu on top of our stand-in — the exact
+            // state where the map key can no longer reach us, because ER then routes it to the top of
+            // ITS own menu stack. Blocking the press is better than the menu_covers_map() auto-close
+            // that catches it after the fact; that stays as the safety net for menus opened by other
+            // routes (Escape, a prompt). Buttons only — sticks stay live so the game keeps stepping.
             else if (vmap_covers_map())
-            { state->Gamepad.wButtons &= (XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START); masked = true; }
+            { state->Gamepad.wButtons &= XINPUT_GAMEPAD_BACK; masked = true; }
             // F1 CLOSED, native map open, and our in-world reticle is sitting on a region chip: hide
             // ONLY X from the game, so activating the chip can't also fire the map screen's own X
             // action. Exactly the contract the mouse path already has (input_wndproc eats the L-press
