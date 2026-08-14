@@ -51,6 +51,37 @@ there, NOT via tools/deploy.py). Then:
   disk dvdbnd fallback covers vanilla only (that's fine — mods that pack everything ship loose
   overlays the loader redirects, which is exactly what the capture sees).
 
+**GA log analysis 2026-08-14 (live-proven on the Golden Age install):**
+- **GA overrides only 226/1347 tiles** (`GA\map\MapStudio`: m60×82, m61×69, m32×24, m46×12…).
+  The boot catalog reads the remaining ~1100 tiles from the VANILLA install
+  (`E:\SteamLibrary`) — which is CORRECT for those tiles (GA doesn't touch them). GA's own
+  tiles open via the mod redirect ONLY when streamed (2 files captured in a 3-min session) →
+  GA tile markers stay vanilla-positioned until the player visits the tile (incremental, same
+  as the old resident-MSB design). 4 tiles never open at boot (m10_00/01, m11_00/05 — big
+  legacy dungeon tiles, avg 285 KB vs 20 KB; that's the 2997-vs-3268 treasure gap, ~271 items).
+- **★ "only Limgrave markers on GA" = NOT a bug — the fragment gate + ini drift.** ERR's ini
+  has `require_map_fragments = false`; GA's (generated default) has `true`. With a fresh GA
+  save only the Limgrave flags (62010/11/12) are set → everything outside Limgrave + Weeping
+  hides. The vmap only started applying this gate in commit 118d8e0 → the collapse is
+  invisible on ERR (gate off) and obvious on GA. User fix: `require_map_fragments = false` in
+  the GA ini (or the F1 setting; now live — see the rebuild-key fix below).
+- **★ 0 Map-Fragment markers on GA = CORRECT.** GA's EquipParamGoods (2695 rows) has ZERO
+  rows with sortGroupId 190/191 — GA removed the fragment goods entirely (ERR: 25 rows →
+  23 markers). Nothing to mark, by construction. The gate consequently can NEVER unlock on GA
+  — a candidate mod-agnosticism fix: auto-disable the fragment gate when the active install's
+  EquipParamGoods has no map goods (unobtainable fragments = no gate), instead of an ini edit.
+- **★ Wrong-path reads on GA (systemic, next fix target):** every reader that resolves via the
+  ancestor-walk/game_dir reads VANILLA files on GA (the walk misses `<root>/GA/`):
+  (a) **EMEVD** — quest-NPC flags, world-feature flags, boss bars, EMEVD drops all read
+  `E:\SteamLibrary\...\event` while GA ships its own `GA\event\` (the game opens GA's — the
+  capture proves it for maps; same must hold for EMEVD); (b) **non-_00 LOD scans** (LOD
+  treasure/feature/award: 366 tiles) read the vanilla tile dir; (c) **msg/ + menu/** reads
+  (item names, icon sheets, sblytbnd, tpf) resolve vanilla despite GA shipping `GA\msg`,
+  `GA\menu` (the tpf even FAILS to decompress on vanilla). SYSTEMIC FIX PROPOSED: widen the
+  capture to ALL successful opens (record every path), key a rel-path → exact-path lookup, and
+  have `read_game_file_decompressed`/`resolve_root_file` consult the capture BEFORE the walk —
+  every game-file read then uses the game's own file, loader-agnostic.
+
 **Earlier session findings worth keeping (2026-08-14):** the `[RESIDENTMSB] 0/3 named` dump
 revealed the vtable-instance walk was matching the exe's RTTI tables (q0 == vtable value, not an
 object header) — the `+0x18/+0xC0` offsets from the RE were never valid on this build. The magic

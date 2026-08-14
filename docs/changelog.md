@@ -23,6 +23,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Fixed
 
+- **Virtual map now refreshes instantly when the map-fragment or Ashen/Royal-Capital setting
+  is toggled in the F1 settings.** The vmap's marker index cached its membership at build time,
+  keyed on group/category-visibility/regions — neither `require_map_fragments` nor the
+  story-capital mode was in that key, so toggling either left the vmap showing the OLD gated
+  set until the map was manually re-opened (the minimap and native map already read the gates
+  live per frame). Both settings are now folded into the rebuild key, so the cached set
+  follows the toggle immediately (same trick as the region toggles).
 - **Undiscovered graces no longer draw with the discovered icon.** They were supposed to swap to the
   gold-effigy disk glyph (`MENU_MAP_Player_02`) from the active install's map-cursor sheet, but when
   that glyph could not resolve (Golden Age 3.6.5: `01_common.tpf` unreadable → sheet never loaded),

@@ -113,6 +113,8 @@ namespace
     uint32_t s_qt_vis_gen = 0xffffffffu;  // visibility_generation() the index was built for → rebuild on toggle
     uint32_t s_qt_region_mask = 0xffffffffu;  // region-enabled bitmask the index was built for → rebuild on a
                                               // region-name toggle (region_set_enabled doesn't bump vis_gen)
+    uint32_t s_qt_gate_key = 0xffffffffu; // require_map_fragments + story-capital mode the index was built for →
+                                          // rebuild when either is toggled in the F1 settings (neither bumps vis_gen)
     // Live-projected marker COPIES the vmap actually clusters/draws (underground/DLC markers are re-projected
     // through the engine converter → their baked worldX/worldZ is wrong; see the QT build). The QT + graces
     // point into this, so it must outlive them (static, rebuilt with the tree).
@@ -2114,6 +2116,12 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             return sec < 0 || goblin::overlay_api::section_visible(sec);
         };
         const uint32_t vis_gen = goblin::overlay_api::visibility_generation();
+        // The F1 settings toggles for require_map_fragments / story-capital mode change the gate WITHOUT
+        // bumping vis_gen (only the category/section toggles do) — fold a fingerprint of both into the
+        // rebuild key so the cached membership follows instantly, same as the region toggles below.
+        // (The vmap sidebar's own story-capital combo additionally forces s_qt_group = -999; harmless dup.)
+        uint32_t gate_key = (*goblin::overlay_api::cfg_requireMapFragments_ptr() ? 1u : 0u) |
+                            ((uint32_t)(*goblin::overlay_api::cfg_storyCapitalMode_ptr()) << 1);
         // Region-name toggles don't bump vis_gen (region_set_enabled only persists the flag), so fold a
         // fingerprint of the enabled regions into the rebuild key → a region toggle re-includes/-excludes
         // its markers in BOTH the piles (count/centroid) and singles, not just the draw-time singles gate.
@@ -2123,8 +2131,10 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         // A UG/DLC group whose live projection was incomplete (converter still warming up) forces a bounded
         // rebuild retry — so the correct positions land once the WorldMapViewModel is resident.
         const bool proj_retry = s_qt_proj_incomplete && s_qt_proj_retries < 60;
-        if (s_qt_group != s_group || s_qt_vis_gen != vis_gen || s_qt_region_mask != region_mask || proj_retry)
+        if (s_qt_group != s_group || s_qt_vis_gen != vis_gen || s_qt_region_mask != region_mask ||
+            s_qt_gate_key != gate_key || proj_retry)
         {
+            s_qt_gate_key = gate_key;
             // Reject "hors map" markers: origin-defaulted (0,0) and wildly-out-of-frame coords (a few
             // markers project to garbage like (110767,-59445)). ER base world XZ is ~[0..20000]; a generous
             // ±40000 box keeps every real marker while dropping the outliers that otherwise (a) draw as
