@@ -21,6 +21,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ## [Unreleased]
 
+### Performance
+
+- **Merchant-pin ESD scan cached per session** — the talk-ESD walk re-parsed every
+  `talkesdbnd` of the install on EVERY bucket rebuild (~3 s; the bench exposed it loudly once
+  the captured talk dir fed the full loose set on Golden Age). The parse is immutable per
+  session, so it now runs once (keyed on the loose talk dir — a capture redirect re-runs it
+  exactly once).
+
 ### Fixed
 
 - **Invader markers survive a mod that re-teams its NPCs.** The Hostile-NPC pass required

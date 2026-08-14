@@ -1423,6 +1423,26 @@ uint32_t emevd_boss_bar_name_id(uint32_t entityId)
 
 std::vector<esd::TalkShopRange> load_merchant_shop_ranges()
 {
+    // Session cache (2026-08-15): the ESD walk re-parses EVERY talkesdbnd of the install
+    // (~3 s — bench build.disk_merchants) and used to re-pay that cost on EVERY bucket rebuild
+    // (~30 s cadence; exposed loudly by GA's full loose talk dir). The talk ESDs are immutable
+    // per session; key on the loose source dir (a capture redirect → exactly one re-run) + the
+    // packed game dir.
+    std::error_code ec;
+    fs::path talkDir;
+    const std::string capDir = captured_dir_for(".talkesdbnd.dcx");
+    talkDir = capDir.empty() ? resolve_root_file(fs::path("script") / "talk") : fs::path(capDir);
+    const fs::path gd = game_dir();
+    static std::mutex                   mx;
+    static std::vector<esd::TalkShopRange> cached;
+    static std::string                   cached_key;
+    static bool                          cached_valid = false;
+    const std::string key = talkDir.string() + "|" + gd.string();
+    {
+        std::lock_guard<std::mutex> lk(mx);
+        if (cached_valid && cached_key == key) return cached;
+    }
+
     std::vector<esd::TalkShopRange> out;
     int skippedExpr = 0, looseBnds = 0, packedBnds = 0;
     std::unordered_set<std::string> done;  // stems parsed loose — shadow their packed twin
@@ -1441,13 +1461,6 @@ std::vector<esd::TalkShopRange> load_merchant_shop_ranges()
     //    *.talkesdbnd.dcx IS the active mod's script/talk (GA mounts <root>/GA/, the walk
     //    misses it and falls back to vanilla). Falls back to the ancestor walk (mod overlay /
     //    UXM install) when nothing is captured yet.
-    std::error_code ec;
-    fs::path talkDir;
-    const std::string capDir = captured_dir_for(".talkesdbnd.dcx");
-    if (!capDir.empty())
-        talkDir = fs::path(capDir);
-    else
-        talkDir = resolve_root_file(fs::path("script") / "talk");
     if (!talkDir.empty())
     {
         for (auto &de : fs::directory_iterator(talkDir, ec))
@@ -1492,7 +1505,6 @@ std::vector<esd::TalkShopRange> load_merchant_shop_ranges()
             std::snprintf(stem, sizeof(stem), "m%02d_%02d_%02d_00", a, x, z);
             candidates.insert(stem);
         }
-    const fs::path gd = game_dir();
     if (!gd.empty())
         for (const std::string &stem : candidates)
         {
@@ -1508,6 +1520,12 @@ std::vector<esd::TalkShopRange> load_merchant_shop_ranges()
     spdlog::info("[MERCHANTPINS] talk-ESD scan: {} OpenRegularShop(1:22) ranges from {} loose + {} "
                  "packed talkesdbnd ({} non-literal args skipped)",
                  (int)out.size(), looseBnds, packedBnds, skippedExpr);
+    {
+        std::lock_guard<std::mutex> lk(mx);
+        cached = out;
+        cached_key = key;
+        cached_valid = true;
+    }
     return out;
 }
 } // namespace goblin::worldmap
