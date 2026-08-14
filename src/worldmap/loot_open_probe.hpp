@@ -45,4 +45,9 @@ std::vector<CapturedMapFile> captured_map_files();
 // virtual file yet. The mod-agnostic ground truth for the file readers: consult BEFORE the
 // ancestor-walk (which misses exotic mounts like GA's <root>/GA/ and falls back to vanilla).
 std::string captured_path_for(const std::string &rel_path);
+
+// Parent dir of the first captured file ending with `suffix` (lowercase) — for DIRECTORY-level
+// readers (the merchant ESD walk) that want the game's real script/talk dir on an exotic mount.
+// Empty if nothing captured yet.
+std::string captured_dir_for(const std::string &suffix);
 } // namespace goblin::worldmap

@@ -23,6 +23,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Fixed
 
+- **Invader markers survive a mod that re-teams its NPCs.** The Hostile-NPC pass required
+  teamType ∈ {24,27} (the vanilla hostile team) — a mod re-teaming its invaders silently lost
+  every invader marker. The gate is relaxed: a non-24/27 team still qualifies when the EMEVD
+  90005792 invader template binds the entity (that template IS the invader spawner — the
+  mod-agnostic anchor); nameId > 0 stays the canonical named signal.
+- **Merchant pins read the mod's OWN talk ESDs.** The merchant-shop walk enumerated
+  `script/talk` via the ancestor walk, which misses exotic mounts (GA's `<root>/GA/`) and
+  silently read the vanilla install. The talk ESD captures (`.talkesdbnd.dcx`/`.esdbnd.dcx`)
+  are now recorded and the walk starts from the captured directory (the game's real
+  script/talk) before falling back.
 - **Map-fragment and story gates honour only the flags the ACTIVE mod actually sets.** The
   gate tables (tile→fragment flags, Erdtree-burn/Charm-broken/Sealing-tree story flags) are
   vanilla-derived constants; a mod renumbering them would silently hide every region (or the

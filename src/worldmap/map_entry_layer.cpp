@@ -1802,8 +1802,10 @@ static int build_live_summoning_pools(const std::vector<DiskCollectible> &assets
 }
 
 // World feature: Hostile NPC invaders (config world_features_from_disk). Each is a placed MSB
-// Enemy (entityId > 0) whose LIVE NpcParam marks it a NAMED invader — teamType ∈ {24,27} AND
-// nameId > 0. The nameId>0 gate is the canonical signal that separates real invaders from mobs
+// Enemy (entityId > 0) whose LIVE NpcParam marks it a NAMED invader - nameId > 0 (canonical),
+// on teamType ∈ {24,27} OR bound by the EMEVD 90005792 invader template (the mod-agnostic
+// anchor — a mod may re-team its invaders, audit-A 2026-08-14). The nameId>0 gate is the
+// canonical signal that separates real invaders from mobs
 // sharing the team (bloodfiends c4280, dungeon battlemages, scarabs c419x — none have an
 // NpcName entry). No bake: identity/filter from live NpcParam, the defeat flag from EMEVD
 // template 90005792 (entity→flag in `emevd_flags`), the position from the disk enemy part.
@@ -1830,7 +1832,12 @@ static int build_disk_hostile_npc_markers(
         uint8_t team = 0;
         int32_t name = 0;
         if (!goblin::overlay_api::npc_team_and_name(e.npcParamId, &team, &name)) { ++not_invader; continue; }
-        if ((team != 24 && team != 27) || name <= 0) { ++not_invader; continue; }
+        // nameId>0 is the canonical "named" signal; teamType ∈ {24,27} is the VANILLA hostile-NPC
+        // team. A mod may re-team its invaders (the audit-A class), so the team gate is relaxed:
+        // a non-24/27 team still qualifies when the EMEVD 90005792 invader template binds the
+        // entity (the mod-agnostic anchor — that template IS the invader spawner). 2026-08-14.
+        if (name <= 0) { ++not_invader; continue; }
+        if (team != 24 && team != 27 && emevd_flags.count(e.entityId) == 0) { ++not_invader; continue; }
         std::string pk = std::to_string(e.area) + "_" + std::to_string(e.gx) + "_" +
                          std::to_string(e.gz) + "_" + std::to_string((long)std::lround(e.posX * 10.0f)) +
                          "_" + std::to_string((long)std::lround(e.posZ * 10.0f));

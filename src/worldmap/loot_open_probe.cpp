@@ -64,7 +64,8 @@ bool is_map_file(LPCWSTR p)
     return ends_ci(p, L".msb.dcx") || ends_ci(p, L".msb") || ends_ci(p, L".mapbnd.dcx") ||
            ends_ci(p, L".mapbnd") || ends_ci(p, L".msgbnd.dcx") || ends_ci(p, L".msgbnd") ||
            ends_ci(p, L".emevd.dcx") || ends_ci(p, L".tpf.dcx") || ends_ci(p, L".tpf") ||
-           ends_ci(p, L".sblytbnd.dcx") || ends_ci(p, L".tpfbhd") || ends_ci(p, L".tpfbdt");
+           ends_ci(p, L".sblytbnd.dcx") || ends_ci(p, L".tpfbhd") || ends_ci(p, L".tpfbdt") ||
+           ends_ci(p, L".talkesdbnd.dcx") || ends_ci(p, L".esdbnd.dcx");
 }
 bool is_msb_file(LPCWSTR p)
 {
@@ -280,6 +281,27 @@ std::string captured_path_for(const std::string &rel_path)
             (p[p.size() - rel.size() - 1] == '\\' || p[p.size() - rel.size() - 1] == '/') &&
             p.compare(p.size() - rel.size(), rel.size(), rel) == 0)
             return f.path;
+    }
+    return {};
+}
+
+std::string captured_dir_for(const std::string &suffix)
+{
+    // Parent dir of the first captured file ending with `suffix` (lowercase, e.g.
+    // ".talkesdbnd.dcx") — for DIRECTORY-level readers (the merchant ESD walk) that want the
+    // game's real script/talk dir on an exotic mount. Empty if nothing captured yet.
+    std::string suf = suffix;
+    for (char &c : suf) c = (char)std::tolower((unsigned char)c);
+    std::lock_guard<std::mutex> lk(g_map_paths_mx);
+    for (const auto &f : g_map_paths)
+    {
+        std::string p = f.path;
+        for (char &c : p) c = (char)std::tolower((unsigned char)c);
+        if (p.size() >= suf.size() && p.compare(p.size() - suf.size(), suf.size(), suf) == 0)
+        {
+            size_t sep = f.path.find_last_of("\\/");
+            return sep == std::string::npos ? std::string{} : f.path.substr(0, sep);
+        }
     }
     return {};
 }

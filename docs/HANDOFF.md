@@ -140,23 +140,20 @@ flags on residual rows (loot_resolve:313). SAFE — grace discover (live Bonfire
 defeat (live GameAreaParam — THE model pattern), lot flags (live). QUEST_GATES table is DEAD
 code (no consumer — drop or wire).
 
-**Next fixes (in order):** (1) ~~hook_now the observer + captured-dir-overrides-walk-found~~ **DONE
-2026-08-14** — observer armed hook_now + caller-gated (only the game's opens are recorded; our
-own reads can't pollute the capture — the self-echo hazard), the game's `.msb.dcx` open now
-REDIRECTS a walk-found dir (on_map_opened_path override), `ParsedDisk` re-keys on the source
-dir so the redirect re-parses, and `maybe_reload_english_index` rebuilds the English index
-once from the game's own msgbnds (2 s cadence in hk_present). This fixed audit-B items #2/#3
-and de-risked all dir-level readers; (2) ~~MapFragmentParam live table (C1) + story-beat EMEVD
-scan (C2)~~ **DONE 2026-08-14 — hardened, not full-RE**: the gates now honour a table flag ONLY
-when the active install's EMEVDs set it (goblin_logic's active_event_flag set, fed by
-load_emevd_awards' setter scan + published once; empty set = assume-true = old behavior).
-`map_fragment_flag` + `secondary/hide_when_story_flag` gate their constants on it. Failure
-mode becomes "ungated/leak" instead of "hidden forever"; GA (same 62010-62084 ids) unchanged;
-latent fix: ERR never sets 62008 (Farum) → Farum no longer permanently hidden under
-require_map_fragments. NOTE: set publishes AFTER the treasure pass — the FIRST build uses the
-assume path, the second (map open) hardens; (3) teamType name-anchor (A1) + merchant ESDs
-(B4: `.talkesdbnd.dcx` still missing from the capture + `script/talk` dir derivation);
-(4) stale doc comments (goblin_inject.hpp:514 says "190/191 only").
+**Next fixes (in order):** (1) ~~hook_now the observer + captured-dir-overrides-walk-found~~ **DONE**
+(2) ~~MapFragmentParam live table (C1) + story-beat EMEVD scan (C2)~~ **DONE — hardened** (see above);
+(3) ~~teamType name-anchor (A1) + merchant ESDs (B4)~~ **DONE 2026-08-14** — the invader-MARKER
+gate (map_entry_layer:1833) now accepts a non-24/27 team when the EMEVD 90005792 invader
+template binds the entity (the mod-agnostic anchor; nameId>0 stays canonical); the merchant ESD
+walk (load_merchant_shop_ranges) now uses `captured_dir_for(".talkesdbnd.dcx")` first
+(`.talkesdbnd.dcx`/`.esdbnd.dcx` added to the capture) — GA's script/talk is read instead of
+vanilla once any merchant ESD is captured. ACCEPTED residual: the enemy-tag NAME filter
+(goblin_enemy_names:436) keeps the 24/27 team check (cosmetic toggle, no binding access on the
+tag path — entityId 0). (4) ~~stale doc comments (goblin_inject.hpp:514 says "190/191 only")~~
+**DONE in the Cartes commit** (comment updated with the name anchor). — ALL FOUR AUDIT ITEMS
+CLOSED. Next optional: C1 full-RE (runtime MapFragmentParam table, replacing the vanilla
+tile→flag table wholesale) if a renumbering mod ever shows up; the A2 name-category residual;
+the param-scan/vmap-probe dir readers (already de-risked by the dir override).
 
 **Earlier session findings worth keeping (2026-08-14):** the `[RESIDENTMSB] 0/3 named` dump
 revealed the vtable-instance walk was matching the exe's RTTI tables (q0 == vtable value, not an

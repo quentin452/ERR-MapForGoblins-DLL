@@ -1436,9 +1436,19 @@ std::vector<esd::TalkShopRange> load_merchant_shop_ranges()
         return true;
     };
 
-    // 1) Loose script/talk dir (mod overlay / UXM install) — everything the mod ships.
+    // 1) Loose script/talk dir — CAPTURED DIR FIRST (2026-08-14): the game opens its real talk
+    //    ESD bnds through the loader's redirect (below CreateFileW), so the parent of a captured
+    //    *.talkesdbnd.dcx IS the active mod's script/talk (GA mounts <root>/GA/, the walk
+    //    misses it and falls back to vanilla). Falls back to the ancestor walk (mod overlay /
+    //    UXM install) when nothing is captured yet.
     std::error_code ec;
-    if (fs::path talkDir = resolve_root_file(fs::path("script") / "talk"); !talkDir.empty())
+    fs::path talkDir;
+    const std::string capDir = captured_dir_for(".talkesdbnd.dcx");
+    if (!capDir.empty())
+        talkDir = fs::path(capDir);
+    else
+        talkDir = resolve_root_file(fs::path("script") / "talk");
+    if (!talkDir.empty())
     {
         for (auto &de : fs::directory_iterator(talkDir, ec))
         {
