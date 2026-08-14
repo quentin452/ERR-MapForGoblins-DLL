@@ -107,6 +107,44 @@ there, NOT via tools/deploy.py). Then:
   have `read_game_file_decompressed`/`resolve_root_file` consult the capture BEFORE the walk —
   every game-file read then uses the game's own file, loader-agnostic.
 
+**Structural-bug sweep (3 subagent audits, 2026-08-14 — the Cartes bug generalized):**
+
+**A — Hardcoded vanilla constants** (the `sortGroup {190,191}` class): HIGH — teamType 24/27
+invader gates (map_entry_layer.cpp:1826 + goblin_enemy_names.cpp:436; name-anchor fixable),
+the whole goods taxonomy cell table (goblin_item_classify.cpp:44-143), goods-id band
+300000-399999→EquipSpirits (:51). MEDIUM — iconId==44 cave-grace gate (world_position:1066),
+GREAT_RUNES {191-196} (map_entry_layer:2468; live goodsType-15 alternative exists), merchant
+talkId>=100000 cut (:1886), entityId/10000 dedup (:685), painting-goods arithmetic (:2362),
+tier-2 codex id (:316). LOW — scoped/engine constants (accept). Doc drift:
+goblin_inject.hpp:514 still says "190/191" only.
+
+**B — Remaining wrong-path reads on a GA-like mount** (beyond today's read_game_file_decompressed
+capture-first fix): ★ **WALK-WINS-OVER-CAPTURE** (loot_disk.cpp:409) — if the ancestor walk finds
+ANY dir (UXM-unpacked vanilla = E:\SteamLibrary), state=Found and `on_map_opened_path`
+early-returns → ALL dir-level readers (LOD scans, EMEVD readers) read vanilla on GA. Fix: a
+captured .msb.dcx parent overrides a walk-found dir. ★ **name_fmg_en timing** — the index runs
+at init BEFORE the observer arms (~14 s) → capture empty → vanilla msgbnds on GA. Fix: arm the
+observer `hook_now` (like diagBootIo) or defer/lazy the index. ★ **icon sblytbnd layout**
+(harvest 5×100 ms boot retries — before the game opens it) → vanilla layout rects on GA.
+★ **merchant talk ESDs** (load_merchant_shop_ranges, loot_disk:1418) — the last true
+`resolve_root_file` dir walk (`script/talk`): needs `.talkesdbnd.dcx` in the capture + dir
+derivation. vmap dev probes (panel_virtual_map:3012+) read capture-first — fine once armed.
+
+**C — Marker gates** (all flag reads are live via read_event_flag — the IDs are the risk):
+HIGH — the map-fragment tile→flag table (goblin_map_flags.hpp + goblin_map_tiles.hpp MapList,
+hand-authored vanilla; NO live MapFragmentParam read anywhere; works on GA by luck) — fix:
+build from the install's MapFragmentParam at runtime with the table as fallback. HIGH — story
+constants 118/4927/330 + the tile→variant geography (map_entry_layer:177-205) — fix: EMEVD
+scan for the story beats (the boss-defeat pattern). MEDIUM — baked fallback collected/cleared
+flags on residual rows (loot_resolve:313). SAFE — grace discover (live BonfireWarpParam), boss
+defeat (live GameAreaParam — THE model pattern), lot flags (live). QUEST_GATES table is DEAD
+code (no consumer — drop or wire).
+
+**Next fixes (in order):** (1) hook_now the observer + captured-dir-overrides-walk-found
+(fixes B2/B3/B4 + de-risks all dir readers); (2) MapFragmentParam live table (C1) + story-beat
+EMEVD scan (C2) with the boss-defeat pattern; (3) teamType name-anchor (A1) + merchant ESDs
+(B4); (4) stale doc comments (goblin_inject.hpp:514).
+
 **Earlier session findings worth keeping (2026-08-14):** the `[RESIDENTMSB] 0/3 named` dump
 revealed the vtable-instance walk was matching the exe's RTTI tables (q0 == vtable value, not an
 object header) — the `+0x18/+0xC0` offsets from the RE were never valid on this build. The magic
