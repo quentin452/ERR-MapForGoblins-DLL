@@ -3,6 +3,7 @@
 
 #include "category_meta.hpp"
 #include "loot_disk.hpp"       // disk-MSB loot source (DiskTreasure / load_disk_treasures) + load_quest_npcs
+#include "resident_msb.hpp"    // RESIDENT-MSB loot source (the game's loaded maps — active mod by construction)
 #include "../goblin_heightfield.hpp"  // heightfield::Cell — reused for the D-far -1 MSB Y-cloud relief
 #include "quest_npc_layer.hpp" // QuestFallbackNpc + set_quest_fallback_npcs (runtime quest fallback)
 #include "goblin_quest_steps.hpp" // goblin::generated::QUEST_BROWSER (hand-authored fail_flags to join on)
@@ -2736,14 +2737,96 @@ void build_buckets_impl()
         }
         // Read-only views into the cache; disk_collectibles is a working copy (the build appends the
         // LOD-feature assets to it). dropped_dummy_lots is consumed later in the baked loop.
-        const std::vector<DiskTreasure> &treasures = g_parsed.treasures;
-        const std::vector<DiskRegion> &disk_regions = g_parsed.regions;
-        const std::vector<DiskObjAct> &disk_objacts = g_parsed.objacts;
+        // treasures/disk_regions/disk_objacts start as refs into the cache; the resident-MSB merge
+        // below REPLACES them with filtered+appended local copies when it has tiles to merge.
+        const std::vector<DiskTreasure> &g_treasures = g_parsed.treasures;
+        const std::vector<DiskRegion> &g_disk_regions = g_parsed.regions;
+        const std::vector<DiskObjAct> &g_disk_objacts = g_parsed.objacts;
+        std::vector<DiskTreasure> treasures = g_treasures;              // local copy (merge target)
+        std::vector<DiskRegion> disk_regions = g_disk_regions;         // local copy (merge target)
+        std::vector<DiskObjAct> disk_objacts = g_disk_objacts;         // local copy (merge target)
         // Working copies of the two vectors the build augments in place (LOD-feature collectibles /
         // LOD-award enemies) — cheap vs the parse they replace. The rest stay read-only refs.
         std::vector<DiskCollectible> disk_collectibles = g_parsed.collectibles;
         std::vector<DiskEnemy> disk_enemies = g_parsed.enemies;
         dropped_dummy_lots = g_parsed.dropped_dummy_lots;
+        // ── RESIDENT-MSB merge (mod-agnostic active-mod source, see resident_msb.hpp) ─────────────
+        // Parse the DECOMPRESSED MSBs the game keeps resident for the STREAMED maps — the ACTIVE
+        // mod's data by construction, whatever loader mounted it (ME3/ME2/UXM). This fixes the
+        // ME3 pack whose data dir the disk walk can't find (Golden Age mounts <root>/GA/, the walk
+        // only knew <p>/mod/) — the disk route read the VANILLA maps while the game played GA's.
+        // MERGE RULE: a resident tile WINS over the disk entries for that tile (drop them + append
+        // the resident ones). Non-resident tiles keep the disk data (coverage is incremental: only
+        // ~25 maps are resident at once, growing as the player explores). Runs on EVERY build pass
+        // (the resident set grows); the disk parse above stays cached.
+        if (goblin::config::residentMsbSource)
+        {
+            GOBLIN_BENCH("build.resident_msb");
+            std::unordered_set<uint32_t> resident_tiles;
+            // Resident output into TEMP vectors first — the drop-filter below must not see them
+            // (they are the winners; only the DISK entries on covered tiles get removed).
+            std::vector<DiskCollectible> res_collectibles;
+            std::vector<DiskEnemy> res_enemies;
+            std::vector<DiskRegion> res_regions;
+            std::vector<DiskObjAct> res_objacts;
+            std::vector<DiskTreasure> resident_treasures = load_resident_msbs(
+                &resident_tiles,
+                wantAssets ? &res_collectibles : nullptr,
+                wantEnemies ? &res_enemies : nullptr,
+                wantRegions ? &res_regions : nullptr,
+                wantObjActs ? &res_objacts : nullptr);
+            if (!resident_tiles.empty())
+            {
+                auto covered = [&](uint8_t a, uint8_t x, uint8_t z) {
+                    return resident_tiles.count(((uint32_t)a << 16) | ((uint32_t)x << 8) | z) != 0;
+                };
+                // Drop disk entries on resident-covered tiles from EVERY vector, then append the
+                // resident entries (resident = the game's own loaded data → authoritative).
+                std::vector<DiskTreasure> merged;
+                merged.reserve(treasures.size() + resident_treasures.size());
+                for (const DiskTreasure &t : treasures)
+                    if (!covered(t.area, t.gx, t.gz)) merged.push_back(t);
+                for (auto &t : resident_treasures) merged.push_back(std::move(t));
+                treasures = std::move(merged);
+
+                auto drop_disk = [&](auto &vec, auto isCovered) {
+                    using Elem = typename std::decay_t<decltype(vec)>::value_type;
+                    std::vector<Elem> keep;
+                    keep.reserve(vec.size());
+                    for (const auto &e : vec)
+                        if (!isCovered(e)) keep.push_back(e);
+                    vec = std::move(keep);
+                };
+                drop_disk(disk_collectibles, [&](const DiskCollectible &c) {
+                    return covered(c.area, c.gx, c.gz);
+                });
+                drop_disk(disk_enemies, [&](const DiskEnemy &e) {
+                    return covered(e.area, e.gx, e.gz);
+                });
+                drop_disk(disk_regions, [&](const DiskRegion &r) {
+                    return covered(r.area, r.gx, r.gz);
+                });
+                drop_disk(disk_objacts, [&](const DiskObjAct &o) {
+                    return covered(o.area, o.gx, o.gz);
+                });
+                // Append the resident winners.
+                disk_collectibles.insert(disk_collectibles.end(),
+                                         std::make_move_iterator(res_collectibles.begin()),
+                                         std::make_move_iterator(res_collectibles.end()));
+                disk_enemies.insert(disk_enemies.end(),
+                                    std::make_move_iterator(res_enemies.begin()),
+                                    std::make_move_iterator(res_enemies.end()));
+                disk_regions.insert(disk_regions.end(),
+                                    std::make_move_iterator(res_regions.begin()),
+                                    std::make_move_iterator(res_regions.end()));
+                disk_objacts.insert(disk_objacts.end(),
+                                    std::make_move_iterator(res_objacts.begin()),
+                                    std::make_move_iterator(res_objacts.end()));
+                spdlog::info("[RESIDENTMSB] merged {} resident tiles ({} treasures) over the disk "
+                             "parse — disk entries on those tiles replaced",
+                             (int)resident_tiles.size(), (int)resident_treasures.size());
+            }
+        }
         // Virtual-anchor insets (Roundtable-class): register per-tile BEFORE any marker push so
         // every pass (treasures/collectibles/enemies/merchants) projects through the corrected
         // frame. Anchor tile = a legacy tile whose live grace PARAM pos sits far (>500 m) from

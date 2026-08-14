@@ -13,6 +13,7 @@
 #include "goblin_overlay.hpp"
 #include "goblin_virtual_world.hpp"  // vworld registry — `vworld` RPC (custom virtual worlds)
 #include "worldmap/loot_disk.hpp"    // read_game_file_decompressed — `assets_probe` path-loading guard
+#include "worldmap/resident_msb.hpp" // scan_resident_msbs — `resident_msb` diag (mod-agnostic loot source)
 #include "worldmap/maptile.hpp"      // maptile::probe — `maptile_probe` (endgame phase-1a tile recon)
 #include "worldmap/map_entry_layer.hpp" // far_relief_probe — `far_relief_probe` (D-far -1 Y-cloud frame check)
 #include "goblin_worldmap_probe.hpp"  // dump_menu_state (dumpmenu cmd)
@@ -1505,6 +1506,26 @@ namespace goblin::debug_rpc
                 std::snprintf(b, sizeof(b), "ok map_rect name=%s sheet=%s x=%d y=%d w=%d h=%d found=%d",
                               nm.c_str(), sheet.c_str(), x, y, w, h, (int)ok);
                 return std::string(b);
+            }
+            if (cmd == "resident_msb")
+            {
+                // resident_msb [dbg] — scan + parse the RESIDENT decompressed MSBs (the maps the
+                // game has actually streamed — the ACTIVE mod's data by construction). Diag for
+                // the mod-agnostic loot source (Golden Age via ME3: the disk walk missed GA's
+                // folder). `dbg` dumps the raw CSMapbndResCap instances + name/bundle fields to
+                // pin the live layout when the RE'd offsets don't match this exe build.
+                if (next_token(rest) == "dbg")
+                    return goblin::worldmap::resident_msb_dbg();
+                auto blobs = goblin::worldmap::scan_resident_msbs();
+                std::string b = "ok resident_msb count=" + std::to_string(blobs.size());
+                char hx[24];
+                for (const auto &m : blobs)
+                {
+                    std::snprintf(hx, sizeof(hx), "0x%llx", (unsigned long long)m.blob);
+                    b += "\n  " + m.name + " blob=" + hx + " len=" + std::to_string(m.len);
+                }
+                b += "\n  (tiles covered by the active build; see [RESIDENTMSB] log for the merge)";
+                return b;
             }
             if (cmd == "bloodstain_probe")
             {

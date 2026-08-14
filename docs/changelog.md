@@ -39,6 +39,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Added
 
+- **Resident-MSB loot source (WIP, NOT yet producing markers — see HANDOFF)** — the game keeps
+  the DECOMPRESSED MSBs of the maps it has streamed resident in memory, and they are the ACTIVE
+  mod's data by construction, whatever loader mounted them. Motivation: the disk route resolves
+  the map dir by walking the DLL's ancestors for `<p>/mod/map/MapStudio` — a ModEngine3 pack
+  that mounts its data at a different folder (Golden Age: `<root>/GA/`) was missed, so markers
+  came from the VANILLA install's maps while the game played the mod's. Shipped so far:
+  `resident_msb.{hpp,cpp}` (magic scan + resident=true parse into the same Disk* shapes), the
+  bucket-build merge (resident tiles replace disk entries), RPC `resident_msb [dbg]`, and a REAL
+  LAYOUT CORRECTION to `msbe_parser` (the resident copy relocates the PARAM-level
+  entryOffset[]/nextParamOffset to absolute VAs too — the RE doc said they stay file-absolute,
+  which was wrong; new `pio()` converter). BLOCKED: memory scanning is the wrong approach (the
+  blobs live ~2.6 TB high in the address space; a full sweep froze the game, a bounded one
+  misses them) — the next step is to capture the MSBs from the EXISTING Oodle + CreateFileW
+  hooks at load time (no scan), see HANDOFF.
+
 - **Map-fragment markers are exempt from the map-fragment gate.** The region's map fragment pickup
   (WorldMaps) was hidden behind the very fragment it unlocks — chicken-and-egg: you need to find the
   map to see the area, but its own marker vanished until you had it. Now the WorldMaps markers always

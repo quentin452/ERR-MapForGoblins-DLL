@@ -93,13 +93,26 @@ Two decisive findings for the C++ parser:
    uncompressedSize@+4 / compressedSize@+8; `DCP\0 DFLT`; data starts at `find("DCA\0")+8` with a `78 da`
    zlib stream. So **zlib (miniz) decompresses ERR maps — Oodle only needed for any `DCX_KRAK` maps**
    (Oodle already callable via the mod, so both are covered).
-2. **★ Offset-base differs disk vs resident:**
-   - **PARAM-level** offsets (section nameOffset, the entry-offset array) are **file-absolute** in BOTH.
-   - **ENTRY-internal** offsets (an entry's nameOffset, entityDataOffset, typeDataOffset) are
-     **ENTRY-RELATIVE on disk** (add the entry start: `td = entryStart + read(entry+0x20)`), but the game
-     **relocates them to absolute VAs in the resident RAM copy** (read directly). So the parser needs two
-     modes: disk = entry-relative; resident = absolute. Inline data (e.g. PARTS position vec3 @+0x20) is
-     not an offset → same in both.
+ 2. **★ Offset-base differs disk vs resident — CORRECTED 2026-08-14 (live, Golden Age 2.6.2.0):**
+    - **PARAM-level offsets (section entryOffset[], nextParamOffset) are relocalized to ABSOLUTE
+      VAs in the resident copy TOO** — NOT file-absolute as this doc originally claimed. Measured
+      live on a resident MSB: entryOffset[0] reads as `blob+0x80`, nextParamOffset as `blob+…`
+      (blobBase + fileOffset). The chain walk in `parse_msb` must convert them (`val - blobBase`)
+      in resident mode — the parser has a `pio()` helper for this (added with the resident route).
+      The one field that stays small in both: header `+0x08` first-PARAM offset (= 0x10).
+    - **ENTRY-internal** offsets (an entry's nameOffset, entityDataOffset, typeDataOffset) are
+      **ENTRY-RELATIVE on disk** (add the entry start: `td = entryStart + read(entry+0x20)`), but the game
+      **relocates them to absolute VAs in the resident RAM copy** (read directly). So the parser needs two
+      modes: disk = entry-relative; resident = absolute. Inline data (e.g. PARTS position vec3 @+0x20) is
+      not an offset → same in both.
+    - **⚠ The resident blobs live HIGH in the address space (~0x25e82c23080 ≈ 2.6 TB on this box)**
+      — a low-address-bound sweep misses them. Full-space committed-private scan ≈ 17 s at 100%
+      CPU (froze the game 2026-08-14; the freeze watchdog tripped). **Memory scanning is the
+      WRONG enumeration — use the EXISTING hooks instead (user 2026-08-14):** the Oodle hook
+      (`oodle_decompress_detour`, goblin_icon_harvest.cpp) already captures decompressed buffers
+      at the source (BND4/TPF/DDS); the CreateFileW observer (`loot_open_probe.cpp`) sees the
+      ACTIVE mod's resolved paths (ME3 redirects below CreateFileW). Capture the MSBs from those
+      two hooks at load time — tile name from the path, blob from the Oodle dst — no scan at all.
 3. `partIndex == 0xFFFFFFFF` for item-glow / no-physical-part treasures (drops, event items) → skip or
    fall back to a region/point for position; the chest/corpse treasures all resolve with a real part+pos.
 

@@ -272,6 +272,8 @@ set(GOBLIN_HOST_SOURCES
   src/worldmap/esd_parser.cpp
   src/worldmap/loot_disk.hpp
   src/worldmap/loot_disk.cpp
+  src/worldmap/resident_msb.hpp
+  src/worldmap/resident_msb.cpp
   src/worldmap/name_fmg_en.hpp
   src/worldmap/name_fmg_en.cpp
   src/worldmap/dvdbnd_reader.hpp

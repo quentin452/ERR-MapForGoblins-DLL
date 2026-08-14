@@ -143,10 +143,17 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
     if (len < 0x10 || std::memcmp(buf, "MSB ", 4) != 0) return R;
 
     // Resolve an ENTRY-INTERNAL offset (entry name / typeData): entry-relative on disk,
-    // absolute VA in the resident copy. PARAM-LEVEL offsets (entryOffset[], next) are plain
-    // file offsets in both -> index buf directly.
+    // absolute VA in the resident copy.
     auto eio = [&](uint64_t val, size_t entryStart) -> size_t {
         return resident ? (size_t)(val - blobBase) : entryStart + (size_t)val;
+    };
+    // Resolve a PARAM-LEVEL offset (entryOffset[], nextParamOffset): plain file offset on
+    // DISK, but the RESIDENT copy relocates THESE to absolute VAs too (measured live
+    // 2026-08-14: entryOffset[0] read as blob+0x80, nextParamOffset as blob+…). The old
+    // "PARAM-level stays file-absolute" assumption was WRONG for the resident blob — without
+    // this conversion the chain walk bounces off into the weeds and every resident parse fails.
+    auto pio = [&](uint64_t val) -> size_t {
+        return resident ? (size_t)(val - blobBase) : (size_t)val;
     };
 
     struct Sec { uint32_t entries; size_t entryArr; };
@@ -161,7 +168,7 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
         size_t entryArr = po + 0x10; // long entryOffset[entries], then long nextParamOffset
         if (!inb(entryArr, (size_t)entries * 8 + 8, len)) return R;
         secs[s] = {entries, entryArr};
-        po = (size_t)rd64(buf, entryArr + (size_t)entries * 8); // nextParamOffset (file-abs)
+        po = pio(rd64(buf, entryArr + (size_t)entries * 8)); // nextParamOffset
     }
 
     const Sec &EV = secs[SEC_EVENT];
@@ -177,7 +184,7 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
         modelNames.reserve(MD.entries);
         for (uint32_t i = 0; i < MD.entries; i++)
         {
-            size_t me = (size_t)rd64(buf, MD.entryArr + (size_t)i * 8);
+            size_t me = pio(rd64(buf, MD.entryArr + (size_t)i * 8));
             if (!inb(me, 0x08, len)) { modelNames.emplace_back(); continue; }
             size_t nm = eio(rd64(buf, me + 0x00), me);
             modelNames.push_back(nm < len ? rd_utf16(buf, nm, len) : std::string());
@@ -186,7 +193,7 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
 
     for (uint32_t i = 0; i < EV.entries; i++)
     {
-        size_t e = (size_t)rd64(buf, EV.entryArr + (size_t)i * 8);
+        size_t e = pio(rd64(buf, EV.entryArr + (size_t)i * 8));
         if (!inb(e, 0x28, len)) continue;
         if (rd32(buf, e + 0x0c) != EVENT_TYPE_TREASURE) continue;
 
@@ -203,7 +210,7 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
         if (pidx != 0xffffffffu && pidx < PT.entries)
         {
             t.partIndex = (int32_t)pidx;
-            size_t pe = (size_t)rd64(buf, PT.entryArr + (size_t)pidx * 8);
+            size_t pe = pio(rd64(buf, PT.entryArr + (size_t)pidx * 8));
             if (inb(pe, 0x2c, len))
             {
                 size_t nm = eio(rd64(buf, pe + 0x00), pe);
@@ -248,7 +255,7 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
     {
         for (uint32_t i = 0; i < EV.entries; i++)
         {
-            size_t e = (size_t)rd64(buf, EV.entryArr + (size_t)i * 8);
+            size_t e = pio(rd64(buf, EV.entryArr + (size_t)i * 8));
             if (!inb(e, 0x28, len)) continue;
             if (rd32(buf, e + 0x0c) != EVENT_TYPE_OBJACT) continue;
 
@@ -264,7 +271,7 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
             if (pidx != -1 && (uint32_t)pidx < PT.entries)
             {
                 o.partIndex = pidx;
-                size_t pe = (size_t)rd64(buf, PT.entryArr + (size_t)pidx * 8);
+                size_t pe = pio(rd64(buf, PT.entryArr + (size_t)pidx * 8));
                 if (inb(pe, 0x2c, len))
                 {
                     size_t nm = eio(rd64(buf, pe + 0x00), pe);
@@ -300,7 +307,7 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
     {
         for (uint32_t i = 0; i < PT.entries; i++)
         {
-            size_t pe = (size_t)rd64(buf, PT.entryArr + (size_t)i * 8);
+            size_t pe = pio(rd64(buf, PT.entryArr + (size_t)i * 8));
             if (!inb(pe, 0x2c, len)) continue;
             if ((int32_t)rd32(buf, pe + 0x0c) != PART_ASSET) continue;
             // GameEditionDisable (int @ part+0x44 — inline, same offset disk/resident; pinned
@@ -356,7 +363,7 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
     {
         for (uint32_t i = 0; i < PT.entries; i++)
         {
-            size_t pe = (size_t)rd64(buf, PT.entryArr + (size_t)i * 8);
+            size_t pe = pio(rd64(buf, PT.entryArr + (size_t)i * 8));
             if (!inb(pe, 0x70, len)) continue;
             if ((int32_t)rd32(buf, pe + 0x0c) != PART_ENEMY) continue;
             // GameEditionDisable (int @ +0x44; same pin as assets) — drop disabled placements
@@ -422,7 +429,7 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
         const Sec &RG = secs[SEC_POINT];
         for (uint32_t i = 0; i < RG.entries; i++)
         {
-            size_t re = (size_t)rd64(buf, RG.entryArr + (size_t)i * 8);
+            size_t re = pio(rd64(buf, RG.entryArr + (size_t)i * 8));
             if (!inb(re, 0x20, len)) continue;
             int32_t sub = (int32_t)rd32(buf, re + 0x08);
             bool keep = (sub == REGION_MOUNT_JUMP || sub == REGION_LOCKED_MOUNT_JUMP);

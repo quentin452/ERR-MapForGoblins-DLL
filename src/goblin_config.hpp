@@ -48,6 +48,10 @@ namespace goblin
     {
         extern GOBLIN_RENDER_API uint8_t loadDelay;
         extern GOBLIN_RENDER_API bool requireMapFragments;
+        // Resident-MSB loot source (see resident_msb.hpp): parse the DECOMPRESSED MSBs resident
+        // in the game for the streamed maps — the ACTIVE mod's data by construction (loader-
+        // agnostic; fixes ME3 packs whose data dir the disk walk can't find, e.g. GA's "GA/").
+        inline constexpr bool residentMsbSource = true;
         // Ashen/Royal Capital marker display mode (0 = story gate, 1 = both always, 2 = Royal first,
         // 3 = Ashen first). ONE shared setting for the minimap, the virtual map and the native map —
         // all three apply it inside the same marker_passes_gates predicate.

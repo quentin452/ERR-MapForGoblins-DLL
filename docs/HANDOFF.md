@@ -3,7 +3,58 @@
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
 
-## ⇒ NEXT SESSION — runtime randomizer: research is DONE, next is CODE
+## ⇒ NEXT SESSION — resident-MSB loot source: layout SOLVED, the sweep is the blocker (1st = resume)
+
+**Goal** (user 2026-08-14, Golden Age via ME3): the disk route resolved maps from the VANILLA
+install (`E:\SteamLibrary`) because it only probes `<p>/mod/` while GA mounts `<root>/GA/` (ME3
+package). Fix = read the game's RESIDENT decompressed MSBs (the ACTIVE mod's data by construction).
+
+**Shipped (committed in this work, all green):**
+- `src/worldmap/resident_msb.{hpp,cpp}` — "MSB " magic scan + UTF-16 tile-name lookback before the
+  blob + `parse_msb(resident=true)` → same Disk* shapes as the disk loader; bucket-build merge
+  (resident tiles replace disk entries); RPC `resident_msb [dbg]`; TTL cache.
+- **★ REAL LAYOUT CORRECTION (proven live):** the resident MSB relocalizes the PARAM-level
+  entryOffset[]/nextParamOffset to ABSOLUTE VAs too — the RE doc said "file-absolute in both",
+  which was WRONG. `parse_msb` gained a `pio()` converter (all section-entry reads); the doc
+  `docs/re/windows_resident_msbe_layout_re_findings.md` §2 was corrected with the live values.
+
+**★ THE BLOCKER — the sweep, not the layout:** the blobs live HIGH in the address space
+(~0x25e82c23080 ≈ 2.6 TB). A full committed-private sweep (~8 GB scanned, 17 s, 100% CPU)
+FROZE the game (watchdog tripped, empty minidump 2026-08-14 21:38). The 1 GB bound keeps the
+game safe but MISSES the blobs nondeterministically (0 hits at 22:09, 3 hits at 22:03 — depends
+on where the heap landed). **Resume here (cold-start actionable):**
+
+1. **★ DROP THE SCAN ENTIRELY — use the EXISTING HOOKS (user 2026-08-14: "les autres hooks
+   Oodle ne scannent pas, ils font du load direct" — right).** The Oodle hook
+   (`oodle_decompress_detour`, goblin_icon_harvest.cpp) already captures decompressed buffers
+   at the source (BND4/TPF/DDS) with zero memory scanning. For the MSBs the same pattern
+   applies, TWO hooks working together:
+   - **CreateFileW observer** (`loot_open_probe.cpp`, already hooked + armed at boot): extend it
+     to record the FULL RESOLVED PATH of every map file the game opens — `.mapbnd` AND
+     `.msb.dcx` (currently it only filters `.msb.dcx` and only derives the parent DIR). ME3
+     redirects BELOW CreateFileW, so the path seen there is the ACTIVE MOD's real file
+     (loader-agnostic ground truth — docs/re/windows_modroot_runtime_recipe.md Method B1).
+     This gives the TILE NAME for free (the filename).
+   - **Oodle hook**: the game decompresses the mapbnd/MSB through Oodle (DCXFileInterpreter/
+     OodleDecompressionStream in the RE'd chain) → capture the `dst` buffer when it starts with
+     "MSB " → we have the decompressed MSB + its name from the CreateFileW path. Join by
+     open-order or by size proximity. (Loose .msb.dcx are DFLT/zlib — not Oodle — but the
+     CREATE-FILE path alone is enough there: read the file directly from the captured path with
+     the existing dcx_decompress, which handles both zlib and KRAK.)
+   - Simplest first slice: use CreateFileW alone — record `map/**/*.mapbnd` / `*.msb.dcx`
+     resolved paths as they open, then `read_game_file_decompressed` each one from THAT exact
+     path (skip the dir-resolution walk entirely). No scan, no ResCap, no RPC needed.
+2. **Verify** in-game (Golden Age): `[MAPOPEN]`/`[RESIDENTMSB]` logs list the mod's real
+   `GA\map\…` paths as maps stream; then markers on GA's tiles replace the vanilla ones (the
+   whole point: Limgrave+ markers were the vanilla bake positions, wrong for GA).
+3. The name-lookback (256 KB before the blob) and the vtable-instance walk are DEAD ENDS — do
+   NOT resume them. The vtable dump was the exe's RTTI tables (q0 == vtable as a VALUE, not an
+   object header); the layout `+0x18/+0xC0` was never valid on this build.
+
+**Earlier session findings worth keeping (2026-08-14):** the `[RESIDENTMSB] 0/3 named` dump
+revealed the vtable-instance walk was matching the exe's RTTI tables (q0 == vtable value, not an
+object header) — the `+0x18/+0xC0` offsets from the RE were never valid on this build. The magic
+scan is the proven enumeration (25 blobs live 2026-06-24, 2-3 raw hits in 1 GB in-world now).
 
 State (2026-07-28 wrap): `docs/plans/runtime_randomizer_scope.md` now carries the graph measurement,
 the architecture decision (**a MODULE of MapForGoblins**), the **solver spec** (least-fixpoint model,
