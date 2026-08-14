@@ -146,8 +146,15 @@ own reads can't pollute the capture — the self-echo hazard), the game's `.msb.
 REDIRECTS a walk-found dir (on_map_opened_path override), `ParsedDisk` re-keys on the source
 dir so the redirect re-parses, and `maybe_reload_english_index` rebuilds the English index
 once from the game's own msgbnds (2 s cadence in hk_present). This fixed audit-B items #2/#3
-and de-risked all dir-level readers; (2) MapFragmentParam live table (C1) + story-beat
-EMEVD scan (C2) with the boss-defeat pattern; (3) teamType name-anchor (A1) + merchant ESDs
+and de-risked all dir-level readers; (2) ~~MapFragmentParam live table (C1) + story-beat EMEVD
+scan (C2)~~ **DONE 2026-08-14 — hardened, not full-RE**: the gates now honour a table flag ONLY
+when the active install's EMEVDs set it (goblin_logic's active_event_flag set, fed by
+load_emevd_awards' setter scan + published once; empty set = assume-true = old behavior).
+`map_fragment_flag` + `secondary/hide_when_story_flag` gate their constants on it. Failure
+mode becomes "ungated/leak" instead of "hidden forever"; GA (same 62010-62084 ids) unchanged;
+latent fix: ERR never sets 62008 (Farum) → Farum no longer permanently hidden under
+require_map_fragments. NOTE: set publishes AFTER the treasure pass — the FIRST build uses the
+assume path, the second (map open) hardens; (3) teamType name-anchor (A1) + merchant ESDs
 (B4: `.talkesdbnd.dcx` still missing from the capture + `script/talk` dir derivation);
 (4) stale doc comments (goblin_inject.hpp:514 says "190/191 only").
 

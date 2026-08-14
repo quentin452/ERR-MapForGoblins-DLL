@@ -1,6 +1,7 @@
 #include "loot_disk.hpp"
 
 #include "dvdbnd_reader.hpp"
+#include "goblin_logic.hpp"     // note/publish_active_event_flags — the gate-hardening flag set
 #include "loot_open_probe.hpp"  // captured_path_for — read the game's own file before resolving
 #include "msbe_parser.hpp"
 #include "goblin_config.hpp"
@@ -947,9 +948,18 @@ std::vector<DiskEmevd> load_emevd_awards(
                 setterTile = ((uint32_t)a << 16) | ((uint32_t)x << 8) | (uint32_t)z;
         }
         for (auto &s : p.setters) { s.mapTile = setterTile; setters.push_back(std::move(s)); }
+        // Feed the ACTIVE event-flag set (fragment/story gate hardening, goblin_logic):
+        // every SetEventFlag(., state=1) id the mod's own EMEVDs set. Published once at the
+        // end of this pass — the gate tables honour a flag only when it's in this set.
+        {
+            std::vector<uint32_t> all_flags;
+            for (auto &s : p.setters) all_flags.insert(all_flags.end(), s.flags.begin(), s.flags.end());
+            goblin::note_active_event_flags(all_flags);
+        }
         ++parsed;
         spdlog::debug("[LOOTDISK] {} -> {} direct awards", name, p.direct.size());
     }
+    goblin::publish_active_event_flags();
 
     // Resolve a setter's referenced boss entity, intersecting its candidates with the entities of
     // its OWN tile (entitiesByTile[s.mapTile]) when that tile is known, else the global set. Scoping

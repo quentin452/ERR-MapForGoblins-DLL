@@ -23,6 +23,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Fixed
 
+- **Map-fragment and story gates honour only the flags the ACTIVE mod actually sets.** The
+  gate tables (tile→fragment flags, Erdtree-burn/Charm-broken/Sealing-tree story flags) are
+  vanilla-derived constants; a mod renumbering them would silently hide every region (or the
+  Ashen variants) forever. The gates now check the flag against the set of SetEventFlag(.,1)
+  ids the active install's own EMEVDs set (collected by the existing EMEVD scan): a flag the
+  mod never sets degrades to "ungated" (markers show) instead of "hidden forever" — and a
+  latent bug dies with it: ERR never sets 62008 (Farum Azula), which used to hide Farum
+  permanently under require_map_fragments. Golden Age sets the same 62010-62084 ids → its
+  gate is unchanged. The flag READ stays live per frame.
 - **File readers now follow the game's OWN opens, from boot.** The CreateFileW observer is
   armed immediately (hook_now — the queued arm left the init-time readers with an empty
   capture) and records ONLY the game's opens (a caller gate keeps our own reads from

@@ -177,20 +177,23 @@ constexpr uint64_t kRuntimeGeomRowBase = 0x1'0000'0000ULL;
 // is_ashen_capital_row(), but UNCONDITIONAL (legacy coupled SetSecondaryFlags to
 // require_map_fragments; this is a story-spoiler gate, correct regardless). MapTile(X,Y,Z)
 // = (areaNo, gridXNo, gridZNo).
+// HARDENED 2026-08-14 (active_event_flag): a mod that renumbers its story flags degrades to
+// "show both variants" instead of hiding the post-event variants forever.
 int secondary_story_flag(int area, int gx, int gz)
 {
     namespace flag = goblin::flag;
+    int f = 0;
     if (area == 35) // Leyndell, Ashen Capital — whole area is the post-Erdtree-burn state
-        return flag::StoryErdtreeOnFire;
-    if (gz != 0)
-        return 0;
-    if ((area == 11 && gx == 5) || (area == 19 && gx == 0)) // post-burn Leyndell / Chapel m19
-        return flag::StoryErdtreeOnFire;
-    if ((area == 21 && (gx == 0 || gx == 1 || gx == 2)) || (area == 22 && gx == 0))
-        return flag::StoryCharmBroken;
-    if (area == 20 && gx == 1)
-        return flag::StorySealingTreeBurnt;
-    return 0;
+        f = flag::StoryErdtreeOnFire;
+    else if (gz != 0)
+        f = 0;
+    else if ((area == 11 && gx == 5) || (area == 19 && gx == 0)) // post-burn Leyndell / Chapel m19
+        f = flag::StoryErdtreeOnFire;
+    else if ((area == 21 && (gx == 0 || gx == 1 || gx == 2)) || (area == 22 && gx == 0))
+        f = flag::StoryCharmBroken;
+    else if (area == 20 && gx == 1)
+        f = flag::StorySealingTreeBurnt;
+    return (f != 0 && goblin::active_event_flag(static_cast<uint32_t>(f))) ? f : 0;
 }
 
 // Inverse of secondary_story_flag: a PRE-event tile that must DISAPPEAR once the story
@@ -199,11 +202,12 @@ int secondary_story_flag(int area, int gx, int gz)
 // post-burn tile (11, gx5, gz0) which secondary_story_flag already gates to SHOW after the
 // burn (never both gates on one tile). Mirrors the legacy refresh_royal_eviction, which
 // only ever ran on native injected rows (never active in overlay-only mode).
+// HARDENED 2026-08-14 (active_event_flag): same rule as secondary_story_flag.
 int hide_when_story_flag(int area, int gx, int gz)
 {
     namespace flag = goblin::flag;
     if (area == 11 && !(gx == 5 && gz == 0))
-        return flag::StoryErdtreeOnFire;
+        return goblin::active_event_flag(flag::StoryErdtreeOnFire) ? flag::StoryErdtreeOnFire : 0;
     return 0;
 }
 

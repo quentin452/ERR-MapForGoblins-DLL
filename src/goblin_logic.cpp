@@ -4,10 +4,47 @@
 #include "goblin/goblin_map_tiles.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdlib>
+#include <mutex>
+#include <unordered_set>
 
 using namespace goblin;
 using namespace goblin::mapPoint;
+
+// ── Active event-flag set (2026-08-14) ────────────────────────────────────────
+// Every flag the ACTIVE install's EMEVDs SetEventFlag(., state=1) — fed by
+// load_emevd_awards' setter scan (loot_disk), published once after the first pass.
+// The gate tables (fragment flags, story flags) are vanilla-derived; honouring a
+// table flag only when the active mod actually sets it turns a renumbering mod's
+// silent "everything hidden forever" into an honest "ungated" (or keeps the gate
+// when the mod genuinely implements it — GA sets the same 62010-62084 ids).
+namespace
+{
+std::mutex                       g_active_mx;
+std::unordered_set<uint32_t>     g_active_set;
+std::atomic<bool>                g_active_ready{false};
+} // namespace
+
+void goblin::note_active_event_flags(const std::vector<uint32_t> &flags)
+{
+    std::lock_guard<std::mutex> lk(g_active_mx);
+    for (uint32_t f : flags) g_active_set.insert(f);
+}
+
+void goblin::publish_active_event_flags()
+{
+    std::lock_guard<std::mutex> lk(g_active_mx);
+    g_active_ready.store(true, std::memory_order_release);
+}
+
+bool goblin::active_event_flag(uint32_t flag)
+{
+    if (!g_active_ready.load(std::memory_order_acquire))
+        return true;  // EMEVD scan not run yet (pass off / build pending) — assume the tables are right
+    std::lock_guard<std::mutex> lk(g_active_mx);
+    return g_active_set.count(flag) != 0;
+}
 
 static int GetMapFlagFromTile(MapTile location)
 {
@@ -66,10 +103,15 @@ static int GetMapFlagFromTile(MapTile location)
 // Map-fragment discovery flag for a tile — the overlay gates markers behind
 // require_map_fragments on this (0 = tile needs no fragment). The per-paramId
 // ExceptionList overrides aren't applied here (no rowId at the marker layer); the tile
-// table covers the overwhelming majority.
+// table covers the overwhelming majority. HARDENED 2026-08-14: a tile's table flag is
+// honoured only when the ACTIVE install's EMEVDs set it (active_event_flag) — a mod
+// that renumbers its fragment flags degrades to "ungated" instead of hiding every
+// region forever (and a table flag the mod never sets, e.g. ERR's 62008 FarumAzula,
+// stops hiding that region permanently).
 int goblin::map_fragment_flag(int area, int gx, int gz)
 {
-    return GetMapFlagFromTile(MapTile(area, gx, gz));
+    const int flag = GetMapFlagFromTile(MapTile(area, gx, gz));
+    return (flag != 0 && goblin::active_event_flag(static_cast<uint32_t>(flag))) ? flag : 0;
 }
 
 // Region name for a cluster tile, via the map-fragment grouping (the same tile→
