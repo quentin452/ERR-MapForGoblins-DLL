@@ -2750,15 +2750,17 @@ void build_buckets_impl()
         std::vector<DiskCollectible> disk_collectibles = g_parsed.collectibles;
         std::vector<DiskEnemy> disk_enemies = g_parsed.enemies;
         dropped_dummy_lots = g_parsed.dropped_dummy_lots;
-        // ── RESIDENT-MSB merge (mod-agnostic active-mod source, see resident_msb.hpp) ─────────────
-        // Parse the DECOMPRESSED MSBs the game keeps resident for the STREAMED maps — the ACTIVE
-        // mod's data by construction, whatever loader mounted it (ME3/ME2/UXM). This fixes the
-        // ME3 pack whose data dir the disk walk can't find (Golden Age mounts <root>/GA/, the walk
-        // only knew <p>/mod/) — the disk route read the VANILLA maps while the game played GA's.
-        // MERGE RULE: a resident tile WINS over the disk entries for that tile (drop them + append
-        // the resident ones). Non-resident tiles keep the disk data (coverage is incremental: only
-        // ~25 maps are resident at once, growing as the player explores). Runs on EVERY build pass
-        // (the resident set grows); the disk parse above stays cached.
+        // ── ACTIVE-MOD merge (mod-agnostic loot source, see resident_msb.hpp) ─────────────
+        // Parse the map files the game ACTUALLY opened (CreateFileW path capture — the exact
+        // resolved paths the game reads, loader-agnostic). This fixes the ME3 pack whose data
+        // dir the disk walk can't find (Golden Age mounts <root>/GA/, the walk only knew
+        // <p>/mod/) — the disk route read the VANILLA maps while the game played GA's.
+        // MERGE RULE: a captured tile WINS over the disk entries for that tile (drop them +
+        // append the active-mod ones). Non-captured tiles keep the disk data (coverage is
+        // incremental: only the maps the game has streamed are captured, growing as the
+        // player explores). Runs on EVERY build pass (the capture grows); the disk parse
+        // above stays cached. No memory scan involved (2026-08-14: the resident-blob sweep
+        // froze the game — retired to diag-only).
         if (goblin::config::residentMsbSource)
         {
             GOBLIN_BENCH("build.resident_msb");

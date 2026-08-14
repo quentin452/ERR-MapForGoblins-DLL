@@ -152,6 +152,7 @@ std::vector<uint8_t> slurp(const fs::path &p)
     }
     return v;
 }
+} // namespace
 
 // Parse "m{AA}_{BB}_{CC}_00" → area/gx/gz. Only LOD0 (_00). False otherwise so
 // _01/_02 connect proxies and _99 lighting tiles are skipped (rule: _00 only).
@@ -166,7 +167,6 @@ bool parse_tile(const std::string &stem, int &area, int &gx, int &gz)
     gz = z;
     return true;
 }
-} // namespace
 
 void set_mod_folder(const fs::path &p) { g_mod_folder = p; }
 
@@ -246,6 +246,28 @@ std::vector<uint8_t> read_loose_file_decompressed(const std::string &rel_path)
         return raw;  // loose-uncompressed
     bool krak = false;
     return msbe::dcx_decompress(raw.data(), raw.size(), &krak, resolve_oodle());
+}
+
+std::vector<uint8_t> read_exact_file_decompressed(const std::string &exact_path)
+{
+    // Read + decompress a file at an EXACT resolved path — NO directory-resolution walk and NO
+    // packed fallback. For the CreateFileW-captured map paths (resident_msb path source): the
+    // game already resolved the path (ME3/UXM redirect BELOW CreateFileW), so it IS the active
+    // mod's real file — re-resolving it through the ancestor-walk could silently re-read the
+    // wrong install (the very bug this path source fixes).
+    std::vector<uint8_t> raw = slurp(exact_path);
+    if (raw.size() < 4)
+    {
+        spdlog::warn("[GAMEFILE] exact-path read failed ({} bytes): {}", raw.size(), exact_path);
+        return {};
+    }
+    if (!(raw[0] == 'D' && raw[1] == 'C' && raw[2] == 'X' && raw[3] == 0))
+        return raw;  // loose-uncompressed (plain .msb / .mapbnd)
+    bool krak = false;
+    std::vector<uint8_t> out = msbe::dcx_decompress(raw.data(), raw.size(), &krak, resolve_oodle());
+    if (out.empty())
+        spdlog::warn("[GAMEFILE] DCX decompress failed ({}): {}", krak ? "KRAK" : "DFLT", exact_path);
+    return out;
 }
 
 std::vector<uint8_t> dcx_decompress_bytes(const uint8_t *data, size_t len, bool *isKrak)

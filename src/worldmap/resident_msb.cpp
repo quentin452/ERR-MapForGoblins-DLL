@@ -1,19 +1,22 @@
 // Resident-MSB loot source — see resident_msb.hpp for the design + RE pointers.
 // The game keeps the DECOMPRESSED MSBs of the maps it has streamed (25 resident blobs
 // measured live 2026-06-24), and they are BY CONSTRUCTION the active mod's maps (whatever
-// loader mounted them — the engine read them, so they ARE what the game uses). Scanning
-// them sidesteps the map-dir resolution entirely (the GA/ME3 miss: the walk only knew
-// <p>/mod/, GA mounts <p>/GA/).
+// loader mounted them — the engine read them, so they ARE what the game uses).
 //
-// ENUMERATION: bounded committed-private sweep for the "MSB " magic — the RE's OTHER proven
-// route (the CSMapbndResCap vtable-instance walk was tried first and produced FALSE POSITIVES
-// on 2.6.2.0: the vtable RVA matches as a VALUE inside the exe's RTTI/metadata tables, not as
-// an object header, so no reliable name/bundle offsets — see the 2026-08-14 dump).
+// ENUMERATION (2026-08-14 REWORK): the bounded committed-private "MSB " magic sweep was the
+// production enumeration — but a full sweep (~8 GB, 17 s, 100% CPU) FROZE the game, and the
+// ~1 GB bound kept the game safe only by MISSING the blobs nondeterministically (0 hits at
+// 22:09, 3 at 22:03 — depends on where the heap landed). DROPPED from the build path. The
+// production enumeration is now the CreateFileW observer (loot_open_probe.cpp): it records
+// the exact RESOLVED path of every map file the game opens (.msb.dcx/.msb/.mapbnd[.dcx]).
+// ME3/UXM redirect BELOW CreateFileW, so the captured path IS the active mod's real file
+// (loader-agnostic ground truth — docs/re/windows_modroot_runtime_recipe.md Method B1), and
+// the tile name comes free from the filename. Slice 1 reads + decompresses the loose
+// .msb.dcx/.msb from those exact paths (dcx_decompress handles DFLT/zlib AND KRAK; plain
+// .msb passes through). .mapbnd captures are recorded for the later Oodle-join slice.
 //
-// NAME: the raw blob doesn't carry its own map id; the tile name lives in the FD4 resource
-// key near the blob. We hunt the memory immediately BEFORE each blob for a UTF-16
-// "m{AA}_{BB}_{CC}_{LOD}" string (the ResCap's name key / hash-string is allocated close to
-// its bundle on the FD4 heap). Strict validation: m-pattern + _00 LOD only.
+// The old scan + name-lookback machinery stays in this file as DIAGNOSTICS ONLY (the
+// `resident_msb` RPC verbs) — it is no longer on the production path.
 
 #include "resident_msb.hpp"
 
@@ -27,7 +30,8 @@
 
 #include <spdlog/spdlog.h>
 
-#include "msbe_parser.hpp"  // msbe::parse_msb
+#include "loot_open_probe.hpp"  // captured_map_files — the path-driven enumeration
+#include "msbe_parser.hpp"      // msbe::parse_msb
 
 namespace
 {
@@ -369,6 +373,85 @@ std::string resident_msb_dbg()
     return s;
 }
 
+// ── Shared conversion: one parsed MSB → the Disk* shapes (identical rules to the disk
+// loader's per-file loop — treasures into `out`, the rest appended into the non-null
+// vectors). Same shapes, so the bucket-build merge treats the path source exactly like
+// the resident-blob source used to be treated.
+static void emit_shapes(const msbe::ParseResult &r, uint8_t area, uint8_t gx, uint8_t gz,
+                        std::vector<DiskTreasure> &out,
+                        std::vector<DiskCollectible> *collectibles,
+                        std::vector<DiskEnemy> *enemies,
+                        std::vector<DiskRegion> *regions,
+                        std::vector<DiskObjAct> *objacts)
+{
+    const bool wantAssets = collectibles != nullptr;
+    const bool wantEnemies = enemies != nullptr;
+    const bool wantRegions = regions != nullptr;
+    const bool wantObjActs = objacts != nullptr;
+
+    if (wantAssets)
+        for (const auto &a : r.assets)
+        {
+            DiskCollectible c;
+            c.aegRow = a.aegRow;
+            c.entityId = a.entityId;
+            c.area = area; c.gx = gx; c.gz = gz;
+            c.posX = a.pos[0]; c.posY = a.pos[1]; c.posZ = a.pos[2];
+            c.name = a.name;
+            c.modelName = a.modelName;
+            collectibles->push_back(std::move(c));
+        }
+    if (wantEnemies)
+        for (const auto &en : r.enemies)
+        {
+            DiskEnemy e;
+            e.npcParamId = en.npcParamId;
+            e.talkId = en.talkId;
+            e.entityId = en.entityId;
+            e.area = area; e.gx = gx; e.gz = gz;
+            e.posX = en.pos[0]; e.posY = en.pos[1]; e.posZ = en.pos[2];
+            e.name = en.name;
+            e.modelName = en.modelName;
+            enemies->push_back(std::move(e));
+        }
+    if (wantRegions)
+        for (const auto &rg : r.regions)
+        {
+            DiskRegion d;
+            d.subtype = rg.subtype;
+            d.area = area; d.gx = gx; d.gz = gz;
+            d.posX = rg.pos[0]; d.posY = rg.pos[1]; d.posZ = rg.pos[2];
+            d.name = rg.name;
+            regions->push_back(std::move(d));
+        }
+    if (wantObjActs)
+        for (const auto &o : r.objacts)
+        {
+            if (o.partIndex < 0) continue;  // no placeable anchor (same rule as the disk pass)
+            DiskObjAct d;
+            d.objActParamId = o.objActParamId;
+            d.entityId = o.objActEntityId ? o.objActEntityId : o.partEntityId;
+            d.area = area; d.gx = gx; d.gz = gz;
+            d.posX = o.pos[0]; d.posY = o.pos[1]; d.posZ = o.pos[2];
+            d.partName = o.partName;
+            objacts->push_back(std::move(d));
+        }
+    for (const auto &t : r.treasures)
+    {
+        if (t.partIndex < 0) continue;  // item-glow / EMEVD-region → no MSB pos
+        // Same inert-DummyAsset rule as the disk pass (only reachable dummies kept).
+        if (t.partType == msbe::PART_DUMMY_ASSET && t.entityId == 0 && !t.entityGroup)
+            continue;
+        DiskTreasure d;
+        d.lotId = t.itemLotId;
+        d.area = area; d.gx = gx; d.gz = gz;
+        d.posX = t.pos[0]; d.posY = t.pos[1]; d.posZ = t.pos[2];
+        d.entityId = t.entityId;
+        d.partName = t.partName;
+        out.push_back(std::move(d));
+    }
+}
+
 std::vector<DiskTreasure> load_resident_msbs(std::unordered_set<uint32_t> *coveredTiles,
                                              std::vector<DiskCollectible> *collectibles,
                                              std::vector<DiskEnemy> *enemies,
@@ -376,98 +459,56 @@ std::vector<DiskTreasure> load_resident_msbs(std::unordered_set<uint32_t> *cover
                                              std::vector<DiskObjAct> *objacts)
 {
     std::vector<DiskTreasure> out;
-    std::vector<ResidentMsb> blobs = scan_resident_msbs();
-    if (blobs.empty()) return out;
-
-    const bool wantAssets = collectibles != nullptr;
-    const bool wantEnemies = enemies != nullptr;
-    const bool wantRegions = regions != nullptr;
-    const bool wantObjActs = objacts != nullptr;
-
-    int parsed = 0;
-    for (const ResidentMsb &m : blobs)
+    // PATH-DRIVEN enumeration (2026-08-14: the memory sweep is retired from the build path —
+    // full scale froze the game, the bounded bound missed the blobs nondeterministically). The
+    // CreateFileW observer (loot_open_probe.cpp) records the EXACT RESOLVED path of every map
+    // file the game opens; ME3/UXM redirect below CreateFileW makes that path the ACTIVE mod's
+    // real file. Slice 1: read + decompress the loose .msb.dcx/.msb from those exact paths
+    // (DFLT/zlib + KRAK both handled by dcx_decompress; plain .msb passes through). .mapbnd
+    // captures are recorded for the later Oodle-join slice and not parsed here.
+    std::vector<CapturedMapFile> files = captured_map_files();
+    if (files.empty())
     {
-        msbe::ParseResult r = msbe::parse_msb(reinterpret_cast<const uint8_t *>(m.blob), m.len,
-                                              /*resident=*/true, /*blobBase=*/m.blob,
-                                              wantAssets, wantEnemies, wantRegions,
-                                              /*crossTileAssets=*/false, wantObjActs);
+        spdlog::info("[RESIDENTMSB] path source: no captured map-file opens yet (the game "
+                     "hasn't streamed a map since boot) — deferred (no memory scan)");
+        return out;
+    }
+    int parseable = 0, parsed = 0, unnamed = 0;
+    for (const CapturedMapFile &f : files)
+    {
+        if (!f.isMsb) continue;  // .mapbnd → recorded for the Oodle join, not parsed in slice 1
+        if (f.name.empty())
+        {
+            ++unnamed;  // no tile identity → cannot place markers (strict rule)
+            continue;
+        }
+        ++parseable;
+        std::vector<uint8_t> msb = read_exact_file_decompressed(f.path);
+        if (msb.size() < 8 || std::memcmp(msb.data(), "MSB ", 4) != 0)
+        {
+            spdlog::warn("[RESIDENTMSB] read/decompress failed or not an MSB: {} ({})", f.name,
+                         f.path);
+            continue;
+        }
+        msbe::ParseResult r = msbe::parse_msb(msb.data(), msb.size(), /*resident=*/false,
+                                              /*blobBase=*/0, collectibles != nullptr,
+                                              enemies != nullptr, regions != nullptr,
+                                              /*crossTileAssets=*/false, objacts != nullptr);
         if (!r.ok)
         {
-            spdlog::warn("[RESIDENTMSB] parse failed: {} (len={})", m.name, m.len);
+            spdlog::warn("[RESIDENTMSB] parse failed: {} ({})", f.name, f.path);
             continue;
         }
         ++parsed;
         if (coveredTiles)
-            coveredTiles->insert(((uint32_t)m.area << 16) | ((uint32_t)m.gx << 8) | m.gz);
-
-        // ── Same conversions as the disk loader (load_disk_treasures) — identical shapes ──
-        if (wantAssets)
-            for (const auto &a : r.assets)
-            {
-                DiskCollectible c;
-                c.aegRow = a.aegRow;
-                c.entityId = a.entityId;
-                c.area = m.area; c.gx = m.gx; c.gz = m.gz;
-                c.posX = a.pos[0]; c.posY = a.pos[1]; c.posZ = a.pos[2];
-                c.name = a.name;
-                c.modelName = a.modelName;
-                collectibles->push_back(std::move(c));
-            }
-        if (wantEnemies)
-            for (const auto &en : r.enemies)
-            {
-                DiskEnemy e;
-                e.npcParamId = en.npcParamId;
-                e.talkId = en.talkId;
-                e.entityId = en.entityId;
-                e.area = m.area; e.gx = m.gx; e.gz = m.gz;
-                e.posX = en.pos[0]; e.posY = en.pos[1]; e.posZ = en.pos[2];
-                e.name = en.name;
-                e.modelName = en.modelName;
-                enemies->push_back(std::move(e));
-            }
-        if (wantRegions)
-            for (const auto &rg : r.regions)
-            {
-                DiskRegion d;
-                d.subtype = rg.subtype;
-                d.area = m.area; d.gx = m.gx; d.gz = m.gz;
-                d.posX = rg.pos[0]; d.posY = rg.pos[1]; d.posZ = rg.pos[2];
-                d.name = rg.name;
-                regions->push_back(std::move(d));
-            }
-        if (wantObjActs)
-            for (const auto &o : r.objacts)
-            {
-                if (o.partIndex < 0) continue;  // no placeable anchor (same rule as the disk pass)
-                DiskObjAct d;
-                d.objActParamId = o.objActParamId;
-                d.entityId = o.objActEntityId ? o.objActEntityId : o.partEntityId;
-                d.area = m.area; d.gx = m.gx; d.gz = m.gz;
-                d.posX = o.pos[0]; d.posY = o.pos[1]; d.posZ = o.pos[2];
-                d.partName = o.partName;
-                objacts->push_back(std::move(d));
-            }
-        int tilePos = 0;
-        for (const auto &t : r.treasures)
-        {
-            if (t.partIndex < 0) continue;  // item-glow / EMEVD-region → no MSB pos
-            // Same inert-DummyAsset rule as the disk pass (only reachable dummies kept).
-            if (t.partType == msbe::PART_DUMMY_ASSET && t.entityId == 0 && !t.entityGroup)
-                continue;
-            DiskTreasure d;
-            d.lotId = t.itemLotId;
-            d.area = m.area; d.gx = m.gx; d.gz = m.gz;
-            d.posX = t.pos[0]; d.posY = t.pos[1]; d.posZ = t.pos[2];
-            d.entityId = t.entityId;
-            d.partName = t.partName;
-            out.push_back(std::move(d));
-            ++tilePos;
-        }
-        spdlog::debug("[RESIDENTMSB] {} -> {} treasures ({} positioned)", m.name,
-                      r.treasures.size(), tilePos);
+            coveredTiles->insert(((uint32_t)f.area << 16) | ((uint32_t)f.gx << 8) | f.gz);
+        emit_shapes(r, f.area, f.gx, f.gz, out, collectibles, enemies, regions, objacts);
+        spdlog::debug("[RESIDENTMSB] {} <- {} -> {} treasures", f.name, f.path,
+                      r.treasures.size());
     }
-    spdlog::info("[RESIDENTMSB] parsed {} resident MSBs -> {} treasures{}", parsed, out.size(),
+    spdlog::info("[RESIDENTMSB] path source: {} captured map files -> {} parseable .msb, {} parsed"
+                 " ({} unnamed skipped) -> {} treasures{}", (int)files.size(), parseable, parsed,
+                 unnamed, out.size(),
                  coveredTiles ? (", " + std::to_string(coveredTiles->size()) + " tiles covered").c_str() : "");
     return out;
 }

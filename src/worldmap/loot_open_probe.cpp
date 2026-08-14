@@ -3,7 +3,7 @@
 #include "../goblin_config.hpp"
 #include "../goblin_sidecar.hpp"  // note_save_file_opened — sidecar save detection (Phase 1)
 #include "../modutils.hpp"
-#include "loot_disk.hpp"  // on_map_opened_path — CreateFileW map-dir discovery
+#include "loot_disk.hpp"  // on_map_opened_path — CreateFileW map-dir discovery; parse_tile
 
 #include <spdlog/spdlog.h>
 
@@ -11,8 +11,10 @@
 #include <windows.h>
 
 #include <atomic>
+#include <cstdint>
 #include <mutex>
 #include <string>
+#include <vector>
 
 namespace goblin::worldmap
 {
@@ -22,7 +24,7 @@ using CreateFileWFn = HANDLE(WINAPI *)(LPCWSTR, DWORD, DWORD, LPSECURITY_ATTRIBU
                                        HANDLE);
 CreateFileWFn o_create_file_w = nullptr;
 
-std::atomic<long> g_map_opens{0};   // count of .msb.dcx opens seen
+std::atomic<long> g_map_opens{0};   // count of map-file opens seen
 std::atomic<long> g_boot_opens{0};  // [BOOTIO] count of ALL opens seen
 LARGE_INTEGER     g_qpf{};          // perf-counter frequency
 LARGE_INTEGER     g_armed{};        // perf-counter at arming (timeline t0)
@@ -33,19 +35,32 @@ constexpr long BOOT_IO_MAX_LINES = 1500;
 constexpr long BOOT_IO_TICK      = 500;
 std::mutex g_boot_io_mx;  // serialize [BOOTIO] writes (opens land on many threads)
 
-// Cheap suffix test on the raw wide path: does it end with ".msb.dcx"? (case-
-// insensitive). Avoids constructing std::wstring on EVERY file open in the game.
-bool ends_msb_dcx(LPCWSTR p)
+// Case-insensitive suffix test on the raw wide path. Avoids constructing
+// std::wstring on EVERY file open in the game.
+bool ends_ci(LPCWSTR p, const wchar_t *suf)
 {
-    if (!p) return false;
+    if (!p || !suf) return false;
     size_t n = 0;
     while (p[n] && n < 0x8000) ++n;
-    static const wchar_t suf[] = L".msb.dcx";  // 8 chars
-    if (n < 8) return false;
-    const wchar_t *e = p + (n - 8);
-    for (int i = 0; i < 8; ++i)
+    size_t slen = 0;
+    while (suf[slen]) ++slen;
+    if (n < slen) return false;
+    const wchar_t *e = p + (n - slen);
+    for (size_t i = 0; i < slen; ++i)
         if (towlower(e[i]) != suf[i]) return false;
     return true;
+}
+
+// Map file the game opens: the parseable MapStudio MSBs (.msb.dcx / .msb) and the
+// tile bundle (.mapbnd / .mapbnd.dcx — recorded for the later Oodle-join slice).
+bool is_map_file(LPCWSTR p)
+{
+    return ends_ci(p, L".msb.dcx") || ends_ci(p, L".msb") || ends_ci(p, L".mapbnd.dcx") ||
+           ends_ci(p, L".mapbnd");
+}
+bool is_msb_file(LPCWSTR p)
+{
+    return ends_ci(p, L".msb.dcx") || ends_ci(p, L".msb");
 }
 
 std::string to_utf8(LPCWSTR w)
@@ -56,6 +71,46 @@ std::string to_utf8(LPCWSTR w)
     std::string s((size_t)(len - 1), '\0');
     WideCharToMultiByte(CP_UTF8, 0, w, -1, s.data(), len, nullptr, nullptr);
     return s;
+}
+
+// ── Captured map-path registry (the resident-MSB path source's enumeration) ──
+std::mutex                   g_map_paths_mx;
+std::vector<CapturedMapFile> g_map_paths;  // successful opens only, deduped by exact path
+
+void record_map_open(LPCWSTR name)
+{
+    if (!name) return;
+    std::string s = to_utf8(name);
+    if (s.empty()) return;
+    CapturedMapFile f;
+    f.path = s;
+    f.isMsb = is_msb_file(name);
+    // Tile name from the filename (free by construction — the path IS the file's identity):
+    // strip the known suffix, parse the m{AA}_{BB}_{CC}_00 stem (LOD0 rule, shared with the
+    // disk loader). Non-tile map files (rare) stay recorded for the join, just unnamed.
+    const char *stripped = nullptr;
+    if (ends_ci(name, L".msb.dcx")) stripped = ".msb.dcx";
+    else if (ends_ci(name, L".msb")) stripped = ".msb";
+    else if (ends_ci(name, L".mapbnd.dcx")) stripped = ".mapbnd.dcx";
+    else if (ends_ci(name, L".mapbnd")) stripped = ".mapbnd";
+    if (stripped)
+    {
+        std::string stem = s.substr(0, s.size() - std::string(stripped).size());
+        size_t sep = stem.find_last_of("/\\");
+        if (sep != std::string::npos) stem = stem.substr(sep + 1);
+        int a = 0, x = 0, z = 0;
+        if (parse_tile(stem, a, x, z))
+        {
+            f.name = stem;
+            f.area = (uint8_t)a;
+            f.gx = (uint8_t)x;
+            f.gz = (uint8_t)z;
+        }
+    }
+    std::lock_guard<std::mutex> lk(g_map_paths_mx);
+    for (const auto &p : g_map_paths)
+        if (p.path == f.path) return;  // same tile re-streamed — keep the first
+    g_map_paths.push_back(std::move(f));
 }
 
 double ms_since_armed(const LARGE_INTEGER &now)
@@ -91,7 +146,7 @@ void log_boot_open(LPCWSTR name, HANDLE h, const LARGE_INTEGER &t0)
 HANDLE WINAPI hk_create_file_w(LPCWSTR name, DWORD access, DWORD share, LPSECURITY_ATTRIBUTES sa,
                                DWORD disp, DWORD flags, HANDLE tmpl)
 {
-    const bool is_map = ends_msb_dcx(name);
+    const bool is_map = is_map_file(name);
     const bool verbose = is_map && config::diagMapOpens;
     const bool boot_io = config::diagBootIo;
     LARGE_INTEGER t0{};
@@ -110,10 +165,14 @@ HANDLE WINAPI hk_create_file_w(LPCWSTR name, DWORD access, DWORD share, LPSECURI
 
     if (is_map)
     {
+        if (h != INVALID_HANDLE_VALUE)
+            record_map_open(name);  // exact-path capture for the resident-MSB path source
         // Discovery: feed the real resolved path to the disk-loot map-dir fallback
         // (cheap no-op once the dir is Found). This is what completes a Searching
-        // state when the ancestor-walk missed the mod's map folder.
-        on_map_opened_path(name);
+        // state when the ancestor-walk missed the mod's map folder. MSB opens only —
+        // the .mapbnd parent (map\) is not a MapStudio dir.
+        if (is_msb_file(name))
+            on_map_opened_path(name);
         if (verbose)
         {
             LARGE_INTEGER t1{};
@@ -127,7 +186,7 @@ HANDLE WINAPI hk_create_file_w(LPCWSTR name, DWORD access, DWORD share, LPSECURI
                 spdlog::info("[MAPOPEN #{}] +{:.0f}ms  open={:.0f}us  {}  {}", n, ms_since_armed(t1),
                              open_us, ok ? "ok" : "FAIL", to_utf8(name));
             else if (n == 31)
-                spdlog::info("[MAPOPEN] (further .msb.dcx opens suppressed; still counting)");
+                spdlog::info("[MAPOPEN] (further map-file opens suppressed; still counting)");
         }
     }
     return h;
@@ -163,8 +222,9 @@ void install_map_open_probe()
             modutils::hook_now(fn, (void *)&hk_create_file_w, (void **)&o_create_file_w);
         else
             modutils::hook(fn, (void *)&hk_create_file_w, (void **)&o_create_file_w);
-        spdlog::info("[MAPOPEN] CreateFileW observer armed ({}{}{}). Watches *.msb.dcx opens{}.",
-                     config::lootFromDiskMsb ? "map-dir discovery" : "",
+        spdlog::info("[MAPOPEN] CreateFileW observer armed ({}{}{}). Watches map-file opens "
+                     "(.msb.dcx/.msb/.mapbnd[.dcx]){}.",
+                     config::lootFromDiskMsb ? "map-dir discovery + path capture" : "",
                      config::diagMapOpens ? (config::lootFromDiskMsb ? " + verbose log" : "verbose log")
                                           : "",
                      config::diagBootIo ? " + BOOT-IO all-files profile (live now)" : "",
@@ -174,5 +234,11 @@ void install_map_open_probe()
     {
         spdlog::error("[MAPOPEN] hook install failed: {}", e.what());
     }
+}
+
+std::vector<CapturedMapFile> captured_map_files()
+{
+    std::lock_guard<std::mutex> lk(g_map_paths_mx);
+    return g_map_paths;
 }
 } // namespace goblin::worldmap

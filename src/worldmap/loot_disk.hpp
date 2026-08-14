@@ -325,6 +325,16 @@ GOBLIN_RENDER_API std::vector<uint8_t> read_game_file_decompressed(const std::st
 // file isn't present loose. Lets callers prefer a mod's own file over vanilla.
 std::vector<uint8_t> read_loose_file_decompressed(const std::string &rel_path);
 
+// Read + DCX-decompress a file at an EXACT resolved OS path — no ancestor-walk, no packed
+// fallback. For the CreateFileW-captured map paths (resident_msb path source): the game
+// already resolved them (ME3/UXM redirect below CreateFileW), so the path IS the active
+// mod's real file; re-resolving could silently re-read the wrong install.
+std::vector<uint8_t> read_exact_file_decompressed(const std::string &exact_path);
+
+// Parse a tile filename STEM ("m60_41_33_00") → area/gx/gz. LOD0 (_00) only — _01/_02
+// connect proxies and _99 lighting tiles are skipped (rule: _00 only).
+bool parse_tile(const std::string &stem, int &area, int &gx, int &gz);
+
 // Decompress a raw DCX blob (DFLT/zlib or KRAK/Oodle) already in memory, using the game's
 // loaded Oodle for KRAK. Pass-through if the blob isn't a DCX. For inner-BXF hkx.dcx that
 // aren't addressable as a vpath (collision meshes live inside hkxbhd/hkxbdt) — the offline

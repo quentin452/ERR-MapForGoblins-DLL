@@ -14,6 +14,7 @@
 #include "goblin_virtual_world.hpp"  // vworld registry — `vworld` RPC (custom virtual worlds)
 #include "worldmap/loot_disk.hpp"    // read_game_file_decompressed — `assets_probe` path-loading guard
 #include "worldmap/resident_msb.hpp" // scan_resident_msbs — `resident_msb` diag (mod-agnostic loot source)
+#include "worldmap/loot_open_probe.hpp" // captured_map_files — `resident_msb paths` (the production path source)
 #include "worldmap/maptile.hpp"      // maptile::probe — `maptile_probe` (endgame phase-1a tile recon)
 #include "worldmap/map_entry_layer.hpp" // far_relief_probe — `far_relief_probe` (D-far -1 Y-cloud frame check)
 #include "goblin_worldmap_probe.hpp"  // dump_menu_state (dumpmenu cmd)
@@ -1509,11 +1510,30 @@ namespace goblin::debug_rpc
             }
             if (cmd == "resident_msb")
             {
-                // resident_msb [dbg] — scan + parse the RESIDENT decompressed MSBs (the maps the
-                // game has actually streamed — the ACTIVE mod's data by construction). Diag for
-                // the mod-agnostic loot source (Golden Age via ME3: the disk walk missed GA's
-                // folder). `dbg` dumps the raw CSMapbndResCap instances + name/bundle fields to
-                // pin the live layout when the RE'd offsets don't match this exe build.
+                // resident_msb — the active-mod loot source. The PRODUCTION source is
+                // path-driven: the CreateFileW observer captures the exact resolved paths of
+                // the map files the game opens (ME3/UXM redirect below CreateFileW → the
+                // active mod's real files; Golden Age via ME3: the disk walk missed GA's
+                // folder). Subcommands:
+                //   resident_msb paths — list the captured map-file paths (what the build
+                //     will parse next pass). The verification view: the paths must be the
+                //     MOD's (GA\...) files, not the vanilla install's.
+                //   resident_msb dbg — raw dump of the RETIRED memory-scan enumeration
+                //     (sweep + name-lookback; diag-only since the sweep froze the game).
+                //   resident_msb (bare) — the retired scan's count (diag).
+                if (next_token(rest) == "paths")
+                {
+                    auto files = goblin::worldmap::captured_map_files();
+                    std::string b = "ok resident_msb paths count=" + std::to_string(files.size());
+                    for (const auto &f : files)
+                    {
+                        b += "\n  [" + std::string(f.isMsb ? "msb " : "bnd ") + "] " + f.path;
+                        if (!f.name.empty()) b += "  (" + f.name + ")";
+                    }
+                    b += "\n  (production source: these exact files are parsed at the next "
+                         "bucket build; [RESIDENTMSB] log shows the merge)";
+                    return b;
+                }
                 if (next_token(rest) == "dbg")
                     return goblin::worldmap::resident_msb_dbg();
                 auto blobs = goblin::worldmap::scan_resident_msbs();
@@ -1524,7 +1544,8 @@ namespace goblin::debug_rpc
                     std::snprintf(hx, sizeof(hx), "0x%llx", (unsigned long long)m.blob);
                     b += "\n  " + m.name + " blob=" + hx + " len=" + std::to_string(m.len);
                 }
-                b += "\n  (tiles covered by the active build; see [RESIDENTMSB] log for the merge)";
+                b += "\n  (RETIRED memory-scan enumeration — diag only; see `resident_msb paths` "
+                     "for the production path source)";
                 return b;
             }
             if (cmd == "bloodstain_probe")
