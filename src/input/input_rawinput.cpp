@@ -354,25 +354,49 @@ DWORD WINAPI wheel_sink_thread(LPVOID)
         spdlog::error("[WHEELSINK] CreateWindow failed ({}) — wheel sink disabled", GetLastError());
         return 0;
     }
-    RAWINPUTDEVICE rid{};
-    rid.usUsagePage = 0x01;      // generic desktop
-    rid.usUsage = 0x02;          // mouse
-    rid.dwFlags = RIDEV_INPUTSINK;  // receive even when not in the foreground
-    rid.hwndTarget = hw;
-    if (!RegisterRawInputDevices(&rid, 1, sizeof(rid)))
-    {
-        spdlog::error("[WHEELSINK] RegisterRawInputDevices failed ({}) — wheel sink disabled, "
-                      "falling back to the in-game-hook harvest", GetLastError());
-        return 0;
-    }
-    g_wheel_sink_ok.store(true, std::memory_order_relaxed);
-    spdlog::info("[WHEELSINK] raw-input wheel sink armed (RIDEV_INPUTSINK, hidden window) — "
-                 "mouse-wheel input reaches the panel/vmap independent of the game's polling");
+    // CAPTURE-GATED registration (2026-08-15 — "ER receives no mouse input" regression): a
+    // permanently-armed RIDEV_INPUTSINK steals the mouse's raw events from the game — its
+    // GetRawInputBuffer finds nothing and the game's mouse dies (the sink's own
+    // GetRawInputData consumes the shared queue). So the sink registers ONLY while OUR overlay
+    // captures input (menu/vmap open + focus — exactly when the wheel is needed; the game
+    // doesn't read raw then anyway, polls=0 measured) and unregisters in gameplay, restoring
+    // the game's raw mouse.
+    bool armed = false;
     MSG msg;
-    while (GetMessageW(&msg, nullptr, 0, 0) > 0)
+    for (;;)
     {
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
+        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE))
+        {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+        const bool want = goblin::input::input_capture_active();
+        if (want && !armed)
+        {
+            RAWINPUTDEVICE rid{};
+            rid.usUsagePage = 0x01;      // generic desktop
+            rid.usUsage = 0x02;          // mouse
+            rid.dwFlags = RIDEV_INPUTSINK;  // receive even when not in the foreground
+            rid.hwndTarget = hw;
+            if (RegisterRawInputDevices(&rid, 1, sizeof(rid)))
+            {
+                armed = true;
+                spdlog::info("[WHEELSINK] armed (overlay input capture active)");
+            }
+        }
+        else if (!want && armed)
+        {
+            RAWINPUTDEVICE rid{};
+            rid.usUsagePage = 0x01;
+            rid.usUsage = 0x02;
+            rid.dwFlags = RIDEV_REMOVE;
+            rid.hwndTarget = hw;
+            RegisterRawInputDevices(&rid, 1, sizeof(rid));
+            armed = false;
+            spdlog::info("[WHEELSINK] unregistered (gameplay — the game's raw mouse restored)");
+        }
+        g_wheel_sink_ok.store(armed, std::memory_order_relaxed);
+        Sleep(200);
     }
     return 0;
 }

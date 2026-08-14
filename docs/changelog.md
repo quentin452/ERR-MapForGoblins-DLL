@@ -31,6 +31,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Fixed
 
+- **The wheel sink no longer kills the game's mouse.** A permanently-armed `RIDEV_INPUTSINK`
+  steals the mouse's raw events from the game — its `GetRawInputBuffer` finds nothing and the
+  game's mouse dies (regression reported 2026-08-15, introduced with the wheel-sink fix). The
+  sink now registers ONLY while the overlay captures input (menu/vmap open + focus — exactly
+  when the wheel is needed; the game doesn't read raw then anyway) and unregisters in
+  gameplay, restoring the game's raw mouse. The in-hook harvest stays as the fallback during
+  the brief re-arm window.
 - **Gamepad item lock on the virtual map (grace-style).** In pad mode the right-stick reticle
   could sweep past a marker at the mouse-size catch radius. Every marker now gets the grace
   treatment in pad mode: a wider catch (~2.0× the icon), the lock ring feedback ("I am on it,
