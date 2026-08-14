@@ -108,6 +108,18 @@ there, NOT via tools/deploy.py). Then:
   every game-file read then uses the game's own file, loader-agnostic.
 
 **Structural-bug sweep (3 subagent audits, 2026-08-14 — the Cartes bug generalized):**
+ALL FOUR AUDIT ITEMS CLOSED 2026-08-14/15, live-verified on Golden Age (the whole GA session
+log now shows ONE redirect → ONE rebuild → every reader (MSB/LOD/EMEVD/talk-ESD/msg) on the
+mod's own data: `reading MSBs from ...\GA\map\MapStudio`, quest NPCs from GA\event 112 files,
+34 invaders / 28 pins / 10 Maps vs the vanilla 58/52/24, `build.buckets 2` — no storm). The
+per-fix gotchas that cost three iterations, worth remembering: (a) `kick_disk_build`'s
+one-shot guard is load-bearing — `ensure_buckets()` runs on EVERY markers()/census access, an
+unconditional kick rebuild-storms (40 builds/42 s measured); the redirect got its own
+`force_disk_rebuild`; (b) the dir toggle on mixed-base mods (GA streams base AND mod tiles
+interleaved) rebuild-stormed via on_map_opened_path — the walk-found dir is now the BASE and
+ignored; (c) `ParsedDisk` + the merchant-ESD cache re-key on the source dir so a redirect
+re-parses exactly once; (d) the base-dir filter + the caller gate on the observer are what
+keep the capture honest (no self-echo, no toggle).
 
 **A — Hardcoded vanilla constants** (the `sortGroup {190,191}` class): HIGH — teamType 24/27
 invader gates (map_entry_layer.cpp:1826 + goblin_enemy_names.cpp:436; name-anchor fixable),
