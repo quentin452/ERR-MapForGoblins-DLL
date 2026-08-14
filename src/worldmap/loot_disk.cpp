@@ -406,17 +406,30 @@ void on_map_opened_path(const wchar_t *full_path)
 {
     if (!full_path || !disk_source_enabled()) return;
     if (config::lootMsbDir == "__test_error__") return;  // test: keep Failed, suppress discovery
-    if (static_cast<DiskLootState>(g_state.load()) == DiskLootState::Found) return;  // already have it
     std::error_code ec;
     fs::path dir = fs::path(full_path).lexically_normal().parent_path();  // ...\map\MapStudio
     if (dir.empty()) return;
+    // The game's own open is GROUND TRUTH and OVERRIDES a walk-found dir (2026-08-14): the
+    // ancestor walk can land on the vanilla install's MapStudio while GA mounts <root>/GA/ —
+    // once the game opens a real .msb.dcx we know the ACTUAL dir. Only kick the worker when
+    // the dir CHANGED (the walk already kicked on the initial Found).
+    bool changed = false;
     {
         std::lock_guard<std::mutex> lk(g_dir_mtx);
-        g_resolved_dir = dir;
+        if (g_resolved_dir != dir)
+        {
+            g_resolved_dir = dir;
+            changed = true;
+        }
     }
+    const bool was_found = static_cast<DiskLootState>(g_state.load()) == DiskLootState::Found;
     g_state.store(static_cast<int>(DiskLootState::Found));
-    spdlog::info("[LOOTDISK] map dir discovered via CreateFileW fallback: {}", dir.string());
-    if (g_build_trigger) g_build_trigger();  // kick the worker now, not at the next overlay tick
+    if (changed)
+    {
+        spdlog::info("[LOOTDISK] map dir {} via the game's own open: {}", was_found ? "REDIRECTED" : "discovered",
+                     dir.string());
+        if (g_build_trigger) g_build_trigger();  // kick the worker now, not at the next overlay tick
+    }
 }
 
 void set_build_trigger(void (*fn)()) { g_build_trigger = fn; }

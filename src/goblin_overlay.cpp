@@ -44,6 +44,7 @@
 #include "worldmap/map_renderer.hpp"     // goblin::worldmap::render_markers
 #include "worldmap/category_meta.hpp"    // baked→GPU icon migration counters (F1 panel)
 #include "worldmap/loot_disk.hpp"        // disk_loot_state — F1 "maps not found" error
+#include "worldmap/name_fmg_en.hpp"      // maybe_reload_english_index — one-shot index refresh from the game's own msgbnds
 #include "re_signatures.hpp"             // sig_health — F1 "signatures unresolved" error
 #include "goblin_messages.hpp"           // lookup_text_utf8 (item-search name resolution)
 #include "generated_shared/goblin_overlay_icons.hpp" // ATLAS_PNG category-icon atlas
@@ -1873,6 +1874,15 @@ namespace
                                      "overlay is up — the harvest never fires)",
                                      goblin::input::diag_raw_polls(), goblin::input::diag_raw_wheels());
                     }
+                }
+                // English-index refresh: the init load may have resolved vanilla msgbnds before
+                // the CreateFileW capture filled; rebuild once from the game's own files when
+                // their opens arrive. 2 s cadence, cheap flag check.
+                static std::chrono::steady_clock::time_point s_nameen_t0{};
+                if (std::chrono::steady_clock::now() - s_nameen_t0 > std::chrono::seconds(2))
+                {
+                    s_nameen_t0 = std::chrono::steady_clock::now();
+                    goblin::maybe_reload_english_index();
                 }
                 // dx-bugs F3: keyboard TEXT input via GetAsyncKeyState poll, same reasoning as
                 // the mouse-button poll above but foreground-guarded (fgw) so a background

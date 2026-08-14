@@ -23,6 +23,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Fixed
 
+- **File readers now follow the game's OWN opens, from boot.** The CreateFileW observer is
+  armed immediately (hook_now — the queued arm left the init-time readers with an empty
+  capture) and records ONLY the game's opens (a caller gate keeps our own reads from
+  polluting the ground truth). The game's own `.msb.dcx` opens now REDIRECT a walk-found map
+  dir (the ancestor walk can land on the vanilla install while the mod mounts elsewhere — the
+  disk-parse cache re-keys on the dir so the redirect takes effect), and the English name
+  index rebuilds once from the game's own msgbnds when they arrive after the init load.
 - **Region-map ("Cartes") markers found on mods that re-sort the fragment goods.** The map
   goods are detected by sortGroupId {190,191} — Golden Age re-sorts the SAME goods (8600-8618)
   into sortGroup 70/75, so every Cartes marker vanished on GA (the maps fell to Key Items or

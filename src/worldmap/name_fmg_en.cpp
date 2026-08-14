@@ -3,6 +3,7 @@
 #include "loot_disk.hpp"  // read_loose_file_decompressed / read_game_file_decompressed
 
 #include <array>
+#include <atomic>
 #include <cstring>
 #include <string>
 #include <unordered_map>
@@ -50,8 +51,13 @@ namespace
     // Merged English index: per category, real-id → UTF-8 English name. Written
     // once by load_english_name_index(), read-only after (no lock needed as long
     // as load runs to completion before the first lookup — dllmain guarantees it).
+    // 2026-08-14: ONE re-run is allowed — the initial load (dllmain init) runs before the
+    // CreateFileW capture is filled, so on a GA-like mount it can resolve the VANILLA
+    // msgbnds; when the game's own opens arrive (note_game_opened_msgbnd), maybe_reload
+    // rebuilds from the game's real files.
     std::array<std::unordered_map<int32_t, std::string>, kCatCount> g_index;
     bool g_loaded = false;
+    std::atomic<bool> g_needs_reload{false};
 
     Cat cat_for_fmg_name(const std::string &basename)
     {
@@ -238,5 +244,24 @@ namespace goblin
         const auto &m = g_index[static_cast<size_t>(cat)];
         auto it = m.find(real_id);
         return it == m.end() ? std::string{} : it->second;
+    }
+
+    void note_game_opened_msgbnd() { g_needs_reload.store(true, std::memory_order_relaxed); }
+
+    void maybe_reload_english_index()
+    {
+        // One-shot re-run: fires when the GAME's own msgbnd opens were captured after the init
+        // load (the capture is empty at init → the walk may have resolved vanilla on a GA-like
+        // mount). Cheap check, called on a slow cadence from hk_present.
+        if (!g_needs_reload.exchange(false, std::memory_order_relaxed)) return;
+        if (!g_loaded) return;  // initial load still pending or failed — nothing to refresh
+        g_loaded = false;       // force the idempotent guard to re-run
+        size_t before = 0;
+        for (auto &m : g_index) before += m.size();
+        load_english_name_index();
+        size_t after = 0;
+        for (auto &m : g_index) after += m.size();
+        spdlog::info("[NAMEEN] index rebuilt from the game's own msgbnds ({} -> {} names)",
+                     before, after);
     }
 }

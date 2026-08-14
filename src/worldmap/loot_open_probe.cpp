@@ -1,9 +1,11 @@
 #include "loot_open_probe.hpp"
 
 #include "../goblin_config.hpp"
+#include "../goblin_crashdump.hpp"  // caller_is_game — record only the GAME's opens (our own reads must not pollute the capture)
 #include "../goblin_sidecar.hpp"  // note_save_file_opened — sidecar save detection (Phase 1)
 #include "../modutils.hpp"
 #include "loot_disk.hpp"  // on_map_opened_path — CreateFileW map-dir discovery; parse_tile
+#include "name_fmg_en.hpp"  // note_game_opened_msgbnd — the English index's capture-fill retry
 
 #include <spdlog/spdlog.h>
 
@@ -171,14 +173,26 @@ HANDLE WINAPI hk_create_file_w(LPCWSTR name, DWORD access, DWORD share, LPSECURI
 
     if (is_map)
     {
-        if (h != INVALID_HANDLE_VALUE)
-            record_map_open(name);  // exact-path capture for the resident-MSB path source
-        // Discovery: feed the real resolved path to the disk-loot map-dir fallback
-        // (cheap no-op once the dir is Found). This is what completes a Searching
-        // state when the ancestor-walk missed the mod's map folder. MSB opens only —
-        // the .mapbnd parent (map\) is not a MapStudio dir.
-        if (is_msb_file(name))
-            on_map_opened_path(name);
+        // Only the GAME's opens are ground truth (ME3/UXM redirect below CreateFileW): our OWN
+        // reads (ifstream via the same hooked export) must not pollute the capture — a walk-
+        // resolved vanilla read recorded first would then win captured_path_for forever
+        // (dedup keeps the first). Same gate as the raw-input hooks.
+        const bool from_game = goblin::caller_is_game(_ReturnAddress());
+        if (from_game)
+        {
+            if (h != INVALID_HANDLE_VALUE)
+            {
+                record_map_open(name);  // exact-path capture for the path-driven readers
+                if (ends_ci(name, L".msgbnd.dcx") || ends_ci(name, L".msgbnd"))
+                    goblin::note_game_opened_msgbnd();  // the English index may re-run with the game's own bundles
+            }
+            // Discovery: feed the real resolved path to the disk-loot map-dir fallback — the
+            // game's own open OVERRIDES a walk-found dir (the walk can land on the vanilla
+            // install while GA mounts <root>/GA/). MSB opens only — the .mapbnd parent (map\)
+            // is not a MapStudio dir.
+            if (is_msb_file(name))
+                on_map_opened_path(name);
+        }
         if (verbose)
         {
             LARGE_INTEGER t1{};
@@ -221,15 +235,13 @@ void install_map_open_probe()
     }
     try
     {
-        // Boot-io must observe the WHOLE boot, so it can't wait for enable_hooks()
-        // (end of init, ~14s in) — enable immediately. The map-dir/[MAPOPEN] roles
-        // keep the queued path (first map open is minutes later; no need to differ).
-        if (config::diagBootIo)
-            modutils::hook_now(fn, (void *)&hk_create_file_w, (void **)&o_create_file_w);
-        else
-            modutils::hook(fn, (void *)&hk_create_file_w, (void **)&o_create_file_w);
-        spdlog::info("[MAPOPEN] CreateFileW observer armed ({}{}{}). Watches map-file opens "
-                     "(.msb.dcx/.msb/.mapbnd[.dcx]){}.",
+        // ALWAYS hook_now (2026-08-14): the capture now feeds init-time readers (the English
+        // name index, icon layout) whose first reads land before enable_hooks() — a queued
+        // hook would leave them with an empty capture and the vanilla walk fallback. The
+        // per-open cost is a suffix test + a caller check; map opens are rare.
+        modutils::hook_now(fn, (void *)&hk_create_file_w, (void **)&o_create_file_w);
+        spdlog::info("[MAPOPEN] CreateFileW observer armed (live) ({}{}{}). Watches map-file opens "
+                     "(.msb.dcx/.msb/.mapbnd[.dcx]/.msgbnd/.emevd/.tpf/.sblytbnd/.tpfbhd[dt]){}.",
                      config::lootFromDiskMsb ? "map-dir discovery + path capture" : "",
                      config::diagMapOpens ? (config::lootFromDiskMsb ? " + verbose log" : "verbose log")
                                           : "",

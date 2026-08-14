@@ -140,10 +140,16 @@ flags on residual rows (loot_resolve:313). SAFE — grace discover (live Bonfire
 defeat (live GameAreaParam — THE model pattern), lot flags (live). QUEST_GATES table is DEAD
 code (no consumer — drop or wire).
 
-**Next fixes (in order):** (1) hook_now the observer + captured-dir-overrides-walk-found
-(fixes B2/B3/B4 + de-risks all dir readers); (2) MapFragmentParam live table (C1) + story-beat
+**Next fixes (in order):** (1) ~~hook_now the observer + captured-dir-overrides-walk-found~~ **DONE
+2026-08-14** — observer armed hook_now + caller-gated (only the game's opens are recorded; our
+own reads can't pollute the capture — the self-echo hazard), the game's `.msb.dcx` open now
+REDIRECTS a walk-found dir (on_map_opened_path override), `ParsedDisk` re-keys on the source
+dir so the redirect re-parses, and `maybe_reload_english_index` rebuilds the English index
+once from the game's own msgbnds (2 s cadence in hk_present). This fixed audit-B items #2/#3
+and de-risked all dir-level readers; (2) MapFragmentParam live table (C1) + story-beat
 EMEVD scan (C2) with the boss-defeat pattern; (3) teamType name-anchor (A1) + merchant ESDs
-(B4); (4) stale doc comments (goblin_inject.hpp:514).
+(B4: `.talkesdbnd.dcx` still missing from the capture + `script/talk` dir derivation);
+(4) stale doc comments (goblin_inject.hpp:514 says "190/191 only").
 
 **Earlier session findings worth keeping (2026-08-14):** the `[RESIDENTMSB] 0/3 named` dump
 revealed the vtable-instance walk was matching the exe's RTTI tables (q0 == vtable value, not an

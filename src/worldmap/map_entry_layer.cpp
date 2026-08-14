@@ -61,7 +61,9 @@ std::array<std::vector<Marker>, NUM_CAT> g_buckets;
 // lotItemId / clone) — only the per-marker LIVE resolution downstream does. So cache the raw parse and
 // reuse it across rebuilds, keyed by the "want" flags that decide which sources were parsed; a param-
 // only refresh_markers then skips the parse entirely (~2.7s → ~1.6s). The MSB files are immutable for
-// the process lifetime, so the want-key is the only invalidation needed. Downstream reads these by
+// the process lifetime, so the want-key is the only invalidation needed — EXCEPT the source DIR: the
+// CreateFileW discovery can REDIRECT a walk-found dir to the game's real one (GA mounts <root>/GA/;
+// 2026-08-14), so the parse must re-run when the resolved dir changed. Downstream reads these by
 // reference EXCEPT disk_collectibles, which the build augments (LOD-feature append) — that one gets a
 // cheap working copy per build (~0.1s vs the ~1.2s parse it replaces).
 struct ParsedDisk
@@ -75,6 +77,7 @@ struct ParsedDisk
     std::vector<uint32_t> dropped_dummy_lots;
     bool valid = false;
     uint32_t want_key = 0xFFFFFFFF;         // which sources this snapshot was parsed with
+    std::string src_dir;                    // which MapStudio dir it was parsed from (dir redirect → re-parse)
 };
 ParsedDisk g_parsed;
 
@@ -2703,7 +2706,8 @@ void build_buckets_impl()
         const uint32_t want_key = (wantAssets ? 1u : 0u) | (wantEnemies ? 2u : 0u) |
                                   (wantRegions ? 4u : 0u) | (wantObjActs ? 8u : 0u) |
                                   (goblin::config::lootFromDiskMsb ? 16u : 0u);
-        if (!g_parsed.valid || g_parsed.want_key != want_key)
+        const std::string src_dir = goblin::worldmap::disk_loot_dir().string();
+        if (!g_parsed.valid || g_parsed.want_key != want_key || g_parsed.src_dir != src_dir)
         {
             auto _parse_t0 = std::chrono::steady_clock::now();
             g_parsed.treasures.clear();
@@ -2723,6 +2727,7 @@ void build_buckets_impl()
                 g_parsed.lod = load_lod_treasures();
             g_parsed.valid = true;
             g_parsed.want_key = want_key;
+            g_parsed.src_dir = src_dir;
             spdlog::info("[BENCH] build.disk_parse: {} ms ({} treasures, {} collectibles, {} enemies)",
                          std::chrono::duration_cast<std::chrono::milliseconds>(
                              std::chrono::steady_clock::now() - _parse_t0).count(),

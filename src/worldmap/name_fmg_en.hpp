@@ -18,7 +18,7 @@ namespace goblin
     // disk I/O + Oodle decompress — call ONCE, off the engine thread (dllmain
     // init). A no-op that leaves the index empty if the files can't be read
     // (search then degrades to game-language-only matching — no crash, no
-    // wrong-mod names).
+    // wrong-mod names). May run once MORE via maybe_reload_english_index().
     void load_english_name_index();
 
     // English name for an ENCODED marker name_id (same offset scheme as
@@ -26,4 +26,13 @@ namespace goblin
     // +200M, accessory +300M, gem +400M, npc +700M, place/boss raw). Returns
     // empty if the index isn't loaded or the id has no English entry. UTF-8.
     std::string lookup_name_en_disk_utf8(int32_t encoded_id);
+
+    // Called by the CreateFileW observer when the GAME opens a .msgbnd: the init-time load
+    // may have resolved the vanilla install (the capture is empty then; on a GA-like mount
+    // the walk misses <root>/GA/). Flags a one-shot rebuild from the now-captured real files.
+    void note_game_opened_msgbnd();
+
+    // One-shot re-run of the index (called on a slow cadence from hk_present). No-op unless
+    // a game msgbnd open was seen after the initial load.
+    void maybe_reload_english_index();
 }
