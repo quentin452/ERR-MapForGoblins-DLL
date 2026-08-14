@@ -92,6 +92,13 @@ bool inworld_hovered();
 bool region_enabled(int anchorIndex);
 void region_set_enabled(int anchorIndex, bool on);
 
+// True when this marker's live event-flag gates pass: the map-fragment gate (with the
+// discovered-grace exception), the post-event story gate and the inverse pre-event gate.
+// ONE shared predicate for the worldmap loop, the minimap AND the virtual map — the vmap
+// used to skip it (fragment gate missing there, user 2026-08-14). Live per call; the
+// callers cull before gating where they can (thousands of markers per frame).
+bool marker_passes_gates(const Marker &m);
+
 // ── Item search (F1 search bar) ──────────────────────────────────────────────
 // Hand render_markers the set of marker name_ids whose resolved name matches the search query
 // (null/empty = search inactive). Matching markers are ringed and pulled out of cluster piles.

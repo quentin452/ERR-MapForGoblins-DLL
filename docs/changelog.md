@@ -21,6 +21,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ## [Unreleased]
 
+### Fixed
+
+- **Undiscovered graces no longer draw with the discovered icon.** They were supposed to swap to the
+  gold-effigy disk glyph (`MENU_MAP_Player_02`) from the active install's map-cursor sheet, but when
+  that glyph could not resolve (Golden Age 3.6.5: `01_common.tpf` unreadable → sheet never loaded),
+  the code silently fell back to the discovered bonfire sprite — identical icons, undiscovered vs
+  discovered indistinguishable on every map view. Now the sprite is drawn dimmed when the glyph is
+  unavailable, so the state always reads (dim = undiscovered, full colour = discovered).
+- **Virtual map applies the map-fragment gate** (and the story gates) like the minimap and the native
+  map did. The vmap's marker filter only checked the category/section toggles — `marker_passes_gates`
+  (fragment item required, discovered-grace exception, pre/post-event variants) was never called
+  there, so undiscovered graces and other fragment-gated markers showed in the vmap while the minimap
+  correctly hid them until the region's map fragment was found. The vmap's marker cache is also
+  invalidated on every open so the live flags are re-read (a fragment picked up mid-session now
+  reveals its region the next time the map opens).
+
 ### Added
 
 - **Farmable-drop markers say so on hover** — "dropped by enemies here, nothing on the ground". They

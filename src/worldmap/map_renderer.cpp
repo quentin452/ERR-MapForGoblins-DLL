@@ -710,8 +710,11 @@ static void draw_marker_impl(ImDrawList *fg, const Marker &m, ImVec2 p, const Ic
             float gh = half * kGraceIconScale * zf;
             float gx = p.x, gy = p.y;
             // UNDISCOVERED grace → mod-agnostic DISK glyph (gold effigy MENU_MAP_Player_02 from the
-            // active SB_MapCursor) instead of the bonfire sprite. Falls back to the sprite until the
-            // DDS is read+uploaded, so nothing regresses. Discovered graces keep the sprite + check.
+            // active SB_MapCursor) instead of the bonfire sprite. If the disk sheet is unavailable
+            // (not loaded yet / mod without it), the sprite is DRAWN DIMMED so an undiscovered grace
+            // can never read as a discovered one — the old silent sprite fallback made them identical
+            // (user 2026-08-14, Golden Age 3.6.5: 01_common.tpf unreadable → no glyph, same icon).
+            bool diskGlyph = false;
             if (!disc)
             {
                 void *ut = nullptr; float gu0, gv0, gu1, gv1;
@@ -719,6 +722,7 @@ static void draw_marker_impl(ImDrawList *fg, const Marker &m, ImVec2 p, const Ic
                 if (goblin::overlay_api::map_point_glyph_uv("MENU_MAP_Player_02", -1, ut, gu0, gv0, gu1, gv1,
                                                         &nativeW, &nativeH))
                 {
+                    diskGlyph = true;
                     gt = (ImTextureID)ut;
                     u0 = ImVec2(gu0, gv0);
                     u1 = ImVec2(gu1, gv1);
@@ -747,7 +751,19 @@ static void draw_marker_impl(ImDrawList *fg, const Marker &m, ImVec2 p, const Ic
                                      ut, gu0, gv0, gu1, gv1, nativeW, nativeH, s_grace_native_w, s_grace_native_h);
                     }
                 }
+                else
+                {
+                    static bool s_logged_dim = false;
+                    if (!s_logged_dim)
+                    {
+                        s_logged_dim = true;
+                        spdlog::warn("[GRACEUNDISC] MENU_MAP_Player_02 disk glyph unavailable — "
+                                     "undiscovered graces drawn DIMMED (state still distinct)");
+                    }
+                }
             }
+            if (!disc && !diskGlyph)
+                t = IM_COL32(150, 150, 150, 190);   // dim grey + translucent: undiscovered, no glyph
             draw_legible_icon(fg, ImVec2(gx, gy), gh, gt, u0, u1, t,
                               (*goblin::overlay_api::cfg_iconMinHalfPx_ptr()) > 10.0f ? (*goblin::overlay_api::cfg_iconMinHalfPx_ptr()) : 10.0f,
                               /*backing=*/false); // grace = native MENU_MAP symbol, no halo
@@ -1074,34 +1090,14 @@ void draw_cluster_glyph(ImDrawList *fg, ImVec2 c, int n, float r, bool depleted)
     fg->AddText(ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.5f), txt, buf);
 }
 
-// ── Shared per-marker visibility gates (worldmap loop + minimap) ─────────────
+// ── Shared per-marker visibility gates (worldmap loop + minimap + virtual map) ──
 // ONE predicate for the live event-flag hide gates, so a gate fix can't silently
 // land in one view and miss the other (they used to be two hand-copied blocks —
-// the exact bug class the big-files refactor plan flagged). Each read is a live
+// the exact bug class the big-files refactor plan flagged; the vmap was a third
+// copy that MISSED the fragment gate entirely, user 2026-08-14). Each read is a live
 // event-flag lookup — cheap per call, but the callers cull BEFORE gating where
 // they can (thousands of markers per frame).
-static bool marker_passes_gates(const Marker &m)
-{
-    // Graces (discover_flag set only on grace markers): the overlay draws ALL graces itself
-    // (discovered = colour, undiscovered = grey) — grace_overlay baked ON, so the old hybrid that
-    // dropped discovered graces for the game to draw natively is gone (native map is retired).
-    // Post-event story gate: a marker tagged with a secondary story flag (post-burn
-    // Leyndell / Chapel, Ashen Capital, Charm-broken, Sealing-tree-burnt) is a
-    // post-event variant and appears only once that flag is set.
-    if (m.secondary_flag && !goblin::overlay_api::read_event_flag((uint32_t)m.secondary_flag))
-        return false;
-    // Inverse story gate: a PRE-event variant (Leyndell Royal Capital) disappears
-    // the moment its flag fires (the Ashen Capital replaces it).
-    if (m.hide_when_flag && goblin::overlay_api::read_event_flag((uint32_t)m.hide_when_flag))
-        return false;
-    // Map-fragment gate (require_map_fragments): the region's MAP FRAGMENT item must be
-    // acquired. Exception (vanilla parity): an already-DISCOVERED grace shows regardless.
-    if ((*goblin::overlay_api::cfg_requireMapFragments_ptr()) && m.fragment_flag &&
-        !goblin::overlay_api::read_event_flag(static_cast<uint32_t>(m.fragment_flag)) &&
-        !is_discovered_grace(m))
-        return false;
-    return true;
-}
+// Defined OUTSIDE the anonymous namespace (public, header-declared) — see below.
 
 // Refresh the player world-Y statics the altitude badge reads (draw_altitude_badge via
 // draw_marker). Shared by the worldmap pass and the minimap (the minimap used to carry
@@ -1743,6 +1739,31 @@ void draw_region_labels(ImDrawList *fg, int open_grp,
 }
 
 } // namespace
+
+// Public (header-declared): ONE predicate for the live event-flag hide gates — map-fragment gate
+// (with the discovered-grace exception), post-event story gate, inverse pre-event gate. Shared by
+// the worldmap loop, the minimap AND the virtual map, so a gate fix can't silently land in one
+// view and miss the other (the vmap missed the fragment gate entirely, user 2026-08-14). Lives
+// outside the anonymous namespace so panel_virtual_map.cpp can call it.
+bool marker_passes_gates(const Marker &m)
+{
+    // Post-event story gate: a marker tagged with a secondary story flag (post-burn
+    // Leyndell / Chapel, Ashen Capital, Charm-broken, Sealing-tree-burnt) is a
+    // post-event variant and appears only once that flag is set.
+    if (m.secondary_flag && !goblin::overlay_api::read_event_flag((uint32_t)m.secondary_flag))
+        return false;
+    // Inverse story gate: a PRE-event variant (Leyndell Royal Capital) disappears
+    // the moment its flag fires (the Ashen Capital replaces it).
+    if (m.hide_when_flag && goblin::overlay_api::read_event_flag((uint32_t)m.hide_when_flag))
+        return false;
+    // Map-fragment gate (require_map_fragments): the region's MAP FRAGMENT item must be
+    // acquired. Exception (vanilla parity): an already-DISCOVERED grace shows regardless.
+    if ((*goblin::overlay_api::cfg_requireMapFragments_ptr()) && m.fragment_flag &&
+        !goblin::overlay_api::read_event_flag(static_cast<uint32_t>(m.fragment_flag)) &&
+        !is_discovered_grace(m))
+        return false;
+    return true;
+}
 
 // Public wrapper (external linkage): draw ONE marker with the FULL state-aware logic (grace discovered/
 // undiscovered sprite, collected-dim, cleared check, boss redify, rune glow, altitude badge) at screen

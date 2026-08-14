@@ -866,7 +866,16 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // focus fired only on the very first open.
     {
         static bool s_was_open = false;
-        if (s_open && !s_was_open) s_focus_player = true;
+        if (s_open && !s_was_open)
+        {
+            s_focus_player = true;
+            // The marker quadtree caches membership, but its rebuild key is group/visibility/region —
+            // none of which change when the map reopens. The map-fragment + story gates read LIVE event
+            // flags (fragment picked up mid-session, grace discovered), so force a rebuild on every open
+            // or the gated set stays frozen at the first open's state (user 2026-08-14: undiscovered
+            // graces showed in the vmap without the fragment because the gate was never even applied).
+            s_qt_group = -999;
+        }
         s_was_open = s_open;
     }
     if (!s_open) return;
@@ -2110,6 +2119,13 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                 for (const goblin::worldmap::Marker &m : L->markers())
                 {
                     if (m.group != s_group || !marker_shown(m)) continue;
+                    // SAME live event-flag gates as the minimap + native map (map-fragment gate with the
+                    // discovered-grace exception, story gates) — the vmap used to skip these entirely,
+                    // so undiscovered graces (and other fragment-gated markers) showed here while the
+                    // minimap hid them until the region's map fragment was found (user 2026-08-14).
+                    // Applied at BUILD time: the quadtree caches membership, and the open-edge rebuild
+                    // below re-runs this whenever the vmap opens, so the flags are re-read fresh.
+                    if (!goblin::worldmap::marker_passes_gates(m)) continue;
                     goblin::worldmap::Marker cm = m;   // Marker is trivially copyable (POD + a static const char*)
                     bool ok = true;
                     vmap_proj(m.raw_area, m.raw_gx, m.raw_gz, m.raw_px, m.raw_pz, m.worldX, m.worldZ,
