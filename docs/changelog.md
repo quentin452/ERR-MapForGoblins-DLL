@@ -31,6 +31,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Fixed
 
+- **Gamepad item lock on the virtual map (grace-style).** In pad mode the right-stick reticle
+  could sweep past a marker at the mouse-size catch radius. Every marker now gets the grace
+  treatment in pad mode: a wider catch (~2.0× the icon), the lock ring feedback ("I am on it,
+  act now") and the same precedence rules — a latched pad target wins over the spiderfy fan
+  (the fan's open gate and hover-absorb both respect it, exactly like the grace lock), and
+  fanned members get the same boosted catch so the pad can pick them off the fan. Mouse mode
+  is unchanged (the pointer is precise).
 - **The disk build is one-shot again — the redirect uses its own force path.** The first
   rebuild-storm fix made `kick_disk_build` unconditional, but `ensure_buckets()` runs on EVERY
   `markers()`/census access: 40 bucket builds in 42 s on GA. The one-shot guard is back for

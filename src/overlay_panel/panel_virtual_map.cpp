@@ -1961,6 +1961,14 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     constexpr int kMerchCat = static_cast<int>(goblin::generated::Category::WorldMerchant);
     // Grace catch radius, as a multiple of (icon half-size)² — see the GRACE LOCK note in `plot`.
     constexpr float kGraceSnapSq = 6.0f;   // radius ≈ 2.45 * icoHalf vs 1.41 for everything else
+    // PAD ITEM LOCK (user 2026-08-15): in pad mode the right-stick reticle can sweep past a
+    // marker at the mouse-size catch radius — give every marker the grace-style lock
+    // (~2.0 * icoHalf) with the same ring feedback, so "I am on it, act now" is visible before
+    // you press anything. Mouse mode keeps the small radius (the pointer is precise). The
+    // spiderfy fan respects the lock exactly like the grace lock (open gate + absorb treat a
+    // latched pad target as a grace), and fanned members get the same boost so the pad can
+    // pick them off the fan.
+    constexpr float kPadSnapSq = 4.0f;     // radius ≈ 2.0 * icoHalf — under graces, above the mouse
     // Hover tooltip: track the marker nearest the cursor (within a pixel radius) while drawing.
     // Graces draw ON TOP (2nd pass) so they must also WIN the hover — track a priority (grace=1) so a
     // grace within radius beats an underlying non-grace, matching the visible z-order (the tooltip/warp
@@ -2006,8 +2014,11 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             // are the one marker you AIM at rather than merely read — warping is the map's main action,
             // and hitting a grace-sized icon with a thumbstick reticle is otherwise fiddly. Combined
             // with prio, passing anywhere near a grace latches onto it; the lock is then made visible
-            // (ring below) and the pad reticle snaps to it.
-            const float rad2 = mIco * mIco * (cat == kGraceCat ? kGraceSnapSq : 2.0f);
+            // (ring below) and the pad reticle snaps to it. PAD ITEM LOCK: in pad mode every marker
+            // gets the same treatment (kPadSnapSq) so the thumbstick can't sweep past it.
+            const float rad2 = mIco * mIco *
+                               (cat == kGraceCat ? kGraceSnapSq
+                                                 : (s_pad_mode ? kPadSnapSq : 2.0f));
             if (d < rad2 && (prio > hoverPrio || (prio == hoverPrio && d < hoverBestD)))
             { hoverBestD = d; hoverPrio = prio; hoverName = nameId; hoverCat = cat; hoverV = vname ? vname : ""; hoverRow = rowId; hoverDisc = discFlag; hoverWx = wx; hoverWz = wz; hoverArea = mp ? mp->raw_area : -1; hoverAnon = mp && goblin::worldmap::marker_is_anonymized(*mp); hoverPs = ps; hoverMp = mp; }
         }
@@ -2352,7 +2363,10 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                 // radius". Graces are drawn on top and never clustered (they are not in s_single_screen),
                 // so a fan can only ever COVER one, never contain it — no reason to let it steal the aim.
                 // Move off the grace and the lock drops, so the fan opens on the very next frame.
-                if (!s_fan_open && mod_ok && hoverPrio < 1 && dx * dx + dy * dy <= hitR * hitR) { s_fan_open = true; s_fan_key = fc.key; break; }
+                // PAD ITEM LOCK (2026-08-15): a latched non-grace marker in pad mode wins the same way —
+                // the thumbstick aimed at a marker shouldn't pop a neighbouring pile's fan instead.
+                const bool pad_locked = s_pad_mode && hoverMp && hoverPrio >= 0;
+                if (!s_fan_open && mod_ok && hoverPrio < 1 && !pad_locked && dx * dx + dy * dy <= hitR * hitR) { s_fan_open = true; s_fan_key = fc.key; break; }
             }
             // Resolve the open cluster + its members.
             const FanCluster *open = nullptr;
@@ -2433,8 +2447,10 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     // can't leak through the gaps between fanned icons. Only a fanned icon (below) re-sets it.
                     // EXCEPT a grace lock: a fan that drifted over a grace (already open when the pointer
                     // reached it) must not eat the warp target either — same reason as the open gate above.
+                    // PAD ITEM LOCK (2026-08-15): a latched non-grace marker in pad mode survives the same way.
+                    const bool pad_locked2 = s_pad_mode && hoverMp && hoverPrio >= 0;
                     const float absorbR = max_r + icoHalf + 6.0f * uiScale;
-                    if (hoverPrio < 1 && mdx * mdx + mdy * mdy <= absorbR * absorbR)
+                    if (hoverPrio < 1 && !pad_locked2 && mdx * mdx + mdy * mdy <= absorbR * absorbR)
                     {
                         hoverBestD = 1e18f; hoverPrio = -1; hoverName = -1; hoverCat = -1;
                         hoverV.clear(); hoverRow = 0; hoverDisc = 0; hoverAnon = false; hoverMp = nullptr;
@@ -2449,9 +2465,10 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                         { char b[8]; std::snprintf(b, sizeof(b), "x%d", ents[k].n);
                           dl->AddText(ImVec2(pos[k].x + icoHalf * 0.4f, pos[k].y - icoHalf), IM_COL32(255, 230, 150, 255), b); }
                         // Hover a fanned icon → feed the shared accumulator (prio 2 wins) so the existing
-                        // tooltip + grace double-click-warp path (below) fires for it.
+                        // tooltip + grace double-click-warp path (below) fires for it. Pad mode gets the
+                        // same catch boost as the base markers (PAD ITEM LOCK).
                         float fdx = pos[k].x - vptr.x, fdy = pos[k].y - vptr.y;
-                        if (fdx * fdx + fdy * fdy < icoHalf * icoHalf * 2.0f)
+                        if (fdx * fdx + fdy * fdy < icoHalf * icoHalf * (s_pad_mode ? kPadSnapSq : 2.0f))
                         {
                             hoverBestD = 0.f; hoverPrio = 2; hoverName = m->name_id; hoverCat = m->category;
                             // Carry the runtime name (mod-agnostic bosses have no FMG id → hoverName is a
@@ -2499,15 +2516,18 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             clab = (hoverCat >= 0) ? goblin::worldmap::anonymized_kind_label(goblin::worldmap::anonymized_kind(hoverCat))
                                    : nullptr;
         }
-        // LOCK FEEDBACK: ring the grace the pointer has latched onto, so "I am on it, act now" is
+        // LOCK FEEDBACK: ring the marker the pointer has latched onto, so "I am on it, act now" is
         // visible before you press anything — the catch radius is wider than the icon, so without this
-        // the lock would be invisible and warping would still feel like a guess.
-        if (hoverGrace)
+        // the lock would be invisible and warping would still feel like a guess. Graces always; other
+        // markers in pad mode (the PAD ITEM LOCK — same grace-style treatment).
+        if (hoverGrace || (s_pad_mode && hoverMp && hoverPrio >= 0))
         {
             const float lr = icoHalf * 1.7f + 2.0f * uiScale;
             dl->AddCircle(hoverPs, lr, IM_COL32(0, 0, 0, 150), 0, 4.0f * uiScale);
             dl->AddCircle(hoverPs, lr,
-                          graceDiscovered ? IM_COL32(240, 205, 105, 235) : IM_COL32(160, 160, 160, 200),
+                          hoverGrace ? (graceDiscovered ? IM_COL32(240, 205, 105, 235)
+                                                        : IM_COL32(160, 160, 160, 200))
+                                     : IM_COL32(240, 205, 105, 235),
                           0, 2.0f * uiScale);
         }
         if (!nm.empty() || clab || hoverGrace)
