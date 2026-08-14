@@ -78,11 +78,19 @@ there, NOT via tools/deploy.py). Then:
   hides. The vmap only started applying this gate in commit 118d8e0 → the collapse is
   invisible on ERR (gate off) and obvious on GA. User fix: `require_map_fragments = false` in
   the GA ini (or the F1 setting; now live — see the rebuild-key fix below).
-- **★ 0 Map-Fragment markers on GA = CORRECT.** GA's EquipParamGoods (2695 rows) has ZERO
-  rows with sortGroupId 190/191 — GA removed the fragment goods entirely (ERR: 25 rows →
-  23 markers). Nothing to mark, by construction. The gate consequently can NEVER unlock on GA
-  — a candidate mod-agnosticism fix: auto-disable the fragment gate when the active install's
-  EquipParamGoods has no map goods (unobtainable fragments = no gate), instead of an ini edit.
+- **★ 0 Map-Fragment markers on GA = CORRECT — GA has the FLAGS but no ITEMS (RE-proven
+  2026-08-14).** GA's EquipParamGoods (2695 rows) has ZERO rows with sortGroupId 190/191 — the
+  fragment goods are gone. The region flags (62010-62084 — the SAME ids as our tile table!)
+  are set by exactly ONE EMEVD event in common.emevd.dcx (`1686360011`: "if flag 290707" →
+  SetEventFlag all 24 region flags, no award anywhere; event 700 sets 62000 + startup flags).
+  So GA reveals regions via pure event logic, no pickup → nothing to mark → the WorldMaps
+  category is legitimately empty (ERR: 25 fragment goods → 23 markers). The `map_fragment_flag`
+  table matches GA's flags exactly, so the GATE is correct on GA too ("only Limgrave" was the
+  fresh-save flag state + `require_map_fragments=true` + the vmap's player-centred viewport).
+  Structural takeaway: the goods-sortGroup detection is the right mod-agnostic approach for
+  mods WITH fragment items; an install without them (GA) honestly yields 0. A hardening option
+  (not needed for GA): gate a tile only when its table flag is in the ACTIVE install's EMEVD
+  setter set (already parsed) — degrades gracefully on renumbered-flag mods.
 - **★ Wrong-path reads on GA (systemic, next fix target):** every reader that resolves via the
   ancestor-walk/game_dir reads VANILLA files on GA (the walk misses `<root>/GA/`):
   (a) **EMEVD** — quest-NPC flags, world-feature flags, boss bars, EMEVD drops all read
