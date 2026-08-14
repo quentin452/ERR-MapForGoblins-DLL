@@ -82,6 +82,24 @@ tr=Sauvegardé dans l'INI
 en=Require map fragments (hide an area's icons until its fragment is found)
 tr=Exiger les fragments de carte (masque la zone avant la découverte du fragment)
 
+en=Ashen / Royal Capital items:
+tr=Objets de la Capitale Cendrée / Royale :
+
+en=Story gate (Royal until the Erdtree burns, then Ashen)
+tr=Selon l'histoire (Royale jusqu'au bûcher de l'Arbre, puis Cendrée)
+
+en=Both (Ashen + Royal always visible)
+tr=Les deux (Cendrée + Royale toujours visibles)
+
+en=Royal first (pre-burn items always visible)
+tr=Royale d'abord (objets d'avant le bûcher toujours visibles)
+
+en=Ashen first (post-burn items always visible)
+tr=Cendrée d'abord (objets d'après le bûcher toujours visibles)
+
+en=How the Leyndell Royal Capital (pre-burn) and Ashen Capital (post-burn) marker variants are shown.\nStory gate = Royal items until the Erdtree burns, then Ashen's replace them.\nBoth = every item of both capitals at the same time.\nRoyal/Ashen first = that capital's items always show, the other stays story-gated.\nOne shared setting: minimap, virtual map and native map.
+tr=Comment les variantes des marqueurs de la Capitale Royale de Leyndell (avant le bûcher) et de la Capitale Cendrée (après le bûcher) sont affichées.\nSelon l'histoire = objets de la Royale jusqu'au bûcher de l'Arbre, remplacés ensuite par ceux de la Cendrée.\nLes deux = tous les objets des deux capitales en même temps.\nRoyale/Cendrée d'abord = les objets de cette capitale s'affichent toujours, l'autre reste liée à l'histoire.\nUn seul réglage partagé : minimap, carte virtuelle et carte native.
+
 en=Gray collected/cleared markers (dim looted items & killed bosses)
 tr=Griser les marqueurs récupérés (objets ramassés, boss vaincus)
 
@@ -766,6 +784,9 @@ tr=trouver objet recherche chercher marqueur nom localiser cercle quete quête
 
 en=require map fragments hide area icons until fragment found
 tr=exiger fragments carte masquer cacher zone icones icônes fragment trouve trouvé
+
+en=story capital ashen royal gate both show all earlier pre post event burn
+tr=histoire capitale cendree cendrée royale porte porte arbre bruler brûler bucher bûcher les deux avant après
 
 en=gray grey collected cleared markers dim looted killed bosses hide instead
 tr=griser gris recuperes récupérés termines terminés marqueurs ramasses ramassés boss vaincus masquer

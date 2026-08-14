@@ -14,6 +14,8 @@ namespace goblin::config
 {
     uint8_t loadDelay = 5;
     bool requireMapFragments = true;
+    uint8_t storyCapitalMode = 0;  // Ashen/Royal Capital markers: 0 = story gate (default), 1 = both,
+                                   // 2 = Royal first (pre-event always), 3 = Ashen first (post-event always)
     bool bakedOnly = false;  // diag overlay: draw ONLY Baked-source markers (the no-bake residual)
     bool collectedGraying = true;
     bool hideCollected = false;
@@ -195,6 +197,18 @@ namespace
                 B("require_map_fragments", requireMapFragments, "true",
                   "Require map fragment discovery before showing icons in that area\n"
                   "(overlay map: gates on the area's map-fragment event flag)."),
+                IniEntry{"story_capital_mode", IniType::U8, &cfg::storyCapitalMode, "0",
+                         "Ashen/Royal Capital marker display:\n"
+                         "  0 = story gate (default): Royal Capital items show until the Erdtree\n"
+                         "      burns, then Ashen Capital's replace them.\n"
+                         "  1 = both: show ALL items of Ashen Capital AND Royal Capital at once\n"
+                         "      (no story gating at all).\n"
+                         "  2 = Royal first: the pre-burn (Royal) items always show, even after the\n"
+                         "      Erdtree burns; Ashen items stay story-gated.\n"
+                         "  3 = Ashen first: the post-burn (Ashen) items always show, even before\n"
+                         "      the Erdtree burns; Royal items stay story-gated.\n"
+                         "ONE shared setting: the minimap, the virtual map and the native map all\n"
+                         "apply it (same marker gate).", false, nullptr},
                 B("baked_only", bakedOnly, "false",
                   "DIAG: draw ONLY markers still sourced from the static bake (the no-bake\n"
                   "RESIDUAL) — disk/live-covered spots are hidden. Lets you fly the world and\n"

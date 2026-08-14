@@ -39,6 +39,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Added
 
+- **Ashen / Royal Capital display mode** (`story_capital_mode` in the ini; F1 settings + vmap markers
+  sidebar). The pre-burn (Leyndell Royal Capital) and post-burn (Ashen Capital) marker variants were
+  hard-gated by the story flag — Royal until the Erdtree burns, Ashen after. Now choose how they
+  show: **story gate** (default, unchanged), **both** (every item of both capitals at the same time,
+  no story gating), **Royal first** (pre-burn items always visible, Ashen stays gated) or **Ashen
+  first** (post-burn items always visible, Royal stays gated). ONE shared setting: the minimap, the
+  virtual map and the native map all apply it through the same `marker_passes_gates` predicate, so
+  the three views can never disagree. The vmap marker index rebuilds on the change (and on every
+  open) so the new mode applies immediately.
+
 - **Farmable-drop markers say so on hover** — "dropped by enemies here, nothing on the ground". They
   mark respawning enemies that drop a notable farm target, not an item lying there, but they carried an
   item name like every other loot marker and read as a pickup that does not exist.

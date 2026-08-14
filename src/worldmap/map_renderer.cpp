@@ -1747,14 +1747,25 @@ void draw_region_labels(ImDrawList *fg, int open_grp,
 // outside the anonymous namespace so panel_virtual_map.cpp can call it.
 bool marker_passes_gates(const Marker &m)
 {
+    // Story-capital display mode (user 2026-08-14): how the pre/post-event variants (Leyndell Royal
+    // Capital vs Ashen Capital, and the DLC post-event tiles) are shown. 0 = story gate (default):
+    // Royal until the Erdtree burns, Ashen after. 1 = both: all variants of both capitals always
+    // visible. 2 = Royal first: pre-event variants always visible, post-event still gated. 3 = Ashen
+    // first: post-event variants always visible, pre-event still gated. ONE shared setting for the
+    // minimap, the virtual map and the native map — this predicate is their common gate.
+    const uint8_t smode = *goblin::overlay_api::cfg_storyCapitalMode_ptr();
+    const bool post_always = smode == 1 || smode == 3;
+    const bool pre_always = smode == 1 || smode == 2;
     // Post-event story gate: a marker tagged with a secondary story flag (post-burn
     // Leyndell / Chapel, Ashen Capital, Charm-broken, Sealing-tree-burnt) is a
     // post-event variant and appears only once that flag is set.
-    if (m.secondary_flag && !goblin::overlay_api::read_event_flag((uint32_t)m.secondary_flag))
+    if (m.secondary_flag && !goblin::overlay_api::read_event_flag((uint32_t)m.secondary_flag) &&
+        !post_always)
         return false;
     // Inverse story gate: a PRE-event variant (Leyndell Royal Capital) disappears
     // the moment its flag fires (the Ashen Capital replaces it).
-    if (m.hide_when_flag && goblin::overlay_api::read_event_flag((uint32_t)m.hide_when_flag))
+    if (m.hide_when_flag && goblin::overlay_api::read_event_flag((uint32_t)m.hide_when_flag) &&
+        !pre_always)
         return false;
     // Map-fragment gate (require_map_fragments): the region's MAP FRAGMENT item must be
     // acquired. Exception (vanilla parity): an already-DISCOVERED grace shows regardless.

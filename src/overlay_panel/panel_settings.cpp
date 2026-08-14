@@ -83,6 +83,42 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
         ImGui::Checkbox(tr("Require map fragments (hide an area's icons until its fragment is found)"),
                         goblin::overlay_api::cfg_requireMapFragments_ptr());
 
+    // Ashen/Royal Capital display mode (live; persists via "Save to INI"). The pre-event (Royal
+    // Capital) and post-event (Ashen Capital) marker variants are story-gated by default; this
+    // lets the user show both at once, or reveal one capital early. ONE shared setting for the
+    // minimap, the virtual map and the native map (they all run the same marker gate).
+    if (f.match("story capital ashen royal gate both show all earlier pre post event burn"))
+    {
+        uint8_t *smode = goblin::overlay_api::cfg_storyCapitalMode_ptr();
+        const char *labels[4] = {
+            tr("Story gate (Royal until the Erdtree burns, then Ashen)"),
+            tr("Both (Ashen + Royal always visible)"),
+            tr("Royal first (pre-burn items always visible)"),
+            tr("Ashen first (post-burn items always visible)"),
+        };
+        ImGui::Text("%s", tr("Ashen / Royal Capital items:"));
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(320.0f);
+        if (ImGui::BeginCombo("##storycapital", labels[(*smode) % 4]))
+        {
+            for (int i = 0; i < 4; ++i)
+                if (ImGui::Selectable(labels[i], *smode == i))
+                    *smode = static_cast<uint8_t>(i);
+            ImGui::EndCombo();
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("(?)");
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
+            ImGui::SetTooltip("%s", tr("How the Leyndell Royal Capital (pre-burn) and Ashen Capital "
+                                       "(post-burn) marker variants are shown.\n"
+                                       "Story gate = Royal items until the Erdtree burns, then Ashen's "
+                                       "replace them.\n"
+                                       "Both = every item of both capitals at the same time.\n"
+                                       "Royal/Ashen first = that capital's items always show, the other "
+                                       "stays story-gated.\n"
+                                       "One shared setting: minimap, virtual map and native map."));
+    }
+
     // ("Baked-only" diag moved to the Dev tab — it's a bake/live triage tool, not a user preference.)
 
     // Collected/cleared graying (overlay map; live, persists via "Save to INI").

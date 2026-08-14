@@ -1157,6 +1157,30 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         bool master_on = goblin::overlay_api::icons_enabled();
         if (ImGui::Checkbox(tr("Show all markers"), &master_on))
             goblin::overlay_api::set_icons_enabled(master_on);
+        // Ashen/Royal Capital display mode — the SAME shared setting as the F1 tab (one config var,
+        // one marker gate), so the minimap, the vmap and the native map always agree. The story gate
+        // runs at quadtree BUILD time, so a change forces a rebuild (same trick as the open edge).
+        {
+            uint8_t *smode = goblin::overlay_api::cfg_storyCapitalMode_ptr();
+            const char *labels[4] = {
+                tr("Story gate (Royal until the Erdtree burns, then Ashen)"),
+                tr("Both (Ashen + Royal always visible)"),
+                tr("Royal first (pre-burn items always visible)"),
+                tr("Ashen first (post-burn items always visible)"),
+            };
+            ImGui::Text("%s", tr("Ashen / Royal Capital items:"));
+            ImGui::SetNextItemWidth(-1.0f);
+            if (ImGui::BeginCombo("##storycapital", labels[(*smode) % 4]))
+            {
+                for (int i = 0; i < 4; ++i)
+                    if (ImGui::Selectable(labels[i], *smode == i) && *smode != i)
+                    {
+                        *smode = static_cast<uint8_t>(i);
+                        s_qt_group = -999;   // rebuild the marker index → the new gate applies now
+                    }
+                ImGui::EndCombo();
+            }
+        }
         ImGui::Separator();
         draw_sections_categories(ctx, s_markers_filter, /*with_err_integration=*/false);   // ERR moot on ImGui map
         sidebar_end("##markers_split", s_markers_w, 200.0f, 640.0f);

@@ -47,7 +47,7 @@ namespace goblin::overlay_api
     X(iconMinHalfPx) \
     X(minimapOffsetX) X(minimapOffsetY) X(minimapOpacity) X(minimapSize) \
     X(minimapZoom) X(overlayIconScale) X(overlayMasterScale) X(gamepadSensitivity) X(gamepadZoomSensitivity)
-#define GOBLIN_CFG_U8_LIST(X) X(clusterFarRadius) X(clusterNearRadius) X(clusterNearThreshold) X(virtualKeyboardLayout)
+#define GOBLIN_CFG_U8_LIST(X) X(clusterFarRadius) X(clusterNearRadius) X(clusterNearThreshold) X(virtualKeyboardLayout) X(storyCapitalMode)
 #define GOBLIN_CFG_U16_LIST(X) X(overlayToggleGamepad)
 
 #define GOBLIN_CFG_DECL_BOOL(name) GOBLIN_RENDER_API bool *cfg_##name##_ptr();

@@ -48,6 +48,10 @@ namespace goblin
     {
         extern GOBLIN_RENDER_API uint8_t loadDelay;
         extern GOBLIN_RENDER_API bool requireMapFragments;
+        // Ashen/Royal Capital marker display mode (0 = story gate, 1 = both always, 2 = Royal first,
+        // 3 = Ashen first). ONE shared setting for the minimap, the virtual map and the native map —
+        // all three apply it inside the same marker_passes_gates predicate.
+        extern GOBLIN_RENDER_API uint8_t storyCapitalMode;
         // (clip_game_ui retired → baked ON; the game-UI exclusion ramp always applies.)
         // (ui_exclusion_rects + the ERR day/night dial exclusion (dial_*) retired with the vmap-only
         // collapse — they only clipped overlay markers under the retired native map's own UI.)
