@@ -80,6 +80,10 @@ one-off scripts — most workflows are already reusable.
   diff after any classify change. → [item-classification-guard](item-classification-guard.md)
 
 ## Parsers & file formats
+- **Offline data-parse tester** [active] — `tests/test_parse.cpp` runs the mod's OWN parsers
+  (msbe_parser + BND4/FMG) against real install files offline: msgbnd/msb/emevd/dcx modes;
+  oo2core resolved from env or `.env.local` (GAME_DIR/MFG_OO2CORE), no hardcoded paths. The
+  2026-08-14 GA Cartes hunt's tool. → [data-parse-tester](data-parse-tester.md)
 - **MSBE parser = no-bake loot source** [resolved] — disk DCX_DFLT/zlib + Oodle KRAK treasure-event parser. → [msbe-parser-supersedes-bake](msbe-parser-supersedes-bake.md)
 - **Resident/disk MSB layout** [executed] — resident offsets are absolute VAs, disk entry-relative; parse `_00` only. → [runtime-msb-resident-plan](runtime-msb-resident-plan.md)
 - **DarkScript3 EMEVD/ESD decompile** [active] — hidden CLI batch-decompiles ERR EMEVD to grep-able JS
