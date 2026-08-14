@@ -1854,6 +1854,26 @@ namespace
                                      "(first delta {:.2f})", wheel);
                     }
                 }
+                // [WHEELRE] once per session, after the overlay has been up ~3 s: report whether
+                // the raw-input harvest ever saw a wheel event (mouse-wheel zoom regression lens,
+                // 2026-08-14 — 0 across 23 sessions means the game's raw reads carry no wheel
+                // while the overlay is open and the harvest never fires).
+                static std::chrono::steady_clock::time_point s_wheelre_t0{};
+                static bool s_wheelre_done = false;
+                if (!s_wheelre_done)
+                {
+                    if (s_wheelre_t0 == std::chrono::steady_clock::time_point{})
+                        s_wheelre_t0 = std::chrono::steady_clock::now();
+                    else if (std::chrono::steady_clock::now() - s_wheelre_t0 >
+                             std::chrono::seconds(3))
+                    {
+                        s_wheelre_done = true;
+                        spdlog::info("[WHEELRE] drain report: game raw polls={}, wheel events "
+                                     "seen={} (0 = no wheel in the game's raw reads while the "
+                                     "overlay is up — the harvest never fires)",
+                                     goblin::input::diag_raw_polls(), goblin::input::diag_raw_wheels());
+                    }
+                }
                 // dx-bugs F3: keyboard TEXT input via GetAsyncKeyState poll, same reasoning as
                 // the mouse-button poll above but foreground-guarded (fgw) so a background
                 // keypress can't leak in. See input_keyboard_poll.cpp's header comment — this is

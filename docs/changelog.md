@@ -23,6 +23,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Fixed
 
+- **Mouse-wheel zoom in the virtual map works on Windows again** (dead since… forever there, but
+  unnoticed: gamepad zoom and Linux/Proton worked). Root cause, live-measured: the game makes
+  ZERO `GetRawInput*` calls while the map/overlay state is up, so the wheel harvest that lived
+  inside the game's raw-input reads never saw a single event — on Windows the wheel has no legacy
+  WM_MOUSEWHEEL under the game's RIDEV_NOLEGACY, so it never reached ImGui at all. Fix: a
+  dedicated `RIDEV_INPUTSINK` raw-input registration on a hidden window (own thread + message
+  loop) delivers the wheel to the panel/vmap independently of the game's polling; the in-hook
+  harvest stays as a fallback, disabled when the sink is armed (no double accumulation).
 - **Virtual map now refreshes instantly when the map-fragment or Ashen/Royal-Capital setting
   is toggled in the F1 settings.** The vmap's marker index cached its membership at build time,
   keyed on group/category-visibility/regions — neither `require_map_fragments` nor the

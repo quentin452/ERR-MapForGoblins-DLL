@@ -63,4 +63,11 @@ void set_gamepad_active_streak(int v);
 // this guards against.
 bool ignore_next_mousemove_for_gamepad_flag();
 void set_ignore_next_mousemove_for_gamepad_flag(bool v);
+
+// [WHEELRE] raw-wheel harvest diagnostics (2026-08-14): counts of the game's raw-input polls
+// and of RI_MOUSE_WHEEL events seen inside the buffers it reads. The vmap's mouse-wheel zoom
+// depends on the harvest in input_rawinput.cpp — these numbers pin down where the chain
+// breaks when the wheel never reaches ImGui.
+unsigned diag_raw_polls();
+unsigned diag_raw_wheels();
 } // namespace goblin::input

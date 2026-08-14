@@ -57,10 +57,39 @@ std::atomic<bool> g_virtual_cursor_seeded{false};
 // (ImGui's event queue is not cross-thread safe).
 std::atomic<int> g_wheel_accum{0};
 
+// Wheel sink armed flag (declared early — the in-hook harvests gate on it as a fallback; the
+// sink itself + its thread live further down). See the sink block for the full story.
+std::atomic<bool> g_wheel_sink_ok{false};
+
 void accumulate_wheel(USHORT buttonFlags, USHORT buttonData)
 {
     if (buttonFlags & RI_MOUSE_WHEEL)
         g_wheel_accum.fetch_add(static_cast<SHORT>(buttonData), std::memory_order_relaxed);
+}
+
+// [WHEELRE] wheel-path diagnostics (2026-08-14: mouse-wheel zoom in the vmap is dead on
+// Windows — the raw-input harvest never accumulated a single wheel event across 23 sessions,
+// so the wheel never reaches ImGui). One-shot logs: the FIRST raw wheel event seen (with the
+// capture gate state), and the first polls themselves — so a single session's logs pin down
+// whether (a) the game polls raw input at all while the overlay is open, (b) wheel events are
+// in the buffers it reads, (c) the harvest gate blocks them.
+std::atomic<unsigned> g_diag_ri_polls{0};   // for_game GetRawInputData/Buffer calls
+std::atomic<unsigned> g_diag_ri_wheels{0};   // RI_MOUSE_WHEEL events seen in those buffers
+std::atomic<bool>     g_diag_wheel_logged{false};
+std::atomic<bool>     g_diag_poll_logged{false};
+
+void diag_note_poll()
+{
+    if (++g_diag_ri_polls == 1)
+        spdlog::info("[WHEELRE] raw-input polls started (game calls GetRawInput*)");
+}
+
+void diag_note_wheel(bool captureActive)
+{
+    ++g_diag_ri_wheels;
+    if (!g_diag_wheel_logged.exchange(true))
+        spdlog::info("[WHEELRE] FIRST raw wheel event seen in the game's buffer (capture_active={})",
+                     (int)captureActive);
 }
 
 void accumulate_virtual_cursor(LONG dx, LONG dy, USHORT flags)
@@ -125,6 +154,7 @@ UINT WINAPI hk_get_raw_input_data(HRAWINPUT h, UINT cmd, LPVOID data, PUINT size
     // Only the game's own reads get falsified. Must be taken before any other call.
     const bool for_game = goblin::caller_is_game(_ReturnAddress());
     g_diag_get_raw_input_data.fetch_add(1, std::memory_order_relaxed);
+    if (for_game) diag_note_poll();
     UINT ret = o_get_raw_input_data(h, cmd, data, size, hdr);
     // While the menu is open, blank the raw event so the game sees no mouse
     // movement / clicks / key presses. (ImGui's input comes from the
@@ -136,6 +166,14 @@ UINT WINAPI hk_get_raw_input_data(HRAWINPUT h, UINT cmd, LPVOID data, PUINT size
         auto *ri = reinterpret_cast<RAWINPUT *>(data);
         if (ri->header.dwType == RIM_TYPEMOUSE)
         {
+            // Wheel harvest here is the FALLBACK: the dedicated wheel sink (below) is the primary
+            // source; when it registered OK, skip the in-hook accumulation so no event doubles.
+            if (!g_wheel_sink_ok.load(std::memory_order_relaxed))
+            {
+                if (ri->data.mouse.usButtonFlags & RI_MOUSE_WHEEL)
+                    diag_note_wheel(input_capture_active());
+                accumulate_wheel(ri->data.mouse.usButtonFlags, ri->data.mouse.usButtonData);
+            }
             // Capture the REAL delta for our own virtual-cursor tracking (see
             // accumulate_virtual_cursor's comment) before it gets blanked below for the game.
             accumulate_virtual_cursor(ri->data.mouse.lLastX, ri->data.mouse.lLastY,
@@ -191,6 +229,7 @@ UINT WINAPI hk_get_raw_input_buffer(PRAWINPUT data, PUINT size, UINT hdr)
     // untouched (real events, real count), or its overlay goes dead while our panel is open.
     const bool for_game = goblin::caller_is_game(_ReturnAddress());
     g_diag_get_raw_input_buffer.fetch_add(1, std::memory_order_relaxed);
+    if (for_game) diag_note_poll();
     // Always call through for the real data first — needed for our own virtual-cursor
     // tracking (see accumulate_virtual_cursor's comment). Previously this short-circuited to
     // 0 immediately on a real read while the menu was open, giving us zero visibility into
@@ -212,6 +251,13 @@ UINT WINAPI hk_get_raw_input_buffer(PRAWINPUT data, PUINT size, UINT hdr)
         {
             if (ri->header.dwType == RIM_TYPEMOUSE)
             {
+                // Fallback harvest (see the singular-read path — the dedicated sink is primary).
+                if (!g_wheel_sink_ok.load(std::memory_order_relaxed))
+                {
+                    if (ri->data.mouse.usButtonFlags & RI_MOUSE_WHEEL)
+                        diag_note_wheel(input_capture_active());
+                    accumulate_wheel(ri->data.mouse.usButtonFlags, ri->data.mouse.usButtonData);
+                }
                 accumulate_virtual_cursor(ri->data.mouse.lLastX, ri->data.mouse.lLastY,
                                           ri->data.mouse.usFlags);
                 // Batched path returns 0 events to the game while the MENU is open (below), so this
@@ -255,10 +301,96 @@ UINT WINAPI hk_get_raw_input_buffer(PRAWINPUT data, PUINT size, UINT hdr)
     if (ri_menu && for_game && data != nullptr) return 0;
     return n;
 }
+
+// ── Wheel sink (2026-08-14) ────────────────────────────────────────────────────────────────
+// Mouse-wheel zoom in the vmap/panel was DEAD on Windows: the harvest above lives inside the
+// GAME's GetRawInput* calls, and the game makes ZERO such calls while the native map / overlay
+// state is up ([WHEELRE] raw polls=0, live-measured) — so no wheel event ever reached
+// accumulate_wheel, io.MouseWheel stayed 0, and the mouse wheel did nothing (gamepad zoom,
+// which bypasses the wheel entirely, still worked; on Linux/Proton the wheel worked via legacy
+// WM_MOUSEWHEEL, absent on Windows under the game's RIDEV_NOLEGACY).
+// Fix: register OUR OWN mouse raw-input device with RIDEV_INPUTSINK on a hidden window, pumped
+// on a dedicated thread — WM_INPUT delivers the wheel to us regardless of the game's polling.
+// The game's own registration is untouched (separate window → no replacement). The in-hook
+// harvest above stays as a FALLBACK, active only if the sink registration failed (and disabled
+// when it works, so the same event can never be accumulated twice).
+LRESULT CALLBACK wheel_sink_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
+{
+    if (msg == WM_INPUT)
+    {
+        RAWINPUT ri;
+        UINT size = sizeof(ri);
+        if (GetRawInputData(reinterpret_cast<HRAWINPUT>(lp), RID_INPUT, &ri, &size,
+                            sizeof(RAWINPUTHEADER)) != static_cast<UINT>(-1) &&
+            ri.header.dwType == RIM_TYPEMOUSE)
+        {
+            if (ri.data.mouse.usButtonFlags & RI_MOUSE_WHEEL)
+            {
+                accumulate_wheel(ri.data.mouse.usButtonFlags, ri.data.mouse.usButtonData);
+                diag_note_wheel(true);
+            }
+        }
+        return 0;
+    }
+    return DefWindowProcW(h, msg, wp, lp);
+}
+
+DWORD WINAPI wheel_sink_thread(LPVOID)
+{
+    static const wchar_t kSinkClass[] = L"MFGWheelSink";
+    WNDCLASSW wc{};
+    wc.lpfnWndProc = wheel_sink_proc;
+    wc.lpszClassName = kSinkClass;
+    wc.hInstance = GetModuleHandleW(nullptr);
+    if (!RegisterClassW(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
+    {
+        spdlog::error("[WHEELSINK] RegisterClass failed ({}) — wheel sink disabled", GetLastError());
+        return 0;
+    }
+    HWND hw = CreateWindowExW(0, kSinkClass, L"", WS_POPUP, 0, 0, 0, 0, nullptr, nullptr,
+                              wc.hInstance, nullptr);
+    if (!hw)
+    {
+        spdlog::error("[WHEELSINK] CreateWindow failed ({}) — wheel sink disabled", GetLastError());
+        return 0;
+    }
+    RAWINPUTDEVICE rid{};
+    rid.usUsagePage = 0x01;      // generic desktop
+    rid.usUsage = 0x02;          // mouse
+    rid.dwFlags = RIDEV_INPUTSINK;  // receive even when not in the foreground
+    rid.hwndTarget = hw;
+    if (!RegisterRawInputDevices(&rid, 1, sizeof(rid)))
+    {
+        spdlog::error("[WHEELSINK] RegisterRawInputDevices failed ({}) — wheel sink disabled, "
+                      "falling back to the in-game-hook harvest", GetLastError());
+        return 0;
+    }
+    g_wheel_sink_ok.store(true, std::memory_order_relaxed);
+    spdlog::info("[WHEELSINK] raw-input wheel sink armed (RIDEV_INPUTSINK, hidden window) — "
+                 "mouse-wheel input reaches the panel/vmap independent of the game's polling");
+    MSG msg;
+    while (GetMessageW(&msg, nullptr, 0, 0) > 0)
+    {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+    return 0;
+}
+
+void start_wheel_sink()
+{
+    static std::atomic<bool> started{false};
+    if (started.exchange(true)) return;
+    DWORD tid = 0;
+    if (!CreateThread(nullptr, 0, wheel_sink_thread, nullptr, 0, &tid))
+        spdlog::error("[WHEELSINK] thread create failed ({}) — wheel sink disabled", GetLastError());
+}
 } // namespace
 
 void install_rawinput_hooks()
 {
+    // Dedicated wheel sink first — the primary mouse-wheel source (see the sink block above).
+    start_wheel_sink();
     HMODULE u32 = GetModuleHandleW(L"user32.dll");
     if (!u32)
     {
@@ -291,6 +423,9 @@ float take_wheel_delta()
     const int raw = g_wheel_accum.exchange(0, std::memory_order_relaxed);
     return static_cast<float>(raw) / static_cast<float>(WHEEL_DELTA);
 }
+
+unsigned diag_raw_polls() { return g_diag_ri_polls.load(); }
+unsigned diag_raw_wheels() { return g_diag_ri_wheels.load(); }
 
 unsigned diag_get_raw_input_data_exchange() { return g_diag_get_raw_input_data.exchange(0, std::memory_order_relaxed); }
 unsigned diag_get_raw_input_buffer_exchange() { return g_diag_get_raw_input_buffer.exchange(0, std::memory_order_relaxed); }

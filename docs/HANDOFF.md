@@ -52,6 +52,19 @@ there, NOT via tools/deploy.py). Then:
   overlays the loader redirects, which is exactly what the capture sees).
 
 **GA log analysis 2026-08-14 (live-proven on the Golden Age install):**
+- **Mouse-wheel zoom in the vmap — FIXED + live-confirmed (the fix is bigger than the symptom).**
+  Symptom: wheel zoom dead in mouse mode on Windows, gamepad zoom fine. Diagnosis via a one-shot
+  `[WHEELRE]` instrument: `game raw polls=0` — the game makes ZERO GetRawInput* calls while the
+  map/overlay state is up, so the wheel harvest inside the game's raw-input reads (input_rawinput
+  hooks) structurally never fired (0 WHEELDIAG across 23 archived sessions). On Windows the wheel
+  has no legacy WM_MOUSEWHEEL under the game's RIDEV_NOLEGACY → the wheel never reached ImGui.
+  (On Linux/Proton legacy messages exist → it worked there; gamepad zoom bypasses the wheel.)
+  FIX: dedicated **RIDEV_INPUTSINK** raw-input registration on a hidden window + own thread
+  (`start_wheel_sink`, input_rawinput.cpp) delivers the wheel via WM_INPUT regardless of the
+  game's polling; the in-hook harvests stay as a fallback, gated off when the sink armed (no
+  double accumulation). Confirmed live on GA: `[WHEELSINK] armed`, 22 wheel events, `[WHEELDIAG]
+  delivered (delta 1.00)`, user-verified zoom. The `[WHEELRE] FIRST raw wheel event … in the
+  game's buffer` wording is the sink's (shared diag) — cosmetically stale, fine.
 - **GA overrides only 226/1347 tiles** (`GA\map\MapStudio`: m60×82, m61×69, m32×24, m46×12…).
   The boot catalog reads the remaining ~1100 tiles from the VANILLA install
   (`E:\SteamLibrary`) — which is CORRECT for those tiles (GA doesn't touch them). GA's own
