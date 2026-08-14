@@ -31,6 +31,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Fixed
 
+- **The map-dir redirect no longer rebuild-storms on mixed-base mods.** The game streams base
+  tiles AND mod tiles interleaved (GA overrides only 226/1347 — the rest come from the base
+  install), so the dir-redirect trigger fired on every zone crossing: measured 183 bucket
+  builds in ~90 s (avg 432 ms, 77 % of wallclock) on GA. The ancestor-walk's answer is now
+  recorded as the BASE dir; opens from it are base tiles (the loader redirects only mod files)
+  and are ignored — the dir redirects to the mod's MapStudio once and sticks. Base tiles stay
+  covered by the captured-path/resident merge as they stream.
 - **A mid-session map-dir redirect now triggers a full rebuild.** The CreateFileW discovery
   trigger was one-shot (`g_disk_built` guard) — designed for the initial Search→Found
   transition. When the game's own opens REDIRECT the resolved dir to the active mod's

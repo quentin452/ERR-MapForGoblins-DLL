@@ -38,6 +38,7 @@ fs::path g_mod_folder;
 std::atomic<int>                      g_state{static_cast<int>(DiskLootState::Disabled)};
 std::mutex                            g_dir_mtx;       // guards g_resolved_dir
 fs::path                              g_resolved_dir;  // the MapStudio dir (Found)
+fs::path                              g_walk_dir;      // the ancestor-walk's answer = the BASE install's MapStudio (2026-08-15)
 std::atomic<bool>                     g_dir_attempted{false};  // ancestor-walk ran once
 std::chrono::steady_clock::time_point g_search_t0;     // when Searching began
 constexpr int kSearchTimeoutSec = 120;  // covers menu+save-load; Failed is recoverable
@@ -366,6 +367,7 @@ void ensure_map_dir_resolved()
         {
             std::lock_guard<std::mutex> lk(g_dir_mtx);
             g_resolved_dir = d;
+            g_walk_dir = d;  // the ancestor-walk's answer = the BASE install's MapStudio (2026-08-15)
         }
         g_state.store(static_cast<int>(DiskLootState::Found));
     }
@@ -410,10 +412,19 @@ void on_map_opened_path(const wchar_t *full_path)
     std::error_code ec;
     fs::path dir = fs::path(full_path).lexically_normal().parent_path();  // ...\map\MapStudio
     if (dir.empty()) return;
-    // The game's own open is GROUND TRUTH and OVERRIDES a walk-found dir (2026-08-14): the
-    // ancestor walk can land on the vanilla install's MapStudio while GA mounts <root>/GA/ —
-    // once the game opens a real .msb.dcx we know the ACTUAL dir. Only kick the worker when
-    // the dir CHANGED (the walk already kicked on the initial Found).
+    // Base-dir filter (2026-08-15): the WALK-FOUND dir is the BASE install's MapStudio (GA's
+    // walk lands on E:\SteamLibrary). Opens from it are base tiles — the loader redirects only
+    // the mod's files, so the base dir is NOT the mod's data. Ignoring them stops the dir
+    // toggling on every zone crossing (the game streams base tiles AND mod tiles interleaved —
+    // measured rebuild storm on GA: 183 bucket builds in ~90 s, avg 432 ms). Any OTHER parent
+    // = the active mod's real MapStudio → redirect once and stick.
+    {
+        std::lock_guard<std::mutex> lk(g_dir_mtx);
+        if (!g_walk_dir.empty() && dir == g_walk_dir) return;
+    }
+    // The game's own open is GROUND TRUTH and OVERRIDES a walk-found dir (2026-08-14): once the
+    // game opens a real mod .msb.dcx we know the ACTUAL dir. Only kick the worker when the dir
+    // CHANGED (the walk already kicked on the initial Found).
     bool changed = false;
     {
         std::lock_guard<std::mutex> lk(g_dir_mtx);
