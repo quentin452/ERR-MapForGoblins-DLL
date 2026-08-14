@@ -1431,7 +1431,28 @@ std::vector<esd::TalkShopRange> load_merchant_shop_ranges()
     std::error_code ec;
     fs::path talkDir;
     const std::string capDir = captured_dir_for(".talkesdbnd.dcx");
-    talkDir = capDir.empty() ? resolve_root_file(fs::path("script") / "talk") : fs::path(capDir);
+    if (!capDir.empty())
+    {
+        talkDir = fs::path(capDir);  // the game's own talk dir (an NPC conversation happened)
+    }
+    else
+    {
+        // Derive script/talk from the RESOLVED MAP dir (2026-08-15): the game does NOT open
+        // talk ESDs at boot, so the capture is empty at the first build — but the map dir IS
+        // the game's own (capture-redirected to GA\map\MapStudio). The mod root is the
+        // MapStudio dir's parent's parent: <root>/map/MapStudio → <root>/script/talk. Holds on
+        // ERR (<root>/mod), GA (<root>/GA) and a UXM-unpacked vanilla (<game>) alike.
+        ensure_map_dir_resolved();
+        fs::path ms = disk_loot_dir();
+        if (!ms.empty() && ms.filename() == "MapStudio")
+        {
+            fs::path cand = ms.parent_path().parent_path() / "script" / "talk";
+            std::error_code ec2;
+            if (fs::is_directory(cand, ec2)) talkDir = cand;
+        }
+        if (talkDir.empty())
+            talkDir = resolve_root_file(fs::path("script") / "talk");
+    }
     const fs::path gd = game_dir();
     static std::mutex                   mx;
     static std::vector<esd::TalkShopRange> cached;
