@@ -39,6 +39,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Added
 
+- **Map-fragment markers are exempt from the map-fragment gate.** The region's map fragment pickup
+  (WorldMaps) was hidden behind the very fragment it unlocks — chicken-and-egg: you need to find the
+  map to see the area, but its own marker vanished until you had it. Now the WorldMaps markers always
+  show, even with `require_map_fragments` on (one shared gate → minimap, vmap and native map agree).
+- **Spoiler-free blackout: map fragments keep a distinct violet "?"** (`AnonKind::Map`). Under
+  anonymous loot + anonymous loot aggressive, the region-map pickups are the keys that unlock the
+  map — burying them in the plain gray "?" made the fragment hunt unplayable. They now draw with
+  their own color (violet) and label ("Map") on all three surfaces (same draw path).
+
 - **Ashen / Royal Capital display mode** (`story_capital_mode` in the ini; F1 settings + vmap markers
   sidebar). The pre-burn (Leyndell Royal Capital) and post-burn (Ashen Capital) marker variants were
   hard-gated by the story flag — Royal until the Erdtree burns, Ashen after. Now choose how they

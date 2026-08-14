@@ -810,6 +810,10 @@ static void draw_marker_impl(ImDrawList *fg, const Marker &m, ImVec2 p, const Ic
         case AnonKind::Npc:     fill = done ? IM_COL32(70, 90, 130, 130)   : IM_COL32(70, 120, 210, 225); txt = IM_COL32(245, 248, 255, done ? 150 : 255); break;
         case AnonKind::Poi:     fill = done ? IM_COL32(70, 120, 80, 130)   : IM_COL32(80, 180, 100, 225); txt = IM_COL32(245, 255, 248, done ? 150 : 255); break;
         case AnonKind::Service: fill = done ? IM_COL32(130, 110, 60, 130)  : IM_COL32(220, 175, 70, 225); txt = IM_COL32(255, 252, 240, done ? 150 : 255); break;
+        // Map fragments keep a VIOLET "?" under the blackout — the keys that unlock the map must stay
+        // findable (user 2026-08-14). Distinct from every other anon colour on both the dark minimap
+        // and the parchment worldmap.
+        case AnonKind::Map:     fill = done ? IM_COL32(90, 70, 120, 130)   : IM_COL32(150, 105, 210, 225); txt = IM_COL32(248, 242, 255, done ? 150 : 255); break;
         default:                fill = done ? IM_COL32(120, 120, 120, 120) : IM_COL32(155, 155, 160, 215); txt = IM_COL32(25, 25, 30, done ? 150 : 255); break;
         }
         fg->AddCircleFilled(p, cr, fill);
@@ -1769,7 +1773,11 @@ bool marker_passes_gates(const Marker &m)
         return false;
     // Map-fragment gate (require_map_fragments): the region's MAP FRAGMENT item must be
     // acquired. Exception (vanilla parity): an already-DISCOVERED grace shows regardless.
+    // WorldMaps markers (the fragment pickups themselves) are ALWAYS shown — gating them
+    // behind the very fragment they unlock is chicken-and-egg (you need to find the map
+    // to see the area, but its own marker would hide until found). User 2026-08-14.
     if ((*goblin::overlay_api::cfg_requireMapFragments_ptr()) && m.fragment_flag &&
+        m.category != static_cast<int>(goblin::generated::Category::WorldMaps) &&
         !goblin::overlay_api::read_event_flag(static_cast<uint32_t>(m.fragment_flag)) &&
         !is_discovered_grace(m))
         return false;
@@ -1812,6 +1820,9 @@ AnonKind anonymized_kind(int category)
     const Cat c = static_cast<Cat>(category);
     if (c == Cat::WorldBosses) return AnonKind::Boss;
     if (c == Cat::WorldHostileNPC || c == Cat::WorldQuestNPC || c == Cat::WorldMerchant) return AnonKind::Npc;
+    // Region map fragments keep a distinct kind under the blackout — they are the KEYS that unlock the
+    // map, hiding their identity entirely would make the fragment hunt unplayable (user 2026-08-14).
+    if (c == Cat::WorldMaps) return AnonKind::Map;
     const int sec = goblin::overlay_api::category_section(category);
     if (sec == 7) return AnonKind::Poi;       // Section::POI      (goblin_section_visibility.cpp enum order)
     if (sec == 8) return AnonKind::Service;   // Section::Services
@@ -1826,6 +1837,7 @@ const char *anonymized_kind_label(AnonKind k)
     case AnonKind::Npc:     return "NPC / merchant";
     case AnonKind::Poi:     return "POI / landmark";
     case AnonKind::Service: return "Service";
+    case AnonKind::Map:     return "Map";
     default:                return "Item";
     }
 }

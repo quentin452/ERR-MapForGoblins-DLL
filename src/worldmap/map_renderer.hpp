@@ -36,8 +36,9 @@ bool marker_is_anonymized(const Marker &m);
 
 // Coarse marker "type" used to colour-code the anonymized "?" (aggressive spoiler-free) AND to label its
 // tooltip, so the disc colour and the tooltip word always agree (SSOT). boss=red, npc=blue, poi=green,
-// service=amber, item=gray (see draw_marker). anonymized_kind() takes a Category int.
-enum class AnonKind { Item, Npc, Poi, Service, Boss };
+// service=amber, map=violet (region map fragments stay findable under the blackout), item=gray
+// (see draw_marker). anonymized_kind() takes a Category int.
+enum class AnonKind { Item, Npc, Poi, Service, Map, Boss };
 AnonKind anonymized_kind(int category);
 const char *anonymized_kind_label(AnonKind k);
 
