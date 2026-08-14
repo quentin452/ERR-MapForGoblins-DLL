@@ -1,6 +1,7 @@
 #include "loot_disk.hpp"
 
 #include "dvdbnd_reader.hpp"
+#include "loot_open_probe.hpp"  // captured_path_for — read the game's own file before resolving
 #include "msbe_parser.hpp"
 #include "goblin_config.hpp"
 #include "from/params.hpp"   // GameAreaParam — the game's own boss defeat-flag table
@@ -192,6 +193,24 @@ std::vector<uint8_t> read_game_file_decompressed(const std::string &rel_path)
     if (char e[8]{}; GetEnvironmentVariableA("MFG_TEST_FORCE_PACKED", e, sizeof(e)) && e[0] == '1')
         force_packed = true;
 
+    // 0) CAPTURED PATH FIRST (2026-08-14, mod-agnostic ground truth): if the game has opened
+    //    this virtual file, read THAT exact file (the loader redirected below CreateFileW, so
+    //    the captured path IS the active mod's real file). This fixes exotic mounts (GA's
+    //    <root>/GA/) that the ancestor-walk below misses — it would silently read the vanilla
+    //    install's copy instead. Falls through to the normal resolution if not captured yet.
+    std::string captured = captured_path_for(rel_path);
+    if (!captured.empty())
+    {
+        std::vector<uint8_t> cap = read_exact_file_decompressed(captured);
+        if (!cap.empty())
+        {
+            spdlog::debug("[GAMEFILE] '{}' read from the game's own captured path: {}", rel_path,
+                          captured);
+            return cap;
+        }
+        spdlog::warn("[GAMEFILE] captured path read failed ({}), falling back to resolution",
+                     captured);
+    }
     // 1) Loose file first — a mod overlay's own .dcx (ME3/ModEngine/native mod/) or a UXM-unpacked
     //    install. This is the mod-AWARE source, so it wins when present.
     std::vector<uint8_t> raw;
@@ -234,6 +253,14 @@ std::vector<uint8_t> read_game_file_decompressed(const std::string &rel_path)
 
 std::vector<uint8_t> read_loose_file_decompressed(const std::string &rel_path)
 {
+    // Captured path first (same mod-agnostic ground truth as read_game_file_decompressed).
+    std::string captured = captured_path_for(rel_path);
+    if (!captured.empty())
+    {
+        std::vector<uint8_t> cap = read_exact_file_decompressed(captured);
+        if (!cap.empty())
+            return cap;
+    }
     // Loose (mod overlay / UXM base) ONLY — no packed dvdbnd fallback. Lets a
     // caller distinguish "the mod ships this file" from "only the base game has
     // it packed", so a mod's own data can be preferred over vanilla (used by the

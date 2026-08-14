@@ -39,4 +39,10 @@ struct CapturedMapFile
 // Snapshot of the captured map-file paths (deduped, successful opens only). Thread-safe;
 // grows as the game streams maps. Callers read the whole snapshot under one lock.
 std::vector<CapturedMapFile> captured_map_files();
+
+// Exact captured path for a VIRTUAL game path ("msg/engus/item_dlc02.msgbnd.dcx" → the real
+// file the game opened, tail-matched, case-insensitive). Empty if the game hasn't opened that
+// virtual file yet. The mod-agnostic ground truth for the file readers: consult BEFORE the
+// ancestor-walk (which misses exotic mounts like GA's <root>/GA/ and falls back to vanilla).
+std::string captured_path_for(const std::string &rel_path);
 } // namespace goblin::worldmap

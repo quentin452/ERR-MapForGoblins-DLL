@@ -78,19 +78,23 @@ there, NOT via tools/deploy.py). Then:
   hides. The vmap only started applying this gate in commit 118d8e0 → the collapse is
   invisible on ERR (gate off) and obvious on GA. User fix: `require_map_fragments = false` in
   the GA ini (or the F1 setting; now live — see the rebuild-key fix below).
-- **★ 0 Map-Fragment markers on GA = CORRECT — GA has the FLAGS but no ITEMS (RE-proven
-  2026-08-14).** GA's EquipParamGoods (2695 rows) has ZERO rows with sortGroupId 190/191 — the
-  fragment goods are gone. The region flags (62010-62084 — the SAME ids as our tile table!)
-  are set by exactly ONE EMEVD event in common.emevd.dcx (`1686360011`: "if flag 290707" →
-  SetEventFlag all 24 region flags, no award anywhere; event 700 sets 62000 + startup flags).
-  So GA reveals regions via pure event logic, no pickup → nothing to mark → the WorldMaps
-  category is legitimately empty (ERR: 25 fragment goods → 23 markers). The `map_fragment_flag`
-  table matches GA's flags exactly, so the GATE is correct on GA too ("only Limgrave" was the
-  fresh-save flag state + `require_map_fragments=true` + the vmap's player-centred viewport).
-  Structural takeaway: the goods-sortGroup detection is the right mod-agnostic approach for
-  mods WITH fragment items; an install without them (GA) honestly yields 0. A hardening option
-  (not needed for GA): gate a tile only when its table flag is in the ACTIVE install's EMEVD
-  setter set (already parsed) — degrades gracefully on renumbered-flag mods.
+- **★★★ THE CARTES MYSTERY IS SOLVED — GA has the fragment GOODS, re-sorted (user's category
+  hypothesis, CONFIRMED 2026-08-14).** The map goods 8600-8618 + 2008600-2008604 EXIST in GA's
+  EquipParamGoods with their "Map: …" names (proven with a standalone C++ test running the
+  mod's own BND4/FMG reader on GA's item_dlc02.msgbnd) — but GA re-sorts them into
+  **sortGroupId 70/75 instead of 190/191**. `goods_is_map` hardcoded {190,191}
+  (goblin_item_classify.cpp) → every Cartes marker lost on GA; the maps fell to the
+  QuestProgression/Key-Items tail instead of WorldMaps (or vanished). The earlier "GA has no
+  fragment goods" conclusion was WRONG (my param scan only counted sortGroup 190/191 rows).
+  **FIX SHIPPED (3 parts):** (1) `goods_is_map` gains a NAME anchor — goods whose English name
+  starts with "Map:" are maps whatever their sortGroup (the mod-agnostic invariant; 190/191
+  stays the fast path); (2) the CreateFileW capture now records msg/tpf/sblytbnd/tpfbhd/emevd
+  opens too (was map files only); (3) `read_game_file_decompressed`/`read_loose_file_decompressed`
+  consult `captured_path_for(rel)` FIRST (tail-match on the virtual path) before the
+  ancestor-walk — the game's own file is the ground truth (GA's item_dlc02 gets read instead of
+  vanilla's). This is ALSO the first real slice of the systemic wrong-path fix. VERIFY in-game
+  on GA: search "map" → the Cartes list should now show ~24; `[NAMEEN] English index` should
+  log loose FMGs from GA's own msg.
 - **★ Wrong-path reads on GA (systemic, next fix target):** every reader that resolves via the
   ancestor-walk/game_dir reads VANILLA files on GA (the walk misses `<root>/GA/`):
   (a) **EMEVD** — quest-NPC flags, world-feature flags, boss bars, EMEVD drops all read

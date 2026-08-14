@@ -3,6 +3,7 @@
 #include "re_signatures.hpp"
 #include "from/params.hpp"
 #include "goblin_map_data.hpp"
+#include "worldmap/name_fmg_en.hpp"  // lookup_name_en_disk_utf8 — goods_is_map's name anchor
 
 #include <algorithm>
 #include <cstring>
@@ -511,12 +512,22 @@ int goblin::item_real_icon_id(int32_t key)
     return -1;
 }
 
-// True iff an EquipParamGoods row is a region Map fragment — sortGroupId ∈ {190 (base), 191 (DLC)}.
-// Used by the no-bake World - Maps pass to route map-good treasure pickups to the WorldMaps category.
+// True iff an EquipParamGoods row is a region Map fragment. Used by the no-bake World-Maps
+// pass to route map-good treasure pickups to the WorldMaps category.
+// Two anchors (2026-08-14, Golden Age): the vanilla/ERR sortGroupId ∈ {190 (base), 191 (DLC)},
+// OR the NAME — region maps are the only goods whose English name starts with "Map:". The name
+// is the mod-agnostic invariant: GA re-sorts the SAME fragment goods (8600-8618) into
+// sortGroup 70/75 and would otherwise lose every Cartes marker (proven live: GA's
+// item_dlc02.msgbnd carries "Map: Limgrave, West" for id 8600, sortGroup 70). The name anchor
+// needs the English index to carry the ACTIVE mod's msgbnds (path-capture resolution).
 bool goblin::goods_is_map(int32_t goods_id)
 {
     const int sg = goods_sort_group(goods_id);
-    return sg == 190 || sg == 191;
+    if (sg == 190 || sg == 191) return true;
+    static constexpr char kMapPrefix[] = "Map:";
+    std::string nm = goblin::lookup_name_en_disk_utf8(goods_id + 500000000);
+    return nm.size() >= sizeof(kMapPrefix) - 1 &&
+           nm.compare(0, sizeof(kMapPrefix) - 1, kMapPrefix) == 0;
 }
 
 // Live category fallback for the disk-loot path — Phase-3 TAIL classifier. item_marker_category()
@@ -532,12 +543,12 @@ int goblin::classify_item_live(int32_t key)
     if (key >= 500000000) // goods — only the default/catch-all tail reaches here
     {
         const int32_t gid = key - 500000000;
-        const int sg = goods_sort_group(gid);
         // Key/important-item tail (medallions, keys, Needles, quest goods) that ER's taxonomy leaves
         // without a fine sub-bucket → the QuestProgression ("Key Items") category, NOT the Crafting
         // Materials catch-all. Keyed on goodsType 1 = key/important item. Maps are goodsType 1 too but
-        // owned by the dedicated WorldMaps pass — never re-bucket them here (sortGroupId 190/191).
-        if (sg != 190 && sg != 191 && goods_type_live(gid) == 1)
+        // owned by the dedicated WorldMaps pass — never re-bucket them here (goods_is_map covers the
+        // sortGroup AND the "Map:" name, so a re-sorted mod's maps can't land here either).
+        if (!goblin::goods_is_map(gid) && goods_type_live(gid) == 1)
             return (int)C::QuestProgression;
         return (int)C::LootCraftingMaterials;  // generic catch-all (currencies, misc gather, ...)
     }

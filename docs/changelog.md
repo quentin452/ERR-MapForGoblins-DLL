@@ -23,6 +23,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Fixed
 
+- **Region-map ("Cartes") markers found on mods that re-sort the fragment goods.** The map
+  goods are detected by sortGroupId {190,191} — Golden Age re-sorts the SAME goods (8600-8618)
+  into sortGroup 70/75, so every Cartes marker vanished on GA (the maps fell to Key Items or
+  nowhere). `goods_is_map` now also accepts any goods whose English name starts with "Map:"
+  (the mod-agnostic invariant — the region maps are the only goods so named, whatever the mod
+  calls its sort groups). Part of the fix's path: the file readers now read the game's OWN
+  copy of a file first (CreateFileW capture widened to msg/tpf/emevd + tail-matched virtual
+  path lookup), so the name index sees the active mod's msgbnds (GA's item_dlc02 with the
+  "Map: Limgrave, West" names) instead of the vanilla install's.
 - **Mouse-wheel zoom in the virtual map works on Windows again** (dead since… forever there, but
   unnoticed: gamepad zoom and Linux/Proton worked). Root cause, live-measured: the game makes
   ZERO `GetRawInput*` calls while the map/overlay state is up, so the wheel harvest that lived

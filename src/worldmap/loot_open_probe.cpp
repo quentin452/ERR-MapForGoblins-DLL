@@ -51,12 +51,18 @@ bool ends_ci(LPCWSTR p, const wchar_t *suf)
     return true;
 }
 
-// Map file the game opens: the parseable MapStudio MSBs (.msb.dcx / .msb) and the
-// tile bundle (.mapbnd / .mapbnd.dcx — recorded for the later Oodle-join slice).
+// Game data files the game opens that our readers care about: the parseable MapStudio MSBs
+// (.msb.dcx / .msb), the tile bundle (.mapbnd / .mapbnd.dcx — recorded for the Oodle-join
+// slice), and the msg/menu/event resources (msgbnd, tpf, sblytbnd, tpfbhd/bdt, emevd) — the
+// exact-path capture is the mod-agnostic answer for THOSE readers too (Golden Age ships its
+// own msg/menu/event under <root>/GA/ while the ancestor walk resolves vanilla — see the
+// [GAMEFILE]/EMEVD wrong-path audit 2026-08-14).
 bool is_map_file(LPCWSTR p)
 {
     return ends_ci(p, L".msb.dcx") || ends_ci(p, L".msb") || ends_ci(p, L".mapbnd.dcx") ||
-           ends_ci(p, L".mapbnd");
+           ends_ci(p, L".mapbnd") || ends_ci(p, L".msgbnd.dcx") || ends_ci(p, L".msgbnd") ||
+           ends_ci(p, L".emevd.dcx") || ends_ci(p, L".tpf.dcx") || ends_ci(p, L".tpf") ||
+           ends_ci(p, L".sblytbnd.dcx") || ends_ci(p, L".tpfbhd") || ends_ci(p, L".tpfbdt");
 }
 bool is_msb_file(LPCWSTR p)
 {
@@ -240,5 +246,29 @@ std::vector<CapturedMapFile> captured_map_files()
 {
     std::lock_guard<std::mutex> lk(g_map_paths_mx);
     return g_map_paths;
+}
+
+std::string captured_path_for(const std::string &rel_path)
+{
+    // Exact captured path for a VIRTUAL game path (e.g. "msg/engus/item_dlc02.msgbnd.dcx"):
+    // the game opens its real files through the loader's redirect (below CreateFileW), so the
+    // captured path's TAIL is the virtual path — match on it. This is the mod-agnostic ground
+    // truth for read_game_file_decompressed / read_loose_file_decompressed: read the file the
+    // GAME actually uses, before any ancestor-walk re-resolution (which misses exotic mounts
+    // like GA's <root>/GA/ and silently falls back to the vanilla install).
+    if (rel_path.empty()) return {};
+    std::string rel = rel_path;
+    for (char &c : rel) c = (char)std::tolower((unsigned char)c);
+    std::lock_guard<std::mutex> lk(g_map_paths_mx);
+    for (const auto &f : g_map_paths)
+    {
+        std::string p = f.path;
+        for (char &c : p) c = (char)std::tolower((unsigned char)c);
+        if (p.size() > rel.size() + 1 &&
+            (p[p.size() - rel.size() - 1] == '\\' || p[p.size() - rel.size() - 1] == '/') &&
+            p.compare(p.size() - rel.size(), rel.size(), rel) == 0)
+            return f.path;
+    }
+    return {};
 }
 } // namespace goblin::worldmap
