@@ -4072,7 +4072,13 @@ void start_build_worker()
 
 void kick_disk_build()
 {
-    if (g_disk_built.load(std::memory_order_acquire)) return;
+    // Rebuild even when already built (2026-08-15): the trigger now fires not only on the
+    // Search→Found transition but ALSO on a dir REDIRECT (the game's own .msb.dcx open pointed
+    // at a DIFFERENT MapStudio than the walk found — GA mounts <root>/GA/). The parse cache
+    // re-keys on the source dir and the bucket set would otherwise stay vanilla forever.
+    // start_build_worker's CAS dedupes a concurrent request; g_rebuild_pending makes a running
+    // worker loop once more.
+    g_rebuild_pending.store(true, std::memory_order_release);
     start_build_worker();
 }
 

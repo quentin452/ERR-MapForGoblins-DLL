@@ -31,6 +31,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Fixed
 
+- **A mid-session map-dir redirect now triggers a full rebuild.** The CreateFileW discovery
+  trigger was one-shot (`g_disk_built` guard) — designed for the initial Search→Found
+  transition. When the game's own opens REDIRECT the resolved dir to the active mod's
+  MapStudio later (Golden Age streams its tiles ~20 s into a session), the guard silently ate
+  the trigger: buckets, the parse cache (re-keyed on the dir) and the merchant ESD cache all
+  stayed vanilla for the rest of the session. The trigger now sets the rebuild-pending flag
+  and starts the worker unconditionally (the worker's CAS dedupes concurrent requests).
 - **Invader markers survive a mod that re-teams its NPCs.** The Hostile-NPC pass required
   teamType ∈ {24,27} (the vanilla hostile team) — a mod re-teaming its invaders silently lost
   every invader marker. The gate is relaxed: a non-24/27 team still qualifies when the EMEVD
