@@ -4072,12 +4072,21 @@ void start_build_worker()
 
 void kick_disk_build()
 {
-    // Rebuild even when already built (2026-08-15): the trigger now fires not only on the
-    // Search→Found transition but ALSO on a dir REDIRECT (the game's own .msb.dcx open pointed
-    // at a DIFFERENT MapStudio than the walk found — GA mounts <root>/GA/). The parse cache
-    // re-keys on the source dir and the bucket set would otherwise stay vanilla forever.
-    // start_build_worker's CAS dedupes a concurrent request; g_rebuild_pending makes a running
-    // worker loop once more.
+    // ONE-SHOT (the g_disk_built guard must stay): ensure_buckets() runs on EVERY
+    // markers()/census access — an unconditional kick would rebuild-storm (measured on GA
+    // after an over-eager change: 40 builds in 42 s). The dir-REDIRECT path uses
+    // force_disk_rebuild() instead.
+    if (g_disk_built.load(std::memory_order_acquire)) return;
+    g_rebuild_pending.store(true, std::memory_order_release);
+    start_build_worker();
+}
+
+void force_disk_rebuild()
+{
+    // The dir-REDIRECT trigger (on_map_opened_path): the game's own .msb.dcx open pointed at
+    // a DIFFERENT MapStudio than the walk found (GA mounts <root>/GA/) — rebuild even when
+    // already built, or the bucket set, the dir-re-keyed parse cache and the merchant ESD
+    // cache stay base-install forever. start_build_worker's CAS dedupes concurrent requests.
     g_rebuild_pending.store(true, std::memory_order_release);
     start_build_worker();
 }
@@ -4214,9 +4223,9 @@ std::string loot_prov_probe(const std::string &query)
 
 void prebuild_markers()
 {
-    // Wire CreateFileW discovery → kick the worker the instant the dir is Found,
-    // so the fallback build doesn't wait for the next overlay tick (~7s).
-    set_build_trigger(&kick_disk_build);
+    // Wire CreateFileW discovery → kick the worker the instant the dir is Found OR REDIRECTED
+    // (the game's own open pointed at a different MapStudio — force, not the one-shot kick).
+    set_build_trigger(&force_disk_rebuild);
     ensure_buckets();
 }
 

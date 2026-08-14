@@ -31,6 +31,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Fixed
 
+- **The disk build is one-shot again — the redirect uses its own force path.** The first
+  rebuild-storm fix made `kick_disk_build` unconditional, but `ensure_buckets()` runs on EVERY
+  `markers()`/census access: 40 bucket builds in 42 s on GA. The one-shot guard is back for
+  the access path; the dir-REDIRECT trigger (the game's own opens) calls a dedicated
+  `force_disk_rebuild` that rebuilds even when already built.
 - **The map-dir redirect no longer rebuild-storms on mixed-base mods.** The game streams base
   tiles AND mod tiles interleaved (GA overrides only 226/1347 — the rest come from the base
   install), so the dir-redirect trigger fired on every zone crossing: measured 183 bucket
