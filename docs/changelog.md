@@ -21,6 +21,49 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ## [Unreleased]
 
+### Fixed
+
+- **Boss markers on Golden Age: the tier-4 boss-bar table read the BASE install's EMEVDs.**
+  `emevd_boss_bars` (and the quest-NPC / EMEVD-award / world-feature EMEVD walks) resolved the
+  `event\` dir from the ancestor-walk answer — which on GA is the VANILLA install while the
+  game serves its own EMEVDs from `<root>/GA/event`. With the old `loaded` latch, the table
+  froze at the first (vanilla) read, so a re-sorting mod's entity ids never matched → tier-4
+  name resolution missed → the `tier == 4` seed gate dropped the boss. The Tree Sentinel
+  showed in-world (model-band name) but had no vmap marker. Now: the EMEVD dir resolves
+  capture-first (the game's own `.emevd.dcx` opens, excluding the base install's event dir —
+  same wrong-path fix as the merchant ESD walk), and the boss-bar cache is keyed on the
+  resolved dir so a map-dir redirect re-reads the mod's EMEVDs instead of latching vanilla.
+- **Boss bars invoked through the common_func TEMPLATE are harvested too — the Tree Sentinel
+  was invisible even on the correct event dir.** Many fights — vanilla AND mods — call
+  `HandleBossHealthBar` via `RunEvent(2000[6], 90005870, entity, nameId, slot)` (the
+  common_func template whose body holds `2003[11]` with placeholder args) instead of the
+  direct instruction. `parse_emevd_boss_bars` only scanned direct `2003[11]` → those fights
+  got `nameId=0` → tier-4 miss → the seed gate dropped them (the Gatefront Tree Sentinel:
+  69 template call sites in vanilla, 14 in GA — it only showed on ERR because ERR's
+  WorldMapPointParam pins seeded it). The parse now accepts both forms at the call site
+  (template args: entity@+8, nameId@+12, slot@+16 — same RunEvent layout as the award
+  templates). Live on GA: boss bars 227→290 entities (vanilla dir) / 151→164 (GA dir);
+  markers 210→270 / 139→161.
+- **Wheel zoom in the vmap is smooth again.** The wheel-sink thread pumped messages every
+  200 ms (`Sleep(200)`), so wheel notches arrived in 200 ms lumps — the zoom multiplied
+  `pow(1.2, n)` per frame and jumped, and the sink wasn't even armed until the first 200 ms
+  tick after the vmap opened (dead zoom window — the in-hook fallback can't fire either, the
+  game polls no raw input while the map is up). The armed loop now waits with a short
+  `MsgWaitForMultipleObjectsEx` timeout (wakes instantly on a wheel event; the timeout only
+  bounds the state poll), so each notch lands within a few ms.
+- **The game's mouse survives opening and closing the vmap — the wheel sink no longer
+  registers raw input at all.** The previous fix registered our OWN mouse raw-input device
+  (`RIDEV_INPUTSINK`) while the overlay captured input. That is the wrong mechanism for this
+  game: raw-input registrations are per-DEVICE and last-wins, so registering the mouse
+  REPLACED the game's own registration — and our `RIDEV_REMOVE` then left the game with NO
+  registration at all. The game never re-registers, so its raw mouse stayed dead after the
+  first open/close cycle ("3d er native is losing inputs after i open and close vmap",
+  reported 2026-08-15; capture-gating the registration only narrowed the window). The wheel
+  now comes from a **`WH_MOUSE_LL` low-level hook** — a passive observer: the game's
+  registration is never touched, no input queue is consumed, every event still reaches the
+  game (always `CallNextHookEx`). The wheel delta is read from the hook's `MSLLHOOKSTRUCT`
+  on our own pumped thread, gated on the overlay capturing input.
+
 ### Performance
 
 - **Merchant-pin ESD scan cached per session** — the talk-ESD walk re-parsed every
@@ -31,13 +74,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Fixed
 
-- **The wheel sink no longer kills the game's mouse.** A permanently-armed `RIDEV_INPUTSINK`
-  steals the mouse's raw events from the game — its `GetRawInputBuffer` finds nothing and the
-  game's mouse dies (regression reported 2026-08-15, introduced with the wheel-sink fix). The
-  sink now registers ONLY while the overlay captures input (menu/vmap open + focus — exactly
-  when the wheel is needed; the game doesn't read raw then anyway) and unregisters in
-  gameplay, restoring the game's raw mouse. The in-hook harvest stays as the fallback during
-  the brief re-arm window.
+- **The wheel sink no longer kills the game's mouse.** The first wheel-sink fix registered our
+  own mouse raw-input device (`RIDEV_INPUTSINK`) and capture-gated it — but raw-input
+  registrations are per-DEVICE and last-wins, so even gated, registering replaced the game's
+  registration and `RIDEV_REMOVE` left the game with none (it never re-registers → dead mouse
+  after open/close vmap). Superseded by the `WH_MOUSE_LL` rewrite (see the wheel-sink entry
+  above): no raw-input registration is ever touched, so the game's mouse can't be affected.
+  The in-hook harvest stays as the fallback if the hook install fails.
 - **Gamepad item lock on the virtual map (grace-style).** In pad mode the right-stick reticle
   could sweep past a marker at the mouse-size catch radius. Every marker now gets the grace
   treatment in pad mode: a wider catch (~2.0× the icon), the lock ring feedback ("I am on it,

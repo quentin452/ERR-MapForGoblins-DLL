@@ -59,12 +59,23 @@ there, NOT via tools/deploy.py). Then:
   hooks) structurally never fired (0 WHEELDIAG across 23 archived sessions). On Windows the wheel
   has no legacy WM_MOUSEWHEEL under the game's RIDEV_NOLEGACY → the wheel never reached ImGui.
   (On Linux/Proton legacy messages exist → it worked there; gamepad zoom bypasses the wheel.)
-  FIX: dedicated **RIDEV_INPUTSINK** raw-input registration on a hidden window + own thread
-  (`start_wheel_sink`, input_rawinput.cpp) delivers the wheel via WM_INPUT regardless of the
-  game's polling; the in-hook harvests stay as a fallback, gated off when the sink armed (no
-  double accumulation). Confirmed live on GA: `[WHEELSINK] armed`, 22 wheel events, `[WHEELDIAG]
-  delivered (delta 1.00)`, user-verified zoom. The `[WHEELRE] FIRST raw wheel event … in the
-  game's buffer` wording is the sink's (shared diag) — cosmetically stale, fine.
+  FIX: dedicated wheel sink (`start_wheel_sink`, input_rawinput.cpp) delivers the wheel
+  regardless of the game's polling; the in-hook harvests stay as a fallback, gated off when the
+  sink armed (no double accumulation). Confirmed live on GA: `[WHEELSINK] armed`, 22 wheel
+  events, `[WHEELDIAG] delivered (delta 1.00)`, user-verified zoom. The `[WHEELRE] FIRST raw
+  wheel event … in the game's buffer` wording is the sink's (shared diag) — cosmetically stale,
+  fine.
+  **REWORKED 2026-08-15 (the RIDEV_INPUTSINK mechanism was fundamentally wrong):** registering
+  the mouse raw-input device is per-DEVICE last-wins — it REPLACED the game's own registration,
+  and our `RIDEV_REMOVE` left the game with NO registration (it never re-registers) → "3d er
+  native is losing inputs after i open and close vmap" (the capture-gate narrowed it but the
+  removal damage persisted). The sink is now a **passive `WH_MOUSE_LL` hook** — no raw-input
+  registration is ever touched, no queue consumed, every event passes through unchanged
+  (`CallNextHookEx`); the wheel delta is read from `MSLLHOOKSTRUCT.mouseData` on the sink
+  thread, gated on `input_capture_active()`. Smoothness: the pump waits with a short
+  `MsgWaitForMultipleObjectsEx` timeout while capturing (per-notch zoom; the old `Sleep(200)`
+  batched notches into lumps). VERIFY on GA: wheel zoom smooth in the vmap AND the game mouse
+  works after open/close cycles (the original regression test).
 - **GA overrides only 226/1347 tiles** (`GA\map\MapStudio`: m60×82, m61×69, m32×24, m46×12…).
   The boot catalog reads the remaining ~1100 tiles from the VANILLA install
   (`E:\SteamLibrary`) — which is CORRECT for those tiles (GA doesn't touch them). GA's own
@@ -106,6 +117,30 @@ there, NOT via tools/deploy.py). Then:
   capture to ALL successful opens (record every path), key a rel-path → exact-path lookup, and
   have `read_game_file_decompressed`/`resolve_root_file` consult the capture BEFORE the walk —
   every game-file read then uses the game's own file, loader-agnostic.
+- **★ THE EMEVD SLICE OF THE WRONG-PATH FIX IS SHIPPED (2026-08-15 — the Tree Sentinel
+  regression on GA).** Two stacked root causes, both fixed and live-verified on GA:
+  (1) **Wrong-path dir** — the tier-4 boss-bar table (`emevd_boss_bars`, loot_disk.cpp)
+  resolved its `event\` dir from `resolve_event_dir(disk_loot_dir())` and latched it forever
+  with a `loaded` flag; on GA the FIRST read was the BASE install's VANILLA EMEVDs. Fix,
+  mirroring the merchant-ESD pattern: new `resolve_active_event_dir()` resolves capture-first
+  (the parent of the game's OWN captured `.emevd.dcx` opens, excluding the base install's
+  event dir `game_dir()/event` — the loader redirects only mod files), falling back to the
+  resolved map dir's event sibling; the boss-bar cache is keyed on the resolved dir so a
+  map-dir redirect re-reads instead of latching vanilla (cache + defeats + boss_areas cleared
+  on re-key). Applied to ALL EMEVD readers: boss bars, quest NPCs, EMEVD awards, world-feature
+  flags. (2) **Template-indirect boss bars** — `parse_emevd_boss_bars` (msbe_parser.cpp) only
+  scanned DIRECT `2003[11]` HandleBossHealthBar instructions, but many fights — vanilla AND
+  GA — invoke it via the common_func TEMPLATE `90005870`: `RunEvent(2000[6], 90005870,
+  entity, nameId, slot)` (the template body holds 2003[11] with placeholder args). The
+  Tree Sentinel was exactly such a call site (69 template call sites in vanilla incl. the
+  Gatefront sentinel; 14 in GA) → nameId=0 → tier-4 miss → `tier == 4` seed gate dropped it
+  (only showed on ERR because ERR's WMP textId2==5100 pins seeded it). Parse now accepts both
+  forms (template args: state@+0, templateId@+4, entity@+8, nameId@+12, slot@+16 — same
+  RunEvent layout as the award templates).
+  **VERIFIED on GA (logs 2026-08-15 02:04):** boss bars 227→290 entities (vanilla dir) and
+  151→164 (GA dir after redirect); `[BOSSLIVE]` markers 210→270 / 139→161; Tree Sentinel
+  marker visible on the vmap (user-confirmed).
+
 
 **Structural-bug sweep (3 subagent audits, 2026-08-14 — the Cartes bug generalized):**
 ALL FOUR AUDIT ITEMS CLOSED 2026-08-14/15, live-verified on Golden Age (the whole GA session
