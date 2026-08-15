@@ -21,6 +21,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ## [Unreleased]
 
+## [v2.9.1] - 2026-08-15
+
 ### Fixed
 
 - **Golden Age (or any partial-overlay mod): markers on tiles the mod does NOT override
