@@ -302,66 +302,93 @@ UINT WINAPI hk_get_raw_input_buffer(PRAWINPUT data, PUINT size, UINT hdr)
     return n;
 }
 
-// ── Wheel sink (2026-08-14) ────────────────────────────────────────────────────────────────
+// ── Wheel sink (2026-08-14, REWORKED 2026-08-15) ─────────────────────────────────────────────
 // Mouse-wheel zoom in the vmap/panel was DEAD on Windows: the harvest above lives inside the
 // GAME's GetRawInput* calls, and the game makes ZERO such calls while the native map / overlay
 // state is up ([WHEELRE] raw polls=0, live-measured) — so no wheel event ever reached
 // accumulate_wheel, io.MouseWheel stayed 0, and the mouse wheel did nothing (gamepad zoom,
 // which bypasses the wheel entirely, still worked; on Linux/Proton the wheel worked via legacy
 // WM_MOUSEWHEEL, absent on Windows under the game's RIDEV_NOLEGACY).
-// Fix: register OUR OWN mouse raw-input device with RIDEV_INPUTSINK on a hidden window, pumped
-// on a dedicated thread — WM_INPUT delivers the wheel to us regardless of the game's polling.
-// The game's own registration is untouched (separate window → no replacement). The in-hook
-// harvest above stays as a FALLBACK, active only if the sink registration failed (and disabled
-// when it works, so the same event can never be accumulated twice).
-LRESULT CALLBACK wheel_sink_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
+//
+// v1 (2026-08-14) registered OUR OWN mouse raw-input device (RIDEV_INPUTSINK) on a hidden
+// window — WRONG MECHANISM, the "3d er native is losing inputs after i open and close vmap"
+// regression: registering the mouse usage page/usage REPLACES the game's own registration for
+// that device (raw input registrations are per-device, last-wins), and our RIDEV_REMOVE then
+// leaves the game with NO registration at all — it never re-registers, so the game's raw mouse
+// stays dead after the first open/close cycle (capture-gating the registration only narrowed
+// the window; the removal damage and the dead-zoom re-arm gap remained).
+//
+// v2 (2026-08-15): a WH_MOUSE_LL low-level mouse hook instead. LL hooks are PASSIVE OBSERVERS:
+// the game's raw-input registration is never touched, no input queue is consumed, and every
+// event still reaches the game untouched (we always CallNextHookEx). We simply read the wheel
+// delta (MSLLHOOKSTRUCT.mouseData) on our own pumped thread and accumulate it. The game can
+// never lose its mouse to us, because we never register anything. The in-hook harvest above
+// stays as a FALLBACK, active only if the hook install failed.
+//
+// NATIVE WINDOWS ONLY: under Wine/Proton the wheel ALREADY reaches ImGui via the legacy
+// WM_MOUSEWHEEL wndproc path (menu open), so adding the LL hook would DOUBLE every notch —
+// the two sources are mutually exclusive by platform. Wine is detected via ntdll's
+// wine_get_version export (standard, no dependency); no legacy wheel exists on native Windows
+// under the game's RIDEV_NOLEGACY, so the LL hook is the single source there.
+//
+// LL hooks dispatch through the installing thread's message queue, so the thread pumps with a
+// short wait while our overlay captures input (smooth per-notch delivery — the old Sleep(200)
+// batched notches into 200ms lumps and the vmap zoom jumped pow(1.2, n) per frame).
+LRESULT CALLBACK wheel_sink_proc(int nCode, WPARAM wp, LPARAM lp)
 {
-    if (msg == WM_INPUT)
+    if (nCode == HC_ACTION && wp == WM_MOUSEWHEEL)
     {
-        RAWINPUT ri;
-        UINT size = sizeof(ri);
-        if (GetRawInputData(reinterpret_cast<HRAWINPUT>(lp), RID_INPUT, &ri, &size,
-                            sizeof(RAWINPUTHEADER)) != static_cast<UINT>(-1) &&
-            ri.header.dwType == RIM_TYPEMOUSE)
+        const MSLLHOOKSTRUCT *ms = reinterpret_cast<const MSLLHOOKSTRUCT *>(lp);
+        if (ms && goblin::input::input_capture_active())
         {
-            if (ri.data.mouse.usButtonFlags & RI_MOUSE_WHEEL)
+            // High word of mouseData = the wheel delta in WHEEL_DELTA units (the same
+            // convention as raw input's usButtonData). Gated on our overlay capturing input
+            // (menu/vmap open + focus) — gameplay wheel scrolls are ignored, exactly like the
+            // old capture-gated registration, without any registration churn.
+            const SHORT delta = static_cast<SHORT>(HIWORD(ms->mouseData));
+            if (delta != 0)
             {
-                accumulate_wheel(ri.data.mouse.usButtonFlags, ri.data.mouse.usButtonData);
+                accumulate_wheel(RI_MOUSE_WHEEL, static_cast<USHORT>(delta));
                 diag_note_wheel(true);
             }
         }
-        return 0;
     }
-    return DefWindowProcW(h, msg, wp, lp);
+    return CallNextHookEx(nullptr, nCode, wp, lp);  // pass-through — the game sees everything
+}
+
+// True under Wine/Proton (ntdll exports wine_get_version only there). The wheel sources are
+// platform-exclusive: legacy WM_MOUSEWHEEL reaches ImGui under Wine, the LL hook is the
+// native-Windows source — never both (double accumulation).
+bool is_wine_runtime()
+{
+    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    return ntdll && GetProcAddress(ntdll, "wine_get_version") != nullptr;
 }
 
 DWORD WINAPI wheel_sink_thread(LPVOID)
 {
-    static const wchar_t kSinkClass[] = L"MFGWheelSink";
-    WNDCLASSW wc{};
-    wc.lpfnWndProc = wheel_sink_proc;
-    wc.lpszClassName = kSinkClass;
-    wc.hInstance = GetModuleHandleW(nullptr);
-    if (!RegisterClassW(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
+    if (is_wine_runtime())
     {
-        spdlog::error("[WHEELSINK] RegisterClass failed ({}) — wheel sink disabled", GetLastError());
+        spdlog::info("[WHEELSINK] Wine/Proton runtime — legacy WM_MOUSEWHEEL already reaches "
+                     "ImGui; the LL hook is skipped (no double wheel)");
         return 0;
     }
-    HWND hw = CreateWindowExW(0, kSinkClass, L"", WS_POPUP, 0, 0, 0, 0, nullptr, nullptr,
-                              wc.hInstance, nullptr);
-    if (!hw)
+    HMODULE self = nullptr;
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                           GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                       reinterpret_cast<LPCWSTR>(&wheel_sink_proc), &self);
+    HHOOK hook = SetWindowsHookExW(WH_MOUSE_LL, wheel_sink_proc, self, 0);
+    if (!hook)
     {
-        spdlog::error("[WHEELSINK] CreateWindow failed ({}) — wheel sink disabled", GetLastError());
+        spdlog::error("[WHEELSINK] SetWindowsHookEx(WH_MOUSE_LL) failed ({}) — wheel sink disabled",
+                      GetLastError());
         return 0;
     }
-    // CAPTURE-GATED registration (2026-08-15 — "ER receives no mouse input" regression): a
-    // permanently-armed RIDEV_INPUTSINK steals the mouse's raw events from the game — its
-    // GetRawInputBuffer finds nothing and the game's mouse dies (the sink's own
-    // GetRawInputData consumes the shared queue). So the sink registers ONLY while OUR overlay
-    // captures input (menu/vmap open + focus — exactly when the wheel is needed; the game
-    // doesn't read raw then anyway, polls=0 measured) and unregisters in gameplay, restoring
-    // the game's raw mouse.
-    bool armed = false;
+    // ALWAYS armed (the hook is passive — it only accumulates while we capture input, checked
+    // per event in the proc). No registration, no unregistration: the game's raw mouse can
+    // never be affected by our presence.
+    g_wheel_sink_ok.store(true, std::memory_order_relaxed);
+    spdlog::info("[WHEELSINK] armed (WH_MOUSE_LL passive hook — the game's raw input untouched)");
     MSG msg;
     for (;;)
     {
@@ -370,33 +397,13 @@ DWORD WINAPI wheel_sink_thread(LPVOID)
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
-        const bool want = goblin::input::input_capture_active();
-        if (want && !armed)
-        {
-            RAWINPUTDEVICE rid{};
-            rid.usUsagePage = 0x01;      // generic desktop
-            rid.usUsage = 0x02;          // mouse
-            rid.dwFlags = RIDEV_INPUTSINK;  // receive even when not in the foreground
-            rid.hwndTarget = hw;
-            if (RegisterRawInputDevices(&rid, 1, sizeof(rid)))
-            {
-                armed = true;
-                spdlog::info("[WHEELSINK] armed (overlay input capture active)");
-            }
-        }
-        else if (!want && armed)
-        {
-            RAWINPUTDEVICE rid{};
-            rid.usUsagePage = 0x01;
-            rid.usUsage = 0x02;
-            rid.dwFlags = RIDEV_REMOVE;
-            rid.hwndTarget = hw;
-            RegisterRawInputDevices(&rid, 1, sizeof(rid));
-            armed = false;
-            spdlog::info("[WHEELSINK] unregistered (gameplay — the game's raw mouse restored)");
-        }
-        g_wheel_sink_ok.store(armed, std::memory_order_relaxed);
-        Sleep(200);
+        // SMOOTHNESS (2026-08-15 — "wheel zoom is laggy/jerky in the vmap"): LL hook events
+        // dispatch while we pump, so wait SHORT while our overlay captures input — each wheel
+        // notch lands within a few ms and the vmap zoom steps per notch (the old fixed
+        // Sleep(200) batched notches into 200ms lumps: the zoom multiplied pow(1.2, n) per
+        // frame — saccadé). Not capturing: 200ms is fine (we ignore the wheel then anyway).
+        MsgWaitForMultipleObjectsEx(0, nullptr, goblin::input::input_capture_active() ? 5 : 200,
+                                    QS_ALLINPUT, MWMO_INPUTAVAILABLE);
     }
     return 0;
 }
