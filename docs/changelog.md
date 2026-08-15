@@ -21,6 +21,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ## [Unreleased]
 
+### Fixed
+
+- **Golden Age (or any partial-overlay mod): markers on tiles the mod does NOT override
+  vanished after the map-dir redirect — the Gatefront chest, enemy and loot markers on
+  m60_45_39 all disappeared.** GA ships only 226/1347 tiles in `<root>/GA\map\MapStudio`;
+  the rest are the base install's. The disk route parsed the full base catalog at boot, but
+  when the game streamed a GA tile the map-dir observer redirected the scan dir to
+  `GA\map\MapStudio` and force-rebuilt — re-parsing ONLY the mod's 226 tiles. Every
+  non-override tile (including the one the player stood on, verified live via RPC: 0 enemies
+  parsed on the player's tile vs 54+ on GA tiles) lost all its loot/enemy/feature markers,
+  while the same chest WAS detected on ERR (its `mod\map\MapStudio` covers the whole world).
+  The per-tile disk readers now scan **mod dir + base install dir merged** (`disk_loot_dirs()`
+  + the deduped `msb_tile_files()` enumeration: the mod's copy of a tile wins, the base fills
+  every tile the mod doesn't ship). The disk-parse cache keys on the full dir list, so the
+  redirect re-parses the merged catalog exactly once.
+
 ## [v2.9.0] - 2026-08-15
 
 ### Fixed

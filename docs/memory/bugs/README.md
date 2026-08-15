@@ -4,6 +4,14 @@ Complex bugs — resolved and open — with the durable root-cause/fix takeaway.
 **current code**, verified during the 2026-06-29 reorg. Open items are the real backlog.
 
 ## Resolved
+- **Partial-overlay mod: the map-dir redirect dropped the base catalog** [resolved 2026-08-15,
+  deployed, restart-pending] - GA ships only 226/1347 tiles in `GA\map\MapStudio`; the first
+  streamed GA MSB redirected the scan dir + force-rebuilt -> every non-override base tile (the
+  player's Gatefront m60_45_39) left the parse -> the chest next to the player had NO marker
+  (RPC: 0 enemies on that tile vs 54+ on GA tiles; same chest had 14 treasures on ERR's
+  complete `mod\map\MapStudio`). The per-tile readers now scan mod + base merged
+  (`disk_loot_dirs()` + deduped `msb_tile_files()`, mod wins on shared tiles; cache keyed on
+  the dir list). -> [partial-overlay-dir-redirect-drops-base-tiles](partial-overlay-dir-redirect-drops-base-tiles.md)
 - **Boss markers were ERR-only** [PARTIAL 2026-07-23] — bosses + Great Runes vanished on vanilla/
   randomizer/any non-ERR game: `build_live_bosses` seeded boss TYPES only from ERR's `textId2==5100`
   WorldMapPointParam pins. Now also seeds mod-agnostically from the tier-3 field-boss NpcName band

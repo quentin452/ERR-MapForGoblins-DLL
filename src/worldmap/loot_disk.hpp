@@ -301,6 +301,12 @@ GOBLIN_RENDER_API DiskLootState disk_loot_state();
 // The resolved (or last-searched) MapStudio dir, for the build + the error text.
 GOBLIN_RENDER_API std::filesystem::path disk_loot_dir();
 
+// The MapStudio dirs to scan, MOD-first: the resolved (mod) dir, then the BASE
+// install's walk-found dir when they differ (a partial-overlay mod like GA ships only
+// its override tiles — the base supplies the tiles the mod doesn't touch). One entry
+// when they're the same (ERR/vanilla). Empty = nothing resolved yet.
+GOBLIN_RENDER_API std::vector<std::filesystem::path> disk_loot_dirs();
+
 // Called by the CreateFileW observer for every *.msb.dcx the game opens. While
 // the dir is not yet Found, captures its map\MapStudio parent → flips to Found.
 void on_map_opened_path(const wchar_t *full_path);

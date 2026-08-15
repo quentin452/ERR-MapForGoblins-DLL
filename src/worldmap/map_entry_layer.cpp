@@ -2717,7 +2717,14 @@ void build_buckets_impl()
         const uint32_t want_key = (wantAssets ? 1u : 0u) | (wantEnemies ? 2u : 0u) |
                                   (wantRegions ? 4u : 0u) | (wantObjActs ? 8u : 0u) |
                                   (goblin::config::lootFromDiskMsb ? 16u : 0u);
-        const std::string src_dir = goblin::worldmap::disk_loot_dir().string();
+        // Cache key = the full dir LIST (mod + base), not just the resolved dir: a partial-overlay
+        // mod (GA) merges the base catalog, so a base-side change must re-parse too.
+        std::string src_dir;
+        for (const auto &d : goblin::worldmap::disk_loot_dirs())
+        {
+            if (!src_dir.empty()) src_dir += "|";
+            src_dir += d.string();
+        }
         if (!g_parsed.valid || g_parsed.want_key != want_key || g_parsed.src_dir != src_dir)
         {
             auto _parse_t0 = std::chrono::steady_clock::now();

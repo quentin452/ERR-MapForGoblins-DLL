@@ -155,6 +155,43 @@ std::vector<uint8_t> slurp(const fs::path &p)
     }
     return v;
 }
+
+// One .msb.dcx tile to scan, with its stem (name minus ".msb.dcx").
+struct MsbTileFile
+{
+    fs::path path;
+    std::string name;
+    std::string stem;
+};
+
+// All .msb.dcx tiles across disk_loot_dirs(), MOD-first, deduped by stem — the mod's
+// copy wins, the base fills the tiles the mod doesn't ship. The one enumeration every
+// per-tile disk reader (treasures / LOD awards / LOD features / LOD treasures / merchant
+// talk candidates) iterates, so a partial-overlay mod never drops non-override tiles.
+std::vector<MsbTileFile> msb_tile_files()
+{
+    std::vector<MsbTileFile> out;
+    std::unordered_set<std::string> seen;  // lowercase stems — mod-first wins
+    for (const fs::path &dir : disk_loot_dirs())
+    {
+        std::error_code ec;
+        for (auto &de : fs::directory_iterator(dir, ec))
+        {
+            if (!de.is_regular_file(ec)) continue;
+            const fs::path &p = de.path();
+            std::string name = p.filename().string();
+            std::string lower = name;
+            for (char &c : lower) c = (char)std::tolower((unsigned char)c);
+            if (lower.size() < 8 || lower.compare(lower.size() - 8, 8, ".msb.dcx") != 0) continue;
+            std::string stem = name.substr(0, name.size() - 8);  // strip ".msb.dcx"
+            std::string lstem = stem;
+            for (char &c : lstem) c = (char)std::tolower((unsigned char)c);
+            if (!seen.insert(std::move(lstem)).second) continue;  // mod's copy already won
+            out.push_back({p, name, stem});
+        }
+    }
+    return out;
+}
 } // namespace
 
 // Parse "m{AA}_{BB}_{CC}_00" → area/gx/gz. Only LOD0 (_00). False otherwise so
@@ -405,6 +442,20 @@ fs::path disk_loot_dir()
     return g_resolved_dir;
 }
 
+std::vector<fs::path> disk_loot_dirs()
+{
+    // MOD-first: the resolved dir (the game-open redirect — the active mod's real
+    // MapStudio), then the BASE install's walk dir when it differs. A partial-overlay
+    // mod (GA overrides only 226/1347 tiles) must NOT replace the base catalog: the
+    // base fills every tile the mod doesn't ship (2026-08-15 — GA's m60_45_39 etc.
+    // vanished from the parse after the redirect, killing non-override tile markers).
+    std::vector<fs::path> dirs;
+    std::lock_guard<std::mutex> lk(g_dir_mtx);
+    if (!g_resolved_dir.empty()) dirs.push_back(g_resolved_dir);
+    if (!g_walk_dir.empty() && g_walk_dir != g_resolved_dir) dirs.push_back(g_walk_dir);
+    return dirs;
+}
+
 void on_map_opened_path(const wchar_t *full_path)
 {
     if (!full_path || !disk_source_enabled()) return;
@@ -458,28 +509,28 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
     const bool wantRegions = regions != nullptr;
     const bool wantObjActs = objacts != nullptr;
     ensure_map_dir_resolved();      // ancestor-walk → Found/Searching (CreateFileW completes it)
-    fs::path dir = disk_loot_dir(); // empty until Found (ancestor-walk or the observer)
-    if (dir.empty())
+    const std::vector<fs::path> dirs = disk_loot_dirs();  // mod + base (partial-overlay merge)
+    if (dirs.empty())
     {
         spdlog::warn("[LOOTDISK] no map\\MapStudio dir yet (ancestor-walk empty; awaiting "
                      "CreateFileW discovery or set loot_msb_dir) — disk loot deferred");
         return out;
     }
-    spdlog::info("[LOOTDISK] reading MSBs from {}", dir.string());
+    if (dirs.size() == 1)
+        spdlog::info("[LOOTDISK] reading MSBs from {}", dirs[0].string());
+    else
+        spdlog::info("[LOOTDISK] reading MSBs from {} + base {} (mod wins on its tiles)",
+                     dirs[0].string(), dirs[1].string());
 
     msbe::OodleDecompressFn oodle = resolve_oodle(); // KRAK support (vanilla/unmodified maps)
     int parsed = 0, kraks = 0, withPart = 0, dummies = 0;
     std::map<int, int> tier_files;  // LOD suffix → file count (tile coverage diag)
     std::error_code ec;
-    for (auto &de : fs::directory_iterator(dir, ec))
+    for (const MsbTileFile &tf : msb_tile_files())
     {
-        if (!de.is_regular_file(ec)) continue;
-        const fs::path &p = de.path();
-        std::string name = p.filename().string();  // e.g. "m60_42_36_00.msb.dcx"
-        std::string lower = name;
-        for (char &c : lower) c = (char)std::tolower((unsigned char)c);
-        if (lower.size() < 8 || lower.compare(lower.size() - 8, 8, ".msb.dcx") != 0) continue;
-        std::string stem = name.substr(0, name.size() - 8);  // strip ".msb.dcx"
+        const fs::path &p = tf.path;
+        const std::string &name = tf.name;
+        const std::string &stem = tf.stem;
         // Tile coverage: tally the LOD suffix of EVERY tile (parsed or not) so the scoreboard
         // can show what the _00-only rule covers vs skips. _01/_02 are LOD connect-proxies and
         // _10/_11/_12 hold mostly GED-tier DUPLICATES of _00 (validated tools/tier_coverage.py),
@@ -661,22 +712,15 @@ std::vector<DiskEnemy> load_lod_award_entities(const std::unordered_set<uint32_t
 {
     std::vector<DiskEnemy> out;
     if (wanted.empty()) return out;
-    fs::path dir = disk_loot_dir();
-    if (dir.empty()) return out;
     msbe::OodleDecompressFn oodle = resolve_oodle();
     std::unordered_set<uint32_t> remaining = wanted;  // first-occurrence wins; stop once all found
     int scanned = 0;
     std::error_code ec;
-    for (auto &de : fs::directory_iterator(dir, ec))
+    for (const MsbTileFile &tf : msb_tile_files())
     {
         if (remaining.empty()) break;  // all resolved → skip the rest of the non-_00 tiles
-        if (!de.is_regular_file(ec)) continue;
-        const fs::path &p = de.path();
-        std::string name = p.filename().string();
-        std::string lower = name;
-        for (char &c : lower) c = (char)std::tolower((unsigned char)c);
-        if (lower.size() < 8 || lower.compare(lower.size() - 8, 8, ".msb.dcx") != 0) continue;
-        std::string stem = name.substr(0, name.size() - 8);
+        const fs::path &p = tf.path;
+        const std::string &stem = tf.stem;
         // Non-_00 LOD tiers ONLY: the _00 enemies are already in disk_enemies; this fills the
         // gap for award entities that exist solely as overworld LOD proxies (_01/_02/_10/_11/_12).
         // Skip _99 lighting tiles (no parts). The marker tile = the LOD tile (= what the bake used).
@@ -733,20 +777,13 @@ std::vector<DiskCollectible> load_lod_feature_assets(const std::unordered_set<ui
 {
     std::vector<DiskCollectible> out;
     if (wanted.empty()) return out;
-    fs::path dir = disk_loot_dir();
-    if (dir.empty()) return out;
     msbe::OodleDecompressFn oodle = resolve_oodle();
     int scanned = 0;
     std::error_code ec;
-    for (auto &de : fs::directory_iterator(dir, ec))
+    for (const MsbTileFile &tf : msb_tile_files())
     {
-        if (!de.is_regular_file(ec)) continue;
-        const fs::path &p = de.path();
-        std::string name = p.filename().string();
-        std::string lower = name;
-        for (char &c : lower) c = (char)std::tolower((unsigned char)c);
-        if (lower.size() < 8 || lower.compare(lower.size() - 8, 8, ".msb.dcx") != 0) continue;
-        std::string stem = name.substr(0, name.size() - 8);
+        const fs::path &p = tf.path;
+        const std::string &stem = tf.stem;
         // Non-_00 LOD tiers ONLY: _00 assets are already in disk_collectibles; this fills the gap for
         // World-feature assets that exist solely as cross-tile LOD proxies (Snow Town statues live only
         // in the supertile m60_24_28_01). Skip _99 lighting tiles. Cannot stop early (a model has many
@@ -801,20 +838,13 @@ std::vector<DiskCollectible> load_lod_feature_assets(const std::unordered_set<ui
 std::vector<DiskTreasure> load_lod_treasures()
 {
     std::vector<DiskTreasure> out;
-    fs::path dir = disk_loot_dir();
-    if (dir.empty()) return out;
     msbe::OodleDecompressFn oodle = resolve_oodle();
     int scanned = 0;
     std::error_code ec;
-    for (auto &de : fs::directory_iterator(dir, ec))
+    for (const MsbTileFile &tf : msb_tile_files())
     {
-        if (!de.is_regular_file(ec)) continue;
-        const fs::path &p = de.path();
-        std::string name = p.filename().string();
-        std::string lower = name;
-        for (char &c : lower) c = (char)std::tolower((unsigned char)c);
-        if (lower.size() < 8 || lower.compare(lower.size() - 8, 8, ".msb.dcx") != 0) continue;
-        std::string stem = name.substr(0, name.size() - 8);
+        const fs::path &p = tf.path;
+        const std::string &stem = tf.stem;
         int a = 0, x = 0, z = 0, lod = -1;
         if (std::sscanf(stem.c_str(), "m%d_%d_%d_%d", &a, &x, &z, &lod) != 4) continue;
         if (lod == 0 || lod == 99) continue;  // non-_00 LOD tiers only (_00 done by load_disk_treasures)
@@ -1576,24 +1606,21 @@ std::vector<esd::TalkShopRange> load_merchant_shop_ranges()
     //    from the MSB tile listing — vanilla talk bnds are named like maps at three
     //    granularities (per-area m60_00_00_00, per-block m11_10_00_00, per-tile) — plus the
     //    common m00_00_00_00. A miss is a cheap in-memory BHD hash lookup (no log spam).
+    //    MOD + BASE tiles both contribute candidates (the base fills the tiles a partial
+    //    overlay doesn't ship — same merge as the MSB readers).
     std::unordered_set<std::string> candidates = {"m00_00_00_00"};
-    ensure_map_dir_resolved();
-    if (fs::path dir = disk_loot_dir(); !dir.empty())
-        for (auto &de : fs::directory_iterator(dir, ec))
-        {
-            if (!de.is_regular_file(ec)) continue;
-            std::string name = de.path().filename().string();
-            int a = 0, x = 0, z = 0, lod = -1;
-            if (std::sscanf(name.c_str(), "m%d_%d_%d_%d.msb.dcx", &a, &x, &z, &lod) != 4)
-                continue;
-            char stem[32];
-            std::snprintf(stem, sizeof(stem), "m%02d_00_00_00", a);
-            candidates.insert(stem);
-            std::snprintf(stem, sizeof(stem), "m%02d_%02d_00_00", a, x);
-            candidates.insert(stem);
-            std::snprintf(stem, sizeof(stem), "m%02d_%02d_%02d_00", a, x, z);
-            candidates.insert(stem);
-        }
+    for (const MsbTileFile &tf : msb_tile_files())
+    {
+        int a = 0, x = 0, z = 0, lod = -1;
+        if (std::sscanf(tf.stem.c_str(), "m%d_%d_%d_%d", &a, &x, &z, &lod) != 4) continue;
+        char stem[32];
+        std::snprintf(stem, sizeof(stem), "m%02d_00_00_00", a);
+        candidates.insert(stem);
+        std::snprintf(stem, sizeof(stem), "m%02d_%02d_00_00", a, x);
+        candidates.insert(stem);
+        std::snprintf(stem, sizeof(stem), "m%02d_%02d_%02d_00", a, x, z);
+        candidates.insert(stem);
+    }
     if (!gd.empty())
         for (const std::string &stem : candidates)
         {
