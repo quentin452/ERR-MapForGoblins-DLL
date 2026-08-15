@@ -940,6 +940,17 @@ std::vector<BossBar> parse_emevd_boss_bars(const uint8_t *buf, size_t len)
     if (eventCount > 1000000u) return out;
 
     constexpr uint32_t BOSS_BAR_BANK = 2003, BOSS_BAR_ID = 11;  // HandleBossHealthBar
+    // Template-indirect boss bars (2026-08-15 — the Tree Sentinel was missing on Golden Age):
+    // many fights — vanilla AND mods — invoke HandleBossHealthBar through the common_func
+    // TEMPLATE 90005870 instead of the direct instruction: `RunEvent(2000[6], 90005870,
+    // entity, nameId, slot)`. The template body holds 2003[11] with placeholder args, so a
+    // direct-instruction scan sees nothing for those fights (measured: 69 template call sites
+    // in vanilla — incl. the Gatefront Tree Sentinel — and 14 in GA). The MSB EntityID is the
+    // only per-ENCOUNTER key, so these MUST be harvested at the call site: args are
+    // (state@+0, templateId@+4, entity@+8, nameId@+12, slot@+16) — same RunEvent arg layout
+    // the award templates use (parse_emevd: eventId@a+4, first param@a+8).
+    constexpr uint32_t RUNEVENT_BANK = 2000, RUNEVENT_ID = 6;
+    constexpr uint32_t BOSS_BAR_TEMPLATE = 90005870;
     constexpr size_t EVENT_SZ = 0x30, INSTR_SZ = 0x20;
     for (uint64_t i = 0; i < eventCount; ++i)
     {
@@ -953,16 +964,24 @@ std::vector<BossBar> parse_emevd_boss_bars(const uint8_t *buf, size_t len)
         {
             size_t ins = base + (size_t)j * INSTR_SZ;
             if (!inb(ins, INSTR_SZ, len)) break;
-            if (rd32(buf, ins + 0x00) != BOSS_BAR_BANK || rd32(buf, ins + 0x04) != BOSS_BAR_ID)
-                continue;
+            const uint32_t bank = rd32(buf, ins + 0x00);
+            const uint32_t id   = rd32(buf, ins + 0x04);
+            const bool direct = (bank == BOSS_BAR_BANK && id == BOSS_BAR_ID);
+            const bool templ  = (bank == RUNEVENT_BANK && id == RUNEVENT_ID);
+            if (!direct && !templ) continue;
             uint64_t argLen = rd64(buf, ins + 0x08);
             int32_t  argOff = (int32_t)rd32(buf, ins + 0x10);
-            if (argOff < 0 || argLen < 16) continue;  // need nameId @ a+12..16
+            if (argOff < 0) continue;
+            if (direct && argLen < 16) continue;  // need nameId @ a+12..16
+            if (templ && argLen < 20) continue;   // need (templateId, entity, nameId, slot)
             size_t a = (size_t)argsOff + (size_t)argOff;
             if (!inb(a, (size_t)argLen, len)) continue;
-            uint32_t entity = rd32(buf, a + 4);
-            uint32_t slot   = rd32(buf, a + 8);
-            uint32_t nameId = rd32(buf, a + 12);
+            if (templ && rd32(buf, a + 4) != BOSS_BAR_TEMPLATE) continue;
+            // Direct: (state@0, entity@4, slot@8, nameId@12).
+            // Template call site: (state@0, templateId@4, entity@8, nameId@12, slot@16).
+            const uint32_t entity = rd32(buf, a + (templ ? 8 : 4));
+            const uint32_t nameId = rd32(buf, a + 12);
+            const uint32_t slot   = rd32(buf, a + (templ ? 16 : 8));
             if ((int32_t)entity > 0 && (int32_t)nameId > 0)
                 out.push_back({entity, nameId, (uint8_t)(slot & 0xffu)});
         }
