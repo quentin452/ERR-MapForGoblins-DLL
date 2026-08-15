@@ -27,7 +27,8 @@ implemented 2026-08-14, build-err green, NOT yet deployed/verified):**
 - Map-dir discovery (`on_map_opened_path`) is unchanged (`.msb.dcx` only).
 
 **★★ GA TILE-FUSION FIX SHIPPED 2026-08-15 (the invisible Gatefront chest) — build-err green,
-deployed to the GA install (needs a game restart; the game currently runs the pre-fix DLL):**
+deployed to the GA install + LIVE-VERIFIED (session 18:54, user confirmed the chest marker
+in-game):**
 - **Root cause (live-verified):** GA ships only 226/1347 tiles in `GA\map\MapStudio`; the rest
   are the base install's. Boot parses the full base catalog (949 tiles, 3268 treasures), then
   the first streamed GA MSB redirects the scan dir to `GA\map\MapStudio` + force-rebuilds —
@@ -40,10 +41,9 @@ deployed to the GA install (needs a game restart; the game currently runs the pr
   candidates) iterates the deduped `msb_tile_files()` enumeration — the mod's copy of a tile
   wins, the base fills every tile the mod doesn't ship. The `ParsedDisk` cache keys on the
   full dir list so the redirect re-parses the merged catalog exactly once.
-- **VERIFY on GA (after restart + `mfg_build` freshness):** `vmap ename 60 45 39` must show
-  enemies, and the Gatefront chest marker must appear; `[LOOTDISK] reading MSBs from
-  GA\map\MapStudio + base E:\SteamLibrary\...` line confirms the merge; tile counts
-  ≈ 154 GA + ~1100 base vs the old 154-only.
+- **VERIFIED:** log `reading MSBs from GA\map\MapStudio + base E:\SteamLibrary\... (mod wins
+  on its tiles)`; post-redirect 967 _00 tiles / 3334 treasures (was 154/1793); `vmap ename
+  60 45 39` = 103 (was 0), `60 44 38` = 89 (was 0).
 
 **Deploy for verification (Golden Age):** copy `build-err/MapForGoblins.dll` (+ .pdb) to
 `C:\Users\iamacat\Downloads\DLLS\` manually + restart the game (the install loads the DLL from

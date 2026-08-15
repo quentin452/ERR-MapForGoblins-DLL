@@ -1,7 +1,11 @@
 # Partial-overlay mod: the map-dir redirect dropped the base catalog (invisible Gatefront chest)
 
-**Status: RESOLVED 2026-08-15, fix shipped + deployed to the GA install (needs a game restart).**
-Live-verified pre-fix via RPC; post-fix verification pending (freshness: `mfg_build` + game restart).
+**Status: RESOLVED 2026-08-15, fix shipped + deployed to the GA install + LIVE-VERIFIED.**
+Verification (session 18:54, game restarted with the fix DLL): log line `reading MSBs from
+GA\map\MapStudio + base E:\SteamLibrary\... (mod wins on its tiles)`; post-redirect parse
+967 _00 tiles / 3334 treasures (was 154 / 1793); RPC on the player's tile (Gatefront,
+grid 45,39): `vmap ename 60 45 39` = 103 matches (was 0), neighbor vanilla tile 60 44 38 =
+89 (was 0). User confirmed the chest marker in-game.
 
 ## Symptom
 

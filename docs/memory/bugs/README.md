@@ -5,7 +5,7 @@ Complex bugs — resolved and open — with the durable root-cause/fix takeaway.
 
 ## Resolved
 - **Partial-overlay mod: the map-dir redirect dropped the base catalog** [resolved 2026-08-15,
-  deployed, restart-pending] - GA ships only 226/1347 tiles in `GA\map\MapStudio`; the first
+  live-verified] - GA ships only 226/1347 tiles in `GA\map\MapStudio`; the first
   streamed GA MSB redirected the scan dir + force-rebuilt -> every non-override base tile (the
   player's Gatefront m60_45_39) left the parse -> the chest next to the player had NO marker
   (RPC: 0 enemies on that tile vs 54+ on GA tiles; same chest had 14 treasures on ERR's
