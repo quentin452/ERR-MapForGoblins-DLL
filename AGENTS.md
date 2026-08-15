@@ -91,6 +91,25 @@ Workflow:
   Local delete `git branch -d` (use `-D` only after confirming via cherry); remote delete
   `git push origin --delete <b>`. Never delete a branch with `+` (unmerged) work or the default branch.
 - Keep changes scoped.
+- **Docs follow implementation (same commit/PR, not a later pass).** Any implementation that
+  touches a RE'd domain MUST update the matching docs IN THE SAME change, or they rot (the
+  `docs/re/README.md` coverage map drifted ~109 commits stale because shipping work never
+  reflected it). The mapping, by what the code change does:
+  - **Resolves/advances an RE item** (an OPEN/Remaining gap becomes solved, shipped, or a
+    documented dead end) → update `docs/re/README.md` (flip the status, fix the counts —
+    doc count / sig count, correct the Mapped table) AND the relevant `docs/re/*_findings.md`
+    (a dead end needs its own findings note; a shipped mechanism may correct the planned one,
+    e.g. timestep freeze ≠ dt-zero).
+  - **Adds/changes a subsystem** (new parser, new input path, new source of truth) → update
+    the `✅ Mapped` table / frontier list in `docs/re/README.md` (a subsystem is either
+    mapped-and-shipped or listed as missing; there is no silent middle ground).
+  - **Changes the frontier framing** (a wall falls, a route dead-ends) → update the "Rule of
+    thumb" line + the corresponding frontier item in `docs/re/README.md`.
+  - **Every case:** update `docs/HANDOFF.md` (close/advance the queue item), add the
+    user-facing line to `docs/changelog.md` under `[Unreleased]`, and write the durable note
+    to `docs/memory/` per the single-store rule. When in doubt, mirror what the change ships.
+  - Verification: after the doc edits, re-check any filename/sig/count you touched actually
+    exists/matches (a stale pointer in a fresh edit is still stale).
 - At the end of a completed task, update `docs/memory/` when the result changes project state, workflow,
   blockers, machine capabilities, or important next steps. If it adds a feature or fixes a bug, also add
   a line under `[Unreleased]` in `docs/changelog.md`.
