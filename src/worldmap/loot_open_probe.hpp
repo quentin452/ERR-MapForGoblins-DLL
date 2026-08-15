@@ -47,7 +47,10 @@ std::vector<CapturedMapFile> captured_map_files();
 std::string captured_path_for(const std::string &rel_path);
 
 // Parent dir of the first captured file ending with `suffix` (lowercase) — for DIRECTORY-level
-// readers (the merchant ESD walk) that want the game's real script/talk dir on an exotic mount.
-// Empty if nothing captured yet.
-std::string captured_dir_for(const std::string &suffix);
+// readers (the merchant ESD walk, the EMEVD boss-bar/quest/award walks) that want the game's real
+// script/talk or event dir on an exotic mount. Empty if nothing captured yet.
+// `skipDir` (lowercase, e.g. the BASE install's derived event dir): a captured file whose parent
+// equals it is a BASE install open (the loader redirects only the mod's files — a base open is
+// NOT the mod's data) — skip to the next captured file instead of returning it.
+std::string captured_dir_for(const std::string &suffix, const std::string &skipDir = {});
 } // namespace goblin::worldmap

@@ -285,13 +285,18 @@ std::string captured_path_for(const std::string &rel_path)
     return {};
 }
 
-std::string captured_dir_for(const std::string &suffix)
+std::string captured_dir_for(const std::string &suffix, const std::string &skipDir)
 {
     // Parent dir of the first captured file ending with `suffix` (lowercase, e.g.
     // ".talkesdbnd.dcx") — for DIRECTORY-level readers (the merchant ESD walk) that want the
     // game's real script/talk dir on an exotic mount. Empty if nothing captured yet.
+    // `skipDir`: skip captures whose parent equals it (a BASE install open — the loader
+    // redirects only the mod's files, so a base open is NOT the mod's data; e.g. GA's
+    // base install event dir, so a vanilla EMEVD open doesn't win over GA's own).
     std::string suf = suffix;
     for (char &c : suf) c = (char)std::tolower((unsigned char)c);
+    std::string skip = skipDir;
+    for (char &c : skip) c = (char)std::tolower((unsigned char)c);
     std::lock_guard<std::mutex> lk(g_map_paths_mx);
     for (const auto &f : g_map_paths)
     {
@@ -300,7 +305,11 @@ std::string captured_dir_for(const std::string &suffix)
         if (p.size() >= suf.size() && p.compare(p.size() - suf.size(), suf.size(), suf) == 0)
         {
             size_t sep = f.path.find_last_of("\\/");
-            return sep == std::string::npos ? std::string{} : f.path.substr(0, sep);
+            if (sep == std::string::npos) continue;
+            std::string dir = f.path.substr(0, sep);
+            for (char &c : dir) c = (char)std::tolower((unsigned char)c);
+            if (!skip.empty() && dir == skip) continue;  // a BASE open — not the mod's dir
+            return f.path.substr(0, sep);
         }
     }
     return {};

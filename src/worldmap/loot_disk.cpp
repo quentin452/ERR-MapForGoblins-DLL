@@ -875,6 +875,36 @@ fs::path resolve_event_dir(const fs::path &mapStudio)
     if (fs::path e = mapStudio / "event"; fs::exists(e, ec)) return e;
     return {};
 }
+
+// The ACTIVE install's event\ dir, capture-first (the same wrong-path fix as the merchant ESD
+// walk, 2026-08-14 — the ancestor walk resolves the BASE install while a mount like GA's
+// <root>/GA/ serves the mod's own EMEVDs; reading vanilla's boss bars/quests/awards under a
+// re-sorting mod is how the Tree Sentinel lost its tier-4 name and vanished from the vmap).
+// Order: (1) the parent dir of the game's OWN captured .emevd.dcx opens, EXCLUDING the base
+// install's event dir (the loader redirects only the mod's files — a base EMEVD open is
+// vanilla data, not the mod's); (2) the resolved map dir's event sibling (ancestor walk or the
+// game-open redirect). The capture is empty until the game streams an area, so (2) keeps the
+// boot-time table working — and the caller (emevd_boss_bars) re-keys its cache on this dir, so
+// the first GA open re-reads the mod's EMEVDs instead of latching vanilla forever.
+fs::path resolve_active_event_dir()
+{
+    // Skip captured EMEVD dirs that ARE the BASE install's event dir. The base install is the
+    // GAME's own dir (eldenring.exe's sibling): its event dir is vanilla, never the mod's data.
+    // On ERR the mod dir is <game>/mod — a captured mod event dir differs from <game>/event and
+    // passes; on GA the mod dir is <game>/GA — same. The walk-derived event dir is NOT the
+    // discriminator (on ERR the walk lands ON the mod dir and its event sibling is the mod's own).
+    std::string skipBase;
+    {
+        fs::path g = game_dir();
+        std::error_code ec;
+        if (!g.empty() && fs::is_directory(g / "event", ec))
+            skipBase = (g / "event").string();
+    }
+    const std::string capDir = captured_dir_for(".emevd.dcx", skipBase);
+    if (!capDir.empty()) return fs::path(capDir);
+    ensure_map_dir_resolved();
+    return resolve_event_dir(disk_loot_dir());
+}
 } // namespace
 
 std::vector<DiskEmevd> load_emevd_awards(
@@ -883,12 +913,13 @@ std::vector<DiskEmevd> load_emevd_awards(
 {
     std::vector<DiskEmevd> out;
     ensure_map_dir_resolved();
-    fs::path mapStudio = disk_loot_dir();
-    fs::path evdir = resolve_event_dir(mapStudio);
+    // Capture-first active-event dir (2026-08-15, same wrong-path class as the boss bars):
+    // GA serves its own EMEVDs under <root>/GA/event while the walk resolves the base install.
+    fs::path evdir = resolve_active_event_dir();
     if (evdir.empty())
     {
-        spdlog::warn("[LOOTDISK] no event\\ dir found beside {} — EMEVD loot deferred",
-                     mapStudio.empty() ? "(no map dir yet)" : mapStudio.string());
+        spdlog::warn("[LOOTDISK] no event\\ dir beside {} — EMEVD loot deferred",
+                     disk_loot_dir().empty() ? "(no map dir yet)" : disk_loot_dir().string());
         return out;
     }
     spdlog::info("[LOOTDISK] reading EMEVD from {}", evdir.string());
@@ -1069,8 +1100,9 @@ std::unordered_map<uint32_t, uint32_t> load_emevd_world_feature_flags(
 {
     std::unordered_map<uint32_t, uint32_t> out;
     ensure_map_dir_resolved();
-    fs::path mapStudio = disk_loot_dir();
-    fs::path evdir = resolve_event_dir(mapStudio);
+    // Capture-first active-event dir (same wrong-path class as the boss bars — the walk can
+    // resolve the base install while GA serves its own EMEVDs under <root>/GA/event).
+    fs::path evdir = resolve_active_event_dir();
     if (evdir.empty())
     {
         spdlog::warn("[LOOTDISK] no event\\ dir for World-feature flags — graying deferred");
@@ -1130,7 +1162,9 @@ std::vector<QuestNpcRuntime> load_quest_npcs()
 {
     std::vector<QuestNpcRuntime> out;
     ensure_map_dir_resolved();
-    fs::path evdir = resolve_event_dir(disk_loot_dir());
+    // Capture-first active-event dir (same wrong-path class as the boss bars — the walk can
+    // resolve the base install while GA serves its own EMEVDs under <root>/GA/event).
+    fs::path evdir = resolve_active_event_dir();
     if (evdir.empty())
     {
         spdlog::warn("[LOOTDISK] no event\\ dir for quest NPCs — deferred");
@@ -1204,22 +1238,44 @@ static std::unordered_map<uint32_t, goblin::worldmap::BossArea> &boss_areas()
 const std::unordered_map<uint32_t, uint32_t> &emevd_boss_bars()
 {
     // Built by the marker-build worker; the returned map is read-only + stable afterwards, so only
-    // the one-time fill needs guarding (the enemy-tag path on the present thread deliberately never
+    // the fill needs guarding (the enemy-tag path on the present thread deliberately never
     // calls this — it goes through register_boss_bar_name instead).
+    //
+    // KEYED ON THE EVENT DIR (2026-08-15 — Tree Sentinel regression on GA): the old `loaded`
+    // latch froze the table at the FIRST read. Under GA that first read can be the BASE install's
+    // VANILLA EMEVDs (the ancestor walk resolves E:\SteamLibrary while GA mounts <root>/GA/) —
+    // then, once the game streams a GA tile and the map-dir redirect (or the game's own .emevd
+    // opens) reveals the mod's real event dir, the table stayed vanilla forever: GA re-sorted its
+    // entity ids, tier-4 name resolution missed, and build_live_bosses' tier==4 seed gate dropped
+    // the boss (the Tree Sentinel was named in-world by the model band but had no vmap marker).
+    // Re-reading when the dir changes costs one extra EMEVD walk per redirect — rare, and only
+    // ever on a genuine data-source change.
     static std::mutex mtx;
     static std::unordered_map<uint32_t, uint32_t> cache;
-    static bool loaded = false;
-    std::lock_guard<std::mutex> lk(mtx);
-    if (loaded) return cache;
+    static std::string cached_key;
+    static bool        cached_valid = false;
 
-    ensure_map_dir_resolved();
-    fs::path evdir = resolve_event_dir(disk_loot_dir());
+    fs::path evdir = resolve_active_event_dir();
     if (evdir.empty())
     {
-        // No map dir yet (disk source off, or discovery still Searching). Do NOT latch `loaded` —
-        // a later call, once the CreateFileW fallback has revealed the dir, must retry.
+        // No event dir yet (disk source off, or discovery still Searching). Do NOT latch
+        // `cached_valid` — a later call, once the CreateFileW fallback has revealed the dir,
+        // must retry.
         spdlog::warn("[LOOTDISK] no event\\ dir for boss bars — boss names fall back to the model band");
         return cache;
+    }
+    const std::string key = evdir.string();
+    std::lock_guard<std::mutex> lk(mtx);
+    if (cached_valid && cached_key == key) return cache;
+    if (cached_valid)
+    {
+        // Key changed → re-read from the NEW dir: drop the first walk's entries so no stale
+        // base-install entity/area mapping leaks past the redirect.
+        cache.clear();
+        defeats().clear();
+        boss_areas().clear();
+        spdlog::info("[LOOTDISK] event dir changed {} -> {} — re-reading boss bars",
+                     cached_key, key);
     }
     spdlog::info("[LOOTDISK] reading boss health bars (2003[11]) from EMEVD {}", evdir.string());
 
@@ -1372,7 +1428,8 @@ const std::unordered_map<uint32_t, uint32_t> &emevd_boss_bars()
                      "{} fights the EMEVD scan never saw)", rows, differ, added);
     }
 
-    loaded = true;
+    cached_key = key;
+    cached_valid = true;
     spdlog::info("[LOOTDISK] boss bars: {} entities named (from {} 2003[11] calls over {} EMEVD "
                  "files, {} KRAK skipped)", (int)cache.size(), calls, parsed, kraks);
     {
