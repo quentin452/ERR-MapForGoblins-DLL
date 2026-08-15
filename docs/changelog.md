@@ -21,6 +21,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ## [Unreleased]
 
+## [v2.9.0] - 2026-08-15
+
 ### Fixed
 
 - **Boss markers on Golden Age: the tier-4 boss-bar table read the BASE install's EMEVDs.**
@@ -44,25 +46,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
   (template args: entity@+8, nameId@+12, slot@+16 — same RunEvent layout as the award
   templates). Live on GA: boss bars 227→290 entities (vanilla dir) / 151→164 (GA dir);
   markers 210→270 / 139→161.
-- **Wheel zoom in the vmap is smooth again.** The wheel-sink thread pumped messages every
-  200 ms (`Sleep(200)`), so wheel notches arrived in 200 ms lumps — the zoom multiplied
-  `pow(1.2, n)` per frame and jumped, and the sink wasn't even armed until the first 200 ms
-  tick after the vmap opened (dead zoom window — the in-hook fallback can't fire either, the
-  game polls no raw input while the map is up). The armed loop now waits with a short
-  `MsgWaitForMultipleObjectsEx` timeout (wakes instantly on a wheel event; the timeout only
-  bounds the state poll), so each notch lands within a few ms.
-- **The game's mouse survives opening and closing the vmap — the wheel sink no longer
-  registers raw input at all.** The previous fix registered our OWN mouse raw-input device
-  (`RIDEV_INPUTSINK`) while the overlay captured input. That is the wrong mechanism for this
-  game: raw-input registrations are per-DEVICE and last-wins, so registering the mouse
-  REPLACED the game's own registration — and our `RIDEV_REMOVE` then left the game with NO
-  registration at all. The game never re-registers, so its raw mouse stayed dead after the
-  first open/close cycle ("3d er native is losing inputs after i open and close vmap",
-  reported 2026-08-15; capture-gating the registration only narrowed the window). The wheel
-  now comes from a **`WH_MOUSE_LL` low-level hook** — a passive observer: the game's
-  registration is never touched, no input queue is consumed, every event still reaches the
-  game (always `CallNextHookEx`). The wheel delta is read from the hook's `MSLLHOOKSTRUCT`
-  on our own pumped thread, gated on the overlay capturing input.
+- **Mouse-wheel zoom in the virtual map works on Windows again — via a passive hook, so the
+  game's own mouse can never be affected.** The wheel was dead on Windows since forever there
+  (unnoticed: gamepad zoom and Linux/Proton worked). Root cause, live-measured: the game makes
+  ZERO `GetRawInput*` calls while the map/overlay state is up, and on Windows the wheel has no
+  legacy `WM_MOUSEWHEEL` under the game's `RIDEV_NOLEGACY` — so it never reached ImGui. The
+  first fix registered our OWN mouse raw-input device (`RIDEV_INPUTSINK`) — the wrong
+  mechanism: raw-input registrations are per-DEVICE and last-wins, so registering replaced the
+  game's own registration and removing it left the game with NONE (it never re-registers → the
+  game's raw mouse stayed dead after the first open/close vmap cycle). The wheel now comes
+  from a **`WH_MOUSE_LL` low-level hook** — a passive observer: the game's raw-input
+  registration is never touched, no queue is consumed, every event passes through unchanged
+  (`CallNextHookEx`); the delta is read from `MSLLHOOKSTRUCT.mouseData` on our own pumped
+  thread, gated on the overlay capturing input. Delivery is per-notch (the pump waits with a
+  short `MsgWaitForMultipleObjectsEx` timeout while capturing), so zoom is smooth. Under
+  Wine/Proton the hook is skipped — the legacy wheel already reaches ImGui there.
 
 ### Performance
 
@@ -74,13 +72,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
 
 ### Fixed
 
-- **The wheel sink no longer kills the game's mouse.** The first wheel-sink fix registered our
-  own mouse raw-input device (`RIDEV_INPUTSINK`) and capture-gated it — but raw-input
-  registrations are per-DEVICE and last-wins, so even gated, registering replaced the game's
-  registration and `RIDEV_REMOVE` left the game with none (it never re-registers → dead mouse
-  after open/close vmap). Superseded by the `WH_MOUSE_LL` rewrite (see the wheel-sink entry
-  above): no raw-input registration is ever touched, so the game's mouse can't be affected.
-  The in-hook harvest stays as the fallback if the hook install fails.
 - **Gamepad item lock on the virtual map (grace-style).** In pad mode the right-stick reticle
   could sweep past a marker at the mouse-size catch radius. Every marker now gets the grace
   treatment in pad mode: a wider catch (~2.0× the icon), the lock ring feedback ("I am on it,
@@ -142,14 +133,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Fork releases ar
   copy of a file first (CreateFileW capture widened to msg/tpf/emevd + tail-matched virtual
   path lookup), so the name index sees the active mod's msgbnds (GA's item_dlc02 with the
   "Map: Limgrave, West" names) instead of the vanilla install's.
-- **Mouse-wheel zoom in the virtual map works on Windows again** (dead since… forever there, but
-  unnoticed: gamepad zoom and Linux/Proton worked). Root cause, live-measured: the game makes
-  ZERO `GetRawInput*` calls while the map/overlay state is up, so the wheel harvest that lived
-  inside the game's raw-input reads never saw a single event — on Windows the wheel has no legacy
-  WM_MOUSEWHEEL under the game's RIDEV_NOLEGACY, so it never reached ImGui at all. Fix: a
-  dedicated `RIDEV_INPUTSINK` raw-input registration on a hidden window (own thread + message
-  loop) delivers the wheel to the panel/vmap independently of the game's polling; the in-hook
-  harvest stays as a fallback, disabled when the sink is armed (no double accumulation).
 - **Virtual map now refreshes instantly when the map-fragment or Ashen/Royal-Capital setting
   is toggled in the F1 settings.** The vmap's marker index cached its membership at build time,
   keyed on group/category-visibility/regions — neither `require_map_fragments` nor the
